@@ -1,0 +1,20 @@
+# game binaries and IDA databases
+ida/
+
+# save copies
+saves/
+
+# generated and dumped data, and the built page; the schema comes from the game binary, so it is kept
+data/*
+!data/schema.json
+/viewer.html
+/viewer.html.map
+
+# local notes
+IDA_BRIEF.md
+
+# npm
+node_modules/
+
+# Claude Code
+.claude/

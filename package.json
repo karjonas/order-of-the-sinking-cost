@@ -1,0 +1,31 @@
+{
+  "name": "order-of-the-sinking-cost",
+  "private": true,
+  "description": "Spoiler-free progress viewer for Order of the Sinking Star (unofficial, 100% AI-made)",
+  "repository": "github:xPaw/order-of-the-sinking-cost",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "test": "vp test",
+    "lint": "vp lint",
+    "fmt": "vp fmt src tests scripts vite.config.js",
+    "fmt:check": "vp fmt --check src tests scripts vite.config.js",
+    "trace": "node scripts/trace.js",
+    "docs:check": "node scripts/check-docs.js",
+    "dump:model": "node scripts/dump-model.js",
+    "data": "npm run data:levels && npm run data:areas && npm run data:fog && npm run data:world && npm run data:map && npm run data:progress && npm run data:walk",
+    "data:levels": "node scripts/build-levels.js",
+    "data:areas": "node scripts/build-areas.js",
+    "data:fog": "node scripts/build-fog.js",
+    "data:world": "node scripts/build-world.js",
+    "data:map": "node scripts/build-map.js",
+    "data:progress": "node scripts/build-progress.js",
+    "data:walk": "node scripts/build-walk.js"
+  },
+  "devDependencies": {
+    "vite-plugin-singlefile": "2.3.3",
+    "vite-plus": "1.0.0"
+  }
+}
