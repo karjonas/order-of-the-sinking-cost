@@ -1,0 +1,56 @@
+# Data scripts
+
+Run the scripts with the npm scripts below. Generated data lands in `data/` (not committed, apart from
+`data/schema.json`); the built page is `viewer.html` in the project root. The page source is in `src/`.
+
+`npm install` sets up Vite+. Then `npm run build` builds the page, `npm run dev` serves it with live reload, `npm test`
+runs the tests, `npm run lint` lints and `npm run fmt` formats (`npm run fmt:check` only checks).
+
+Game folder: `--game DIR`, else `$SOKO_GAME`, else the Steam install. Saves: `$SOKO_SAVES`, else
+`%USERPROFILE%\Saved Games\Order of the Sinking Star`.
+
+## Pipeline, in run order
+
+| # | Script | Reads | Writes | npm script |
+|---|---|---|---|---|
+| 1 | the schema exporter (not in this repository) | `sinking_star.exe` in IDA, entity type list | `data/schema.json` | see below |
+| 2 | `build-levels.js` | `data/levels.package` (game), `data/schema.json` | `data/levels.json`, `data/level_entities/` | `npm run data:levels` |
+| 3 | `build-areas.js` | `data/levels.package` (game), `data/strings/en.localization` (game) | `data/level_areas.json` | `npm run data:areas` |
+| 4 | `build-fog.js` | `data/levels.package` (game), `data/schema.json` | `data/fog.json` | `npm run data:fog` |
+| 5 | `build-world.js` | `data/levels.package` (game), `data/schema.json` | `data/world.json` | `npm run data:world` |
+| 6 | `build-map.js` | `data/levels.json`, game `data/levels.package`, `data-pc/`, `data-common/`, `data/materials.package` | `data/map.json` | `npm run data:map` |
+| 7 | `build-progress.js` | `data/levels.json`, `data/level_areas.json`, `data/fog.json`, `data/map.json`, `data/world.json`, game `data/levels.package` | `data/progress.json` | `npm run data:progress` |
+| 8 | `build-walk.js` | `data/progress.json` (hashes `data/world.json` too) | `data/walk.json` | `npm run data:walk` |
+| 9 | `vite.config.js` | `src/`, `data/schema.json`, `data/progress.json`, `data/walk.json` | `viewer.html`, `viewer.html.map` | `npm run build` |
+
+`npm run data` runs steps 2 to 8 in order. `build-fog.js` also takes a campaign folder and then prints a report on
+that save: `npm run data:fog -- "<campaign folder>"`.
+
+Step 1 is needed only when the game binary changes. The exporter runs in IDA on the game binary and is not part of this
+repository ([Reading the schema out of the binary](../docs/GAMEDATA.md#reading-the-schema-out-of-the-binary)); it
+takes the entity type list that `node scripts\build-levels.js --types-json <file>` writes.
+
+The save and diff-blob readers are the page's own modules (`src/reader.js`, `src/status-file.js`,
+`src/history-file.js`, `src/blob.js`), and so is the walk model (`src/walk/`, `staticRoles()` in
+`src/model/level-roles.js`). `build-walk.js` stores what the walk gives on the level data alone, the static roles and
+the map's floor heights, in `data/walk.json`. Nothing it imports may import `walk.json`, so a fresh `npm run data` can
+write it.
+
+## Output
+
+Every output is deterministic, so a regeneration changes only what the game files or the scripts changed. The zlib
+streams in `world.json` and `progress.json` differ between zlib implementations, so compare them inflated.
+
+## Checks and tools
+
+- `npm test`: the tests in `tests/`. The ones on a real save read the `default` campaign from the saves folder
+  (read-only) and are skipped without it. `tests/walk-data.test.js` fails when `data/walk.json` is stale; run
+  `npm run data:walk` after a change to the walk.
+- `npm run docs:check`: every link in `docs/*.md` reaches a file and a heading, no page has two headings with the same
+  anchor, and nothing cites a section by number.
+- `npm run dev`: serves the page at `http://127.0.0.1:8765/viewer.html`, with `/saves/` mapped read-only onto the saves
+  folder.
+- `npm run dump:model -- <campaign|save folder|--demo> <out.json>`: everything the page's model computes for a save, as
+  stable JSON. Compare dumps from before and after a refactor that should not change behaviour.
+- `npm run trace -- <line:col>` (or a pasted stack on stdin): the source position of a position in the minified build,
+  from `viewer.html.map`.
