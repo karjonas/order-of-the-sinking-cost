@@ -464,9 +464,8 @@ select:focus {
 .side .goals .gl.on .bar > i {
     background: var(--hi);
 }
-.side .goals .gl.sub {
-    padding-top: 0;
-    padding-bottom: 0;
+/* a ground tower off the first ending's cheapest plan */
+.side .goals .gl.off:not(.on) .n {
     color: var(--muted);
 }
 .side .goals .kids {
@@ -890,6 +889,8 @@ main > .mapbox {
     min-height: 0;
     overflow: auto;
     padding: var(--s1);
+    /* a scroller with its own opaque background scrolls on the compositor at 1x scale */
+    background: var(--panel);
 }
 .rr {
     display: grid;
@@ -975,10 +976,6 @@ main > .mapbox {
 }
 .rlist .rg .c {
     font-weight: 400;
-}
-.rlist .more {
-    display: block;
-    padding: var(--s1) var(--s2);
 }
 /* the chips above the list: the removable tower and area chips, then the state chips that narrow the list */
 .rlist .fc {
@@ -1279,8 +1276,10 @@ main > .mapbox {
 .mw .fogc rect {
     shape-rendering: crispEdges;
 }
-/* markers keep a constant screen size, but never less than their square: a level marker (radius 5) then fills .9 of it */
-.mapbox svg {
+/* markers keep a constant screen size, but never less than their square: a level marker (radius 5) then fills .9 of it.
+   --px is set on the marker and label groups */
+.mw .ov,
+.mw.lbl {
     --mk: max(var(--px, 0.3), 0.09);
     --bo: calc(max(1, 0.09 / var(--px, 0.3)) * 5px);
 }
@@ -1344,9 +1343,10 @@ main > .mapbox {
     stroke-width: 3.5;
     filter: drop-shadow(0 0 3px rgba(245, 216, 74, 0.9));
 }
-.mw .lv.dim,
-.mw .achb.dim,
-.mw .gt.dim {
+/* while there is a selection (the overlay group's .picked), the levels outside it dim; a mark of a level in it is .hl */
+.mw .ov.picked .lv:not(.hl),
+.mw .ov.picked .achb:not(.hl),
+.mw .ov.picked .gt[data-i]:not(.hl, .chosen) {
     opacity: 0.3;
 }
 /* the level the save is in: a pulsing white ring */
@@ -1409,7 +1409,7 @@ main > .mapbox {
 .mw .area.off {
     display: none;
 }
-/* overlays: ice gates (squares), teleporters (rings), gold rooms (big rings), treasure plinths (diamonds) */
+/* overlays: Freezers (squares), teleporters (rings), gold rooms (big rings), treasure plinths (diamonds) */
 .mw .gt {
     fill: var(--ov-gate);
     stroke: var(--ink);

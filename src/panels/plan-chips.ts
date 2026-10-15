@@ -1,0 +1,445 @@
+// The chips of the panels and the list (levels, Freezers, signs, towers, plan steps) and an unlock plan as panel text
+// and as a chain on the map (VIEWER.md "The page (viewer)", "Unlock plans and next steps (viewer)",
+// "The spoiler model (viewer)")
+import { PROG } from '../data.ts';
+import { countBy, escapeHtml } from '../util.ts';
+import { roleDot, ROLES, shapeIcon, starIcon, STATE_COLORS } from '../map/icons.ts';
+import type { Role } from '../map/icons.ts';
+import type { LinkEnd, MapLink, MapStep } from '../map/map-view.ts';
+import { achievementName, rankAchievement } from '../model/achievements.ts';
+import { capitalized, freezerNoun } from '../model/freezer-names.ts';
+import { layerName, mapLayerOf } from '../model/layers.ts';
+import type { UnlockPlan } from '../model/plans.ts';
+import { RANKS, STATES, stateLabel } from '../model/progress.ts';
+import type { ShownProgress } from '../model/progress.ts';
+import { SIGN_INDEX } from '../model/requirements.ts';
+import type { PlanStep } from '../model/requirements.ts';
+import { towerName } from '../model/towers.ts';
+import { optionCount } from '../model/unlocking.ts';
+import type { LevelState, SignRule } from '../model/unlocking.ts';
+import type { Freezer, FreezerSign, Position } from '../types.ts';
+import type { PanelContext } from './context.ts';
+
+/** What a plan shows as numbered steps: each step's number by key, and how many steps fog hides. */
+export interface PlanSteps {
+    num: Map<string, number>;
+    fog: number;
+}
+
+/**
+ * A plan as the map draws it: the levels, the ones to solve first, the overlay ids, the points to frame, the lines,
+ * the numbered steps and the steps per layer.
+ */
+export interface Chain {
+    levels: Set<number>;
+    frontier: Set<number>;
+    overlays: Set<string>;
+    points: Position[];
+    links: MapLink[];
+    steps: MapStep[];
+    layers: Map<string, number>;
+}
+
+/** Level names may wrap after underscores. */
+export const wrappable = (name: string): string => escapeHtml(name).replace(/_/g, '_<wbr>');
+
+export function stateDot(levelState: LevelState): string {
+    if (levelState === 'solved') return starIcon(STATE_COLORS.solved);
+    return shapeIcon('circle', STATE_COLORS[levelState]);
+}
+
+// a fogged level's chip carries only its index; revealing it draws the chip again with the name
+const FOG_CHIP = 'Level under fog';
+
+export const FOG_TEXT = '<span class="muted">A level under fog</span>';
+
+export function levelChip(
+    progress: Pick<ShownProgress, 'hidden' | 'state' | 'reach'>,
+    levelIndex: number,
+    attr = 'data-goto',
+): string {
+    const target = `${attr}="${levelIndex}" tabindex="0" role="button"`;
+    if (progress.hidden[levelIndex]) {
+        return `<span class="chip spoiler" ${target} title="Click to reveal">${FOG_CHIP}</span>`;
+    }
+
+    const levelState = progress.state[levelIndex];
+    const stateClass = STATES[levelState][1];
+    const title = escapeHtml(stateLabel(progress, levelState));
+    const name = wrappable(PROG.levels[levelIndex].n);
+    return `<span class="chip ${stateClass}" ${target} title="${title}">${name}</span>`;
+}
+
+export function towerNameHtml(context: PanelContext, towerIndex: number): string {
+    if (context.progress.towerHidden[towerIndex]) return '<span class="muted">A tower under fog</span>';
+    return escapeHtml(towerName(context.progress.towers[towerIndex].t));
+}
+
+/**
+ * What a sign asks for: a rank, a tower activated or a count of gold rooms visited. A rank is named only while the
+ * achievement that gives it is not hidden, since the name tells what that achievement gives.
+ */
+export function signNeed(context: PanelContext, sign: SignRule): string {
+    if (sign.rank) {
+        if (sign.rank === 255) return 'Any rank';
+
+        const achievement = rankAchievement(sign.rank);
+        if (achievement && context.model.achievementHidden(achievement)) return 'A higher rank';
+        return `Rank ${escapeHtml(RANKS[sign.rank] ?? sign.rank)} or higher`;
+    }
+
+    if (sign.tower != null && context.progress.towers[sign.tower]) {
+        return towerNameHtml(context, sign.tower) + ' activated';
+    }
+
+    if (sign.gold) return `${context.progress.goldFound} / ${sign.gold} Antipode teleporters visited`;
+    return 'Sign';
+}
+
+export function signText(context: PanelContext, sign: SignRule): string {
+    let mark = '';
+    if (context.progress.signOk(sign)) mark = '✓ ';
+    return mark + signNeed(context, sign);
+}
+
+/** How a Freezer with several options opens: with any of them or all of them. */
+export function gateMode(freezer: Freezer): string {
+    if (optionCount(freezer) <= 1) return '';
+    if (freezer.or) return 'any of';
+    return 'all of';
+}
+
+/** A panel's role chip: the role of the thing for the goal, named with the goal. */
+export function roleChipHtml(context: PanelContext, role: Role | null): string {
+    if (!role || !context.goal) return '';
+    const roleName = escapeHtml(ROLES[role][0]);
+    const goalLabel = escapeHtml(context.goal.label);
+    return `<span class="chip">${roleDot(role)}${roleName} for ${goalLabel}</span>`;
+}
+
+export const pick = (context: PanelContext, levels: number[]): string =>
+    levels.map((level) => levelChip(context.progress, level, 'data-pick')).join('');
+
+/** A sign that opens gates while it is shown. */
+export const signOn = (context: PanelContext, signIndex: number | null | undefined): boolean =>
+    signIndex != null && context.model.signSet.has(signIndex);
+
+/** Chips that open a panel: sign rules (when the sign is shown) and Freezers. */
+export function signChip(context: PanelContext, sign: FreezerSign): string {
+    const signIndex = SIGN_INDEX.get(sign.pid);
+    let opens = false;
+    if (signIndex !== undefined && signOn(context, signIndex)) opens = !context.signs[signIndex].status;
+
+    let attributes = '';
+    if (opens) attributes = ` data-psign="${signIndex}" tabindex="0" role="button"`;
+
+    let tone = '';
+    if (context.progress.signOk(sign)) tone = ' good';
+    return `<span class="chip${tone}"${attributes}>${signText(context, sign)}</span>`;
+}
+
+/** What opens a Freezer: its levels and sign rules. */
+export function opensChips(context: PanelContext, freezer: Freezer): string {
+    const signChips = (freezer.signs || []).map((sign) => signChip(context, sign)).join('');
+    return pick(context, freezer.req) + signChips;
+}
+
+export function gateChip(context: PanelContext, freezerIndex: number): string {
+    const open = context.progress.gateOpen[freezerIndex];
+    const label = capitalized(freezerNoun(freezerIndex));
+    let tone = '';
+    let openNote = '';
+    if (open) {
+        tone = ' good';
+        openNote = ' (open)';
+    }
+
+    const title = `${label} at ${context.gateAt(freezerIndex)}`;
+    const name = escapeHtml(context.gateName(freezerIndex));
+    const attributes = `data-pgate="${freezerIndex}" tabindex="0" role="button" title="${title}"`;
+    return `<span class="chip${tone}" ${attributes}>${label}${openNote} · ${name}</span>`;
+}
+
+// a gold room (plan step 'p') shows where the totals show it: once visited, or with spoilers shown
+const roomPad = (context: PanelContext, roomIndex: number) => context.teleporters[PROG.gold_rooms[roomIndex].endpoint];
+
+const roomShown = (context: PanelContext, roomIndex: number): boolean =>
+    context.model.rooms.includes(PROG.gold_rooms[roomIndex]);
+
+// the plan steps with no chip of their own: a gold room, the way onto a layer, a rank marker
+function otherStepText(context: PanelContext, node: PlanStep): string {
+    if (node.t === 'p') {
+        return `Antipode teleporter · ${towerName(context.progress.towers[PROG.gold_rooms[node.id].tower].t)}`;
+    }
+
+    if (node.t === 'a') return `The way onto the ${layerName(node.id)}`;
+    if (node.t === 'e') return achievementName(node.id);
+    return '';
+}
+
+function nodeChip(context: PanelContext, node: PlanStep): string {
+    if (node.t === 'l') return levelChip(context.progress, node.id, 'data-pick');
+    if (node.t === 'g') return gateChip(context, node.id);
+    if (node.t === 't') {
+        const name = escapeHtml(towerName(context.progress.towers[node.id].t));
+        return `<span class="chip" data-ptower="${node.id}" tabindex="0" role="button">${name}</span>`;
+    }
+
+    if (node.t === 's') return signChip(context, node.g);
+    return `<span class="chip">${escapeHtml(otherStepText(context, node))}</span>`;
+}
+
+/** A panel's header: Back while the panel history has a view to go back to, the title, Close. */
+export function panelHead(context: PanelContext, title: string): string {
+    let back = '';
+    if (context.back.length) back = '<button data-back title="Back" aria-label="Back">‹</button>';
+    const close = '<button data-close title="Close" aria-label="Close">×</button>';
+    return `<div class="hd">${back}<b tabindex="-1">${title}</b>${close}</div>`;
+}
+
+/** The positions of the levels not under fog. */
+export const pointsOf = (context: PanelContext, levels: number[]): Position[] =>
+    levels.filter((level) => !context.progress.hidden[level]).map((level) => context.levels[level].p);
+
+const linkEndKey = (end: LinkEnd): string => {
+    if (Array.isArray(end)) return end.join(',');
+    return String(end);
+};
+
+/** The map's lines without repeats: [from, to, kind], an end being a level index or a position. */
+export function uniqueLinks(links: MapLink[]): MapLink[] {
+    const seen = new Set<string>();
+    return links.filter(([from, to, kind]) => {
+        const key = linkEndKey(from) + '>' + linkEndKey(to) + kind;
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+    });
+}
+
+/**
+ * A plan's steps as the player sees them: levels, gates and towers under fog are left out and the numbers close up;
+ * a step's number is 1 + the highest number before it.
+ */
+export function stepsOf(context: PanelContext, plan: UnlockPlan): PlanSteps {
+    const stepShown = context.model.stepShown;
+    const before = new Map<string, string[]>();
+    for (const key of plan.nodes.keys()) before.set(key, []);
+    for (const [from, to] of plan.edges) before.get(to)?.push(from);
+
+    const numbered = new Map<string, number>();
+    const numberOf = (key: string, stack = new Set<string>()): number => {
+        const known = numbered.get(key);
+        if (known !== undefined) return known;
+        if (stack.has(key)) return 0;
+
+        stack.add(key);
+        const earlierNumbers = (before.get(key) ?? []).map((earlier) => numberOf(earlier, stack));
+        const highest = Math.max(0, ...earlierNumbers);
+        stack.delete(key);
+
+        let number = highest;
+        const node = plan.nodes.get(key);
+        if (key !== plan.rootKey && node && stepShown(node)) number = highest + 1;
+        numbered.set(key, number);
+        return number;
+    };
+
+    const numbers = new Map<string, number>();
+    let fogged = 0;
+    plan.nodes.forEach((node, key) => {
+        if (key === plan.rootKey) return;
+
+        if (stepShown(node)) numbers.set(key, numberOf(key));
+        else fogged++;
+    });
+
+    return { num: numbers, fog: fogged };
+}
+
+/** The unlock chain as panel text: what to solve first, then the steps in order. */
+export function pathHtml(
+    context: PanelContext,
+    plan: UnlockPlan | null,
+    always: boolean,
+    steps: PlanSteps | null,
+): string {
+    if (!plan || !steps || plan.steps < 1) return '';
+
+    const { num: numbers, fog: fogged } = steps;
+    const rows: PlanStep[][] = [];
+    plan.nodes.forEach((node, key) => {
+        const stepNumber = numbers.get(key);
+        if (stepNumber === undefined) return;
+
+        let row = rows[stepNumber - 1];
+        if (!row) {
+            row = [];
+            rows[stepNumber - 1] = row;
+        }
+        row.push(node);
+    });
+
+    if (!rows.length || (!always && rows.length < 2)) return '';
+
+    const line = (label: string, nodes: PlanStep[], stepNumber: number): string => {
+        if (!nodes.length) return '';
+
+        const chips = nodes.map((node) => nodeChip(context, node)).join('');
+        return `<div class="pth"><span class="muted"><b class="stp">${stepNumber}</b>${label}</span> ${chips}</div>`;
+    };
+
+    // a level or gate that opens with any one of several options shows the cheapest only
+    const alternatives = [...plan.nodes]
+        .filter(([key, node]) => numbers.has(key) && node.alt !== undefined && node.alt > 1)
+        .map(([, node]) => {
+            const note = `<span class="muted">1 of ${node.alt} options for</span>`;
+            return `<div class="pth">${note} ${nodeChip(context, node)}</div>`;
+        })
+        .join('');
+
+    const first = rows[0];
+    const solveFirst = first.filter((node) => node.front);
+    const notReachable = first.filter((node) => node.t === 'l' && !node.front);
+    const needs = first.filter((node) => node.t !== 'l');
+
+    let plural = '';
+    if (numbers.size > 1) plural = 's';
+    let html = `<div class="h">Path · ${numbers.size} step${plural}</div>`;
+    html += line('Solve first', solveFirst, 1);
+    html += line('Not reachable yet', notReachable, 1);
+    html += line('Needs', needs, 1);
+    html += rows
+        .slice(1)
+        .map((row, index) => line('then →', row, index + 2))
+        .join('');
+    html += alternatives;
+    if (fogged) html += `<div class="muted">+${fogged} under fog</div>`;
+    return html;
+}
+
+/** Steps on a layer other than the selection's get no marker: a row switches to them. */
+export function layerNote(context: PanelContext, chain: Chain, z: number): string {
+    const map = context.map;
+    if (!map) return '';
+
+    return [...chain.layers]
+        .filter(([key]) => key !== mapLayerOf(z) && map.layers.includes(key))
+        .map(([key, count]) => {
+            let plural = '';
+            if (count > 1) plural = 's';
+
+            const name = escapeHtml(layerName(key));
+            const label = `${count} step${plural} on ${name}`;
+            return `<div class="muted"><button class="plain lnk" data-clayer="${key}">${label}</button></div>`;
+        })
+        .join('');
+}
+
+// where a plan step that is not a level sits on the map; null when it is not shown
+function stepPosition(context: PanelContext, node: PlanStep): Position | null {
+    if (node.t === 'g') {
+        const freezer = context.freezers[node.id];
+        if (!context.gateShown(freezer)) return null;
+        return freezer.p;
+    }
+
+    if (node.t === 's') {
+        const signIndex = node.id;
+        if (signIndex === undefined || !signOn(context, signIndex)) return null;
+        return context.signs[signIndex].p;
+    }
+
+    if (node.t === 'p') {
+        if (!roomShown(context, node.id)) return null;
+        return roomPad(context, node.id).p;
+    }
+
+    if (node.t !== 't') return null;
+    if (context.progress.towerHidden[node.id]) return null;
+    return context.progress.towers[node.id].p;
+}
+
+// where a plan step sits on the map: a level by its index, the rest by position; null when it is not shown
+function stepEnd(context: PanelContext, node: PlanStep): LinkEnd | null {
+    if (node.t === 'l') return node.id;
+    return stepPosition(context, node);
+}
+
+// the height of a plan step, for the layer it is on
+function stepZ(context: PanelContext, node: PlanStep): number | null {
+    if (node.t === 'l') return context.levels[node.id].p[2];
+    if (node.t === 'g') return context.freezers[node.id].p[2];
+    if (node.t === 't') return context.progress.towers[node.id].p[2];
+    if (node.t === 'p') return roomPad(context, node.id).p[2];
+    if (node.t === 's' && node.id != null) return context.signs[node.id].p[2];
+    return null;
+}
+
+/**
+ * The chain on the map: its levels, the ones to solve first, its gates and signs, lines along its edges, points to
+ * frame.
+ */
+export function chainOf(context: PanelContext, plan: UnlockPlan | null, steps: PlanSteps | null): Chain {
+    const chain: Chain = {
+        levels: new Set(),
+        frontier: new Set(),
+        overlays: new Set(),
+        points: [],
+        links: [],
+        steps: [],
+        layers: new Map(),
+    };
+
+    if (!plan || !steps) return chain;
+
+    const endOf = (key: string): LinkEnd | null => {
+        const node = plan.nodes.get(key);
+        if (!node) return null;
+        return stepEnd(context, node);
+    };
+
+    plan.nodes.forEach((node) => {
+        if (node.t === 'l') {
+            chain.levels.add(node.id);
+            if (node.front) chain.frontier.add(node.id);
+        } else if (node.t === 'g' && context.gateShown(context.freezers[node.id])) {
+            chain.overlays.add('g' + node.id);
+        } else if (node.t === 's' && signOn(context, node.id)) {
+            chain.overlays.add('s' + node.id);
+        }
+    });
+
+    plan.nodes.forEach((node) => {
+        if (node.t === 'l') {
+            if (!context.progress.hidden[node.id]) chain.points.push(context.levels[node.id].p);
+            return;
+        }
+
+        const position = stepPosition(context, node);
+        if (position) chain.points.push(position);
+    });
+
+    plan.edges.forEach(([from, to]) => {
+        const fromEnd = endOf(from);
+        const toEnd = endOf(to);
+        if (fromEnd != null && toEnd != null) chain.links.push([fromEnd, toEnd, 'req']);
+    });
+
+    // the number is the step, 1 being solved first; the panel lists the same numbers
+    const numbers = steps.num;
+    const heights: number[] = [];
+    plan.nodes.forEach((node, key) => {
+        const stepNumber = numbers.get(key);
+        if (stepNumber === undefined) return;
+
+        const position = endOf(key);
+        const z = stepZ(context, node);
+        if (position != null) chain.steps.push([position, stepNumber]);
+        if (z != null) heights.push(z);
+    });
+
+    chain.layers = countBy(heights, mapLayerOf);
+    return chain;
+}
