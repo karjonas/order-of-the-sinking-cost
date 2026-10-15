@@ -8,16 +8,16 @@
 // Output (docs/VIEWER.md "The walk model (viewer)" and "Level roles (viewer)"):
 //   inputs: per input file name (in data/), the SHA-256 of its bytes; tests/walk-data.test.js fails when they no
 //     longer match, or when the walk on the current code gives other results
-//   roles: staticRoles() (src/model/level-roles.js). need.l / need.g: one digit per level / ice gate, 2 Required, 1 Required as
-//     one of several, 0 Optional; bg.l / bg.g: per level / ice gate, the ice gates it sits behind
-//   floors: floorHeights() (src/walk/reachability.js), per map layer key a zlib stream (base64) of one byte per map column (row 0 =
+//   roles: staticRoles() (src/model/static-roles.ts). need.l / need.g: one digit per level / Freezer, 2 Required, 1 Required as
+//     one of several, 0 Optional; bg.l / bg.g: per level / Freezer, the Freezers it sits behind
+//   floors: floorHeights() (src/walk/reachability.ts), per map layer key a zlib stream (base64) of one byte per map column (row 0 =
 //     north): the highest z where the hero can stand there plus 128, 0 where he stands nowhere
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { worldReady } from '../src/data.js';
-import { staticRoles } from '../src/model/level-roles.js';
-import { floorHeights } from '../src/walk/reachability.js';
+import { worldReady } from '../src/data.ts';
+import { staticRoles } from '../src/model/static-roles.ts';
+import { floorHeights } from '../src/walk/reachability.ts';
 import { writeJsonAtomic } from './lib/output.js';
 import * as paths from './lib/paths.js';
 

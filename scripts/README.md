@@ -4,7 +4,9 @@ Run the scripts with the npm scripts below. Generated data lands in `data/` (not
 `data/schema.json`); the built page is `viewer.html` in the project root. The page source is in `src/`.
 
 `npm install` sets up Vite+. Then `npm run build` builds the page, `npm run dev` serves it with live reload, `npm test`
-runs the tests, `npm run lint` lints and `npm run fmt` formats (`npm run fmt:check` only checks).
+runs the tests, `npm run typecheck` type-checks the TypeScript modules, `npm run lint` lints and `npm run fmt` formats
+(`npm run fmt:check` only checks). The scripts import the page's TypeScript modules directly, which needs Node 24 (its
+built-in type stripping).
 
 Game folder: `--game DIR`, else `$SOKO_GAME`, else the Steam install. Saves: `$SOKO_SAVES`, else
 `%USERPROFILE%\Saved Games\Order of the Sinking Star`.
@@ -30,9 +32,9 @@ Step 1 is needed only when the game binary changes. The exporter runs in IDA on 
 repository ([Reading the schema out of the binary](../docs/GAMEDATA.md#reading-the-schema-out-of-the-binary)); it
 takes the entity type list that `node scripts\build-levels.js --types-json <file>` writes.
 
-The save and diff-blob readers are the page's own modules (`src/reader.js`, `src/status-file.js`,
-`src/history-file.js`, `src/blob.js`), and so is the walk model (`src/walk/`, `staticRoles()` in
-`src/model/level-roles.js`). `build-walk.js` stores what the walk gives on the level data alone, the static roles and
+The save and diff-blob readers are the page's own modules (`src/reader.ts`, `src/status-file.ts`,
+`src/history-file.ts`, `src/blob.ts`), and so is the walk model (`src/walk/`, `staticRoles()` in
+`src/model/static-roles.ts`). `build-walk.js` stores what the walk gives on the level data alone, the static roles and
 the map's floor heights, in `data/walk.json`. Nothing it imports may import `walk.json`, so a fresh `npm run data` can
 write it.
 
@@ -52,5 +54,15 @@ streams in `world.json` and `progress.json` differ between zlib implementations,
   folder.
 - `npm run dump:model -- <campaign|save folder|--demo> <out.json>`: everything the page's model computes for a save, as
   stable JSON. Compare dumps from before and after a refactor that should not change behaviour.
+- `node scripts/walk-fingerprint.js <input> <outFile>`: a canonical fingerprint of everything the walk computes for one
+  input: the reached cells, the pockets, leads and `from` lists, the pad linkage, the level states, way-in gates, next
+  steps and plans. `<input>` is a campaign folder or the name of a campaign in the saves folder, `--fresh` (a new
+  campaign walked from its start), `--no-history` (the level data alone, every pad on) or `--static-roles`. The file
+  holds a short hash per field and the field's value; two runs on the same input give the same bytes. `node
+  scripts/walk-fingerprint.js --diff <a> <b>` names the fields that differ and where, and exits 1 when there are any.
+  Write a fingerprint before and after a change to the walk that should alter no answer and diff them.
+  `tests/walk-exact.test.js` does the same for the fresh campaign and two small changes of it against hashes in
+  `tests/walk-exact.expected.json`; regenerate them with `UPDATE_WALK_EXPECTED=1 npx vp test run
+  tests/walk-exact.test.js` after an intended change of the walk or new game data.
 - `npm run trace -- <line:col>` (or a pasted stack on stdin): the source position of a position in the minified build,
   from `viewer.html.map`.

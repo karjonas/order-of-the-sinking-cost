@@ -1,6 +1,6 @@
 // The game's package archives (data/*.package): a header, the files back to back, and a table of contents at the end
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
-import { Reader } from '../../src/reader.js';
+import { Reader } from '../../src/reader.ts';
 
 const HEADER_SIZE = 0x18;
 const TOC_OFFSET_AT = 0x10;

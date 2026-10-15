@@ -1,7 +1,7 @@
 // Reader for the game's level archive (data/levels.package, format in docs/GAMEDATA.md) and the entities in it.
 import { readFileSync } from 'node:fs';
-import { atVersion } from '../../src/blob.js';
-import { Reader } from '../../src/reader.js';
+import { atVersion } from '../../src/blob.ts';
+import { Reader } from '../../src/reader.ts';
 import { Archive } from './archive.js';
 import * as paths from './paths.js';
 

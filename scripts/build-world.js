@@ -1,5 +1,5 @@
 // Builds data/world.json: the overworld's walkable-cell model (Wall_Set voxels, fences, gates, water, lilies, elevators,
-// teleporters, ice gates) plus teleporter, treasure and gold-room tables, for the viewer's reachability and progress
+// teleporters, Freezers) plus teleporter, treasure and gold-room tables, for the viewer's reachability and progress
 // views. build-progress.js merges it into data/progress.json; the viewer walks it (docs/VIEWER.md "The walk model (viewer)" and
 // "Level roles (viewer)").
 //
@@ -25,19 +25,23 @@
 //          1 north, 2 west, 3 south)
 //   A row's `exists` (the level-data default, 0 or 1) is there only for an entity in an existence group or one the cell
 //   lookup skips by its entity_flags (in_existence); the save's entity_flags CHANGEs override it.
-//   gates: [[pid, i, j, z, open, notted, flavor, monster(, exists)]]   Gates with their level-data `open`; a closed one
-//          blocks its cell until a hero in an OPEN beam opens it
+//   gates: [[pid, i, j, z, open, notted, flavor, monster, closes(, exists)]]   Gates with their level-data `open`; a
+//          closed one blocks its cell until a hero in an OPEN beam opens it; closes: the way a closing Gate pushes what
+//          stands in its cell (side as `fences`, 4 up, 5 down)
 //   switches: [[pid, flavor, pressed, i, j, z(, exists)]]   Switches; gates of the same flavor follow them
 //   elevators: [[i, j, zb, i2, j2, zt, mask, pid, exists, pid2, exists2]]   per Elevator_Platform its bottom and top
 //          Stairs frames (exists -1: not listed); mask bit 1 rides up, bit 2 down (elevators())
 //   freezers / teleporters: index into progress.json `freezers` / `teleporters` (cell = their p)
 //   rocks: [[pid, i, j, z(, exists)]]   pushable Rocks in the level data; the save moves them (position CHANGE),
 //          destroys them and creates others (CREATION_OR_DESTRUCTION)
-//   bridges: [[rock pid, push i, j, z, water i, j, z]]   rock bridges (bridges())
+//   bridges: [[rock or gem pid, push i, j, z, water i, j, z]]   rock and gem bridges (buildBridges())
 //   movables: [[pid, i, j, z, kind(, exists)]]   pushed by the hero besides Rocks and Monsters (kind: index in MOVABLES)
 //   blockers: [[pid, i, j, z(, exists)]]   Signs (FULL_GAME), Treasure_Displays, Judges: cannot be pushed, block the hero
 //   lilies: [[pid, i, j, z(, exists)]]   Lily pads, standable at their own cell over water; rivers move them
 //          (position CHANGE)
+//   lily_spawns: [[spawner pid, i, j, z, lily pid, [[activator pid, i, j, z(, exists)]](, exists)]]   the Spawners that
+//          respawn a Lily (`spawned_entity_id` is a Lily), at their own cell, with the Activators that run them. A Lily
+//          Spawner stands in the Lily's own cell, but seven stand along a river row of the underworld for one Lily
 //   area_pins: [[pid, x, y, z]]   world positions; an `activated` Area_Pin (history CHANGE) is a flood-fill seed
 //   mechs: [[kind, pid, i, j, z(, exists)]]   mechanics the walk does not model (0 dragon, 1 beam blocker Rock, 2 mirror,
 //          3 skipping stone not sunk); they name why a level may still be reachable
@@ -49,8 +53,13 @@
 //   mirrorable: [pid]   the Rocks whose `properties` hold MIRRORABLE and the Rovers with `mirrorable`: beams pass them
 //   magic_mirrors: [[pid, i, j, z, ax, ay, bx, by, vertical, freezer(, exists)]]   magic Mirrors: a flat one's open arms
 //          as grid steps (a, b), vertical ones with zero arms; freezer: the pid of the Freezer in its cell, else 0
+//   mirror_facings: [[pid, quarter turns, shape]]   every Mirror: its level-data `theta_target` in quarter turns (the
+//          save holds its changes), shape 0 flat, 1 vertical, 2 vertical_downward; they give the open sides a line meets
+//          (docs/MOVEMENT.md "Mirrors turning fire and beams")
 //   skippable: [pid]   the SKIPPABLE Rocks (skipping stones)
 //   teleport: [pid]   the Wardrobes whose skill_flags hold TELEPORT
+//   charm: [pid]   the Wardrobes whose skill_flags hold CHARM
+//   transmute: [pid]   the Wardrobes whose skill_flags hold TRANSMUTE
 //   trees: [[pid, i, j, z(, exists)]]   Trees: they stop dragon fire and beams while they exist (TRANSMUTE turns one into
 //          a crystal Rock: a CREATION record destroys it)
 //   lights: [[pid, i, j, z, side, up, down, powered, color(, exists)]]   every Promesst_Light; side as `fences` (its
@@ -67,7 +76,7 @@
 //          subgroup: its child existence Groups, unexisted by: the existence Groups whose unexist_this_id(2, 3) names
 //          it (indices into egroups); member pid: its direct members other than Groups, those
 //          EXISTS_FOR_COSMETIC_..., and those the cell lookup skips by their flags. Making a Group exist makes its
-//          members exist and its subgroups too, except a subgroup that an existing Group unexists (src/walk/groups.js)
+//          members exist and its subgroups too, except a subgroup that an existing Group unexists (src/walk/groups.ts)
 //   teleporters `to`: the position of a target that is not a pad (a Marker), where the pad sends the mover
 //   teleporters `g` / `ag`: the egroups index of the pad's own Group and of its also_exist_this_group_id Group, which
 //          enabling the pad makes exist
@@ -113,6 +122,8 @@ const TYPES = new Set([
     'Elevator_Platform',
     'Judge',
     'Gem_Slot',
+    'Spawner',
+    'Activator',
 ]);
 // Pushed by the hero, other than Rocks and Monsters (which have their own lists); `movables` kind = index here
 const MOVABLES = ['Gem', 'Promesst_Light', 'Mirror', 'Rover', 'Friendly_Dragon'];
@@ -131,6 +142,8 @@ const SKIPPED_FLAGS = ['EXISTS_FOR_COSMETIC_TRANSITION_PURPOSES_ONLY', 'NOT_SNAP
 const COSMETIC = 'EXISTS_FOR_COSMETIC_TRANSITION_PURPOSES_ONLY';
 const MAX_GROUP_DEPTH = 16;
 const MAX_BRIDGE_PUSH = 40;
+// An Activator runs the Spawners named by its fields spawner_1 to spawner_16
+const ACTIVATOR_SPAWNERS = 16;
 // A bridge Rock sinks into water whose surface is within this many units of the Rock's z
 const SURFACE_TOLERANCE = 0.6;
 // Cell keys offset z by this much so that they stay positive
@@ -333,6 +346,24 @@ function collectFences(world) {
     return fences;
 }
 
+// The way a closing Gate pushes what stands in its cell (0 east, 1 north, 2 west, 3 south, 4 up, 5 down): its local −z
+// axis (local −x when `sideways`), reversed by `negate_direction`, rounded to the nearest grid axis
+function closingSide(fields) {
+    const qx = get(fields, 'base.orientation.x', 0);
+    const qy = get(fields, 'base.orientation.y', 0);
+    const qz = get(fields, 'base.orientation.z', 0);
+    const qw = get(fields, 'base.orientation.w', 1);
+    let axis = [2 * (qx * qz + qy * qw), 2 * (qy * qz - qx * qw), 1 - 2 * (qx * qx + qy * qy)];
+    if (fields.sideways) axis = [1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + qz * qw), 2 * (qx * qz - qy * qw)];
+    let sign = -1;
+    if (fields.negate_direction) sign = 1;
+    const [pushX, pushY, pushZ] = axis.map((value) => sign * value);
+    const largest = Math.max(Math.abs(pushX), Math.abs(pushY), Math.abs(pushZ));
+    if (Math.abs(pushZ) === largest) return pushZ > 0 ? 4 : 5;
+    if (Math.abs(pushX) === largest) return pushX > 0 ? 0 : 2;
+    return pushY > 0 ? 1 : 3;
+}
+
 function collectGates(world) {
     return world.ofType('Gate').map((gate) => {
         const fields = gate.fields;
@@ -342,6 +373,7 @@ function collectGates(world) {
             Number(Boolean(fields.notted)),
             get(fields, 'flavor', 0),
             Number(Boolean(fields.is_monster_gate)),
+            closingSide(fields),
         );
     });
 }
@@ -368,11 +400,26 @@ function collectMagicMirrors(world) {
     return rows;
 }
 
-// The pids of the Wardrobes whose skill_flags hold TELEPORT
-function teleportWardrobes(world) {
+// [pid, quarter turns of theta_target, shape] per Mirror; shape 0 flat, 1 vertical, 2 vertical_downward
+function collectMirrorFacings(world) {
+    return world.ofType('Mirror').map((mirror) => {
+        const fields = mirror.fields;
+        const quarterTurns = modulo(Math.round(get(fields, 'base.theta_target', 0) / 90), 4);
+        let shape = 0;
+        if (fields.is_vertical && fields.is_vertical_downward) {
+            shape = 2;
+        } else if (fields.is_vertical) {
+            shape = 1;
+        }
+        return [mirror.pid, quarterTurns, shape];
+    });
+}
+
+// The pids of the Wardrobes whose skill_flags hold `skill`
+function wardrobesWithSkill(world, skill) {
     const wardrobes = world
         .ofType('Wardrobe')
-        .filter((wardrobe) => flagsOf(wardrobe.fields, 'skill_flags').includes('TELEPORT'));
+        .filter((wardrobe) => flagsOf(wardrobe.fields, 'skill_flags').includes(skill));
     return wardrobes.map((wardrobe) => wardrobe.pid).toSorted((first, second) => first - second);
 }
 
@@ -517,10 +564,35 @@ function buildElevators(world, columns, groupSolid, fenceKeys, rockCounts) {
     return rows.toSorted((first, second) => compareNumberLists(order(first), order(second)));
 }
 
-// [rock pid, push cell i, j, z, water cell i, j, z]: a non-SKIPPABLE Rock standing on support that the hero, from the
-// standable push cell behind it, pushes in a straight line over supported, fence-free cells (no solid, Gate, ice gate or
-// other Rock) into a water cell (a map surface within 0.6 of z) with nothing at z - 1, where it sinks to the surface - 1
-// in any depth and holds the hero up.
+// [spawner pid, i, j, z, lily pid, [activator rows](, exists)]: the Spawners whose spawned entity is a Lily. An
+// Activator runs the Spawners named by its spawner_1 to spawner_16 fields.
+function buildLilySpawns(world) {
+    const lilyPids = new Set(world.ofType('Lily').map((lily) => lily.pid));
+    const spawns = [];
+    for (const spawner of world.ofType('Spawner')) {
+        const lilyPid = refOf(spawner.fields.spawned_entity_id);
+        if (!lilyPids.has(lilyPid)) continue;
+
+        const activators = world
+            .ofType('Activator')
+            .filter((activator) => activatorRunsSpawner(activator, spawner.pid))
+            .map((activator) => world.row(activator));
+        spawns.push(world.row(spawner, lilyPid, activators));
+    }
+    return spawns;
+}
+
+function activatorRunsSpawner(activator, spawnerPid) {
+    for (let number = 1; number <= ACTIVATOR_SPAWNERS; number++) {
+        if (activator.fields[`spawner_${number}`] === spawnerPid) return true;
+    }
+    return false;
+}
+
+// [rock or gem pid, push cell i, j, z, water cell i, j, z]: a non-SKIPPABLE Rock or a Gem standing on support that the
+// hero, from the standable push cell behind it, pushes in a straight line over supported, fence-free cells (no solid,
+// Gate, Freezer or other Rock) into a water cell (a map surface within 0.6 of z) with nothing at z - 1, where it sinks
+// to the surface - 1 in any depth and holds the hero up.
 function buildBridges(world, columns, fenceKeys, blockedKeys, rocks, floors, surfaces, water) {
     const isSolid = (i, j, z) => columns.get(world.columnKey(i, j))?.has(z) ?? false;
     const rockKeys = new Set(rocks.map((rock) => world.key(rock[1], rock[2], rock[3])));
@@ -534,9 +606,9 @@ function buildBridges(world, columns, fenceKeys, blockedKeys, rocks, floors, sur
         (water.get(world.columnKey(i, j)) ?? []).some((index) => Math.abs(surfaces[index] - z) < SURFACE_TOLERANCE);
 
     const bridges = [];
-    for (const rock of world.ofType('Rock')) {
+    for (const rock of [...world.ofType('Rock'), ...world.ofType('Gem')]) {
         const fields = rock.fields;
-        if (world.rockBits(fields) & world.rockBit.SKIPPABLE) continue;
+        if (rock.type === 'Rock' && world.rockBits(fields) & world.rockBit.SKIPPABLE) continue;
         const [i, j, z] = world.cellOf(fields);
         if (!isSupported(i, j, z)) continue;
         for (const { dx, dy, side } of SIDES) {
@@ -615,7 +687,7 @@ function pack(bytes) {
 
 // MAJOR teleporters pair a world pad with its twin in a fast-travel map room (layers 3-5); MINOR ones are one-way pads
 // to target_id. enabled_t_target > 0 and (MAJOR) discovered decide whether a pad works. also / also2: the
-// also_discover / also_discover2 pads its discovery enables and discovers too (reveals() in src/walk/teleporters.js)
+// also_discover / also_discover2 pads its discovery enables and discovers too (reveals() in src/walk/teleporters.ts)
 function buildTeleporters(world, groupIndex) {
     const pads = [];
     for (const teleporter of world.ofType('Teleporter')) {
@@ -806,6 +878,7 @@ function buildWorld(pkg) {
         rocks,
         bridges: buildBridges(world, columns, fenceKeys, blockedKeys, rocks, floors, surfaces, water),
         lilies: world.ofType('Lily').map((lily) => world.row(lily)),
+        lily_spawns: buildLilySpawns(world),
         area_pins: world.ofType('Area_Pin').map((pin) => [pin.pid, ...integerPosition(pin.fields)]),
         mechs: buildMechanics(world),
         monsters,
@@ -821,8 +894,11 @@ function buildWorld(pkg) {
             .map((entity) => entity.pid)
             .toSorted((first, second) => first - second),
         magic_mirrors: collectMagicMirrors(world),
+        mirror_facings: collectMirrorFacings(world),
         skippable: skippableRocks.map((rock) => rock.pid).toSorted((first, second) => first - second),
-        teleport: teleportWardrobes(world),
+        teleport: wardrobesWithSkill(world, 'TELEPORT'),
+        charm: wardrobesWithSkill(world, 'CHARM'),
+        transmute: wardrobesWithSkill(world, 'TRANSMUTE'),
         trees: world.ofType('Tree').map((tree) => world.row(tree)),
         lights: world
             .ofType('Promesst_Light')

@@ -20,9 +20,9 @@ import { savesDir } from './saves.js';
 const STATUS_FILE = 'Status.sokoban_status';
 const HISTORY_FILE = 'overworld.history';
 
-// src/folder.js starts the page when it loads: timers, the remembered folder and the demo. It loads as a module of the
+// src/folder.ts starts the page when it loads: timers, the remembered folder and the demo. It loads as a module of the
 // same exports that do nothing.
-const PAGE_START_MODULE = '/src/folder.js';
+const PAGE_START_MODULE = '/src/folder.ts';
 const EXPORTED_FUNCTION = /^export\s+(?:async\s+)?function\*?\s+([\w$]+)/gm;
 const EXPORTED_BINDING = /^export\s+(?:const|let|var|class)\s+([\w$]+)/gm;
 function inertModuleSource(source) {
@@ -153,20 +153,20 @@ function sha256(bytes) {
 async function loadModules() {
     registerHooks({ load: loadWithoutPageStart });
     installDomStandIns();
-    const data = await import('../src/data.js');
-    const walkData = await import('../src/walk-data.js');
-    const shared = await import('../src/shared.js');
-    const save = await import('../src/save.js');
-    const files = await import('../src/files.js');
-    const fog = await import('../src/fog.js');
-    const progress = await import('../src/model/progress.js');
-    const model = await import('../src/model/progress-model.js');
-    const layers = await import('../src/model/layers.js');
-    const achievements = await import('../src/model/achievements.js');
-    const plans = await import('../src/model/plans.js');
-    const goals = await import('../src/model/goals.js');
-    const nextSteps = await import('../src/model/next-steps.js');
-    const goalRoles = await import('../src/model/goal-roles.js');
+    const data = await import('../src/data.ts');
+    const walkData = await import('../src/walk-data.ts');
+    const shared = await import('../src/shared.ts');
+    const save = await import('../src/save.ts');
+    const files = await import('../src/files.ts');
+    const fog = await import('../src/fog.ts');
+    const progress = await import('../src/model/progress.ts');
+    const model = await import('../src/model/progress-model.ts');
+    const layers = await import('../src/model/layers.ts');
+    const achievements = await import('../src/model/achievements.ts');
+    const plans = await import('../src/model/plans.ts');
+    const goals = await import('../src/model/goals.ts');
+    const nextSteps = await import('../src/model/next-steps.ts');
+    const goalRoles = await import('../src/model/goal-roles.ts');
     domOpen = false;
     await data.worldReady;
     await walkData.walkReady;

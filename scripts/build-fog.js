@@ -14,9 +14,9 @@
 // - The state is entity state: the latest CHANGE of region_states in <campaign>/overworld.history.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createBlobDecoder } from '../src/blob.js';
-import { parseHistory } from '../src/history-file.js';
-import { parseStatus } from '../src/status-file.js';
+import { createBlobDecoder } from '../src/blob.ts';
+import { parseHistory } from '../src/history-file.ts';
+import { parseStatus } from '../src/status-file.ts';
 import { get } from './lib/fields.js';
 import { GROUP_LAYER, LAYER_NAMES, fastTravelBoxes, groundLayer, layerSettings, layerTable } from './lib/layers.js';
 import { modulo, roundTo } from './lib/math.js';

@@ -15,6 +15,8 @@ import * as paths from './lib/paths.js';
 
 const FLAG_BITS = { HEROES: 1, MIRRORS: 2, SKIPPING: 4, PROMESST: 8, UPSTAIRS: 16, DOWNSTAIRS: 32 };
 const UNLOCK_KEYS = ['unlocked_by_id', 'unlocked_by_id2', 'unlocked_by_id3', 'unlocked_by_id4'];
+// The Freezer model B mesh, a doorway; model A (GAME_OVER_Freezer_A) is a pod
+const DOORWAY_MESH = 'GAME_OVER_Freezer_B';
 const POSITION_PLACES = 2;
 const DISTANCE_PLACES = 1;
 // Tower_Flags bits that make a tower a high (UPSTAIRS) or low (DOWNSTAIRS) one
@@ -149,6 +151,7 @@ function buildFreezers(overworld, index, towers, layerOf) {
         const partial = fields.partial_solve_count;
         if (partial !== undefined && partial !== null && partial !== -1) gate.partial = 1;
         if (fields.judge_unlock_level) gate.judge = 1;
+        if (get(fields, 'base.mesh', '') === DOORWAY_MESH) gate.doorway = 1;
         return gate;
     });
     return { freezers, signs, towerIndex };

@@ -56,7 +56,7 @@ const LAYERS = [
     { key: 'ground', name: 'Ground', fog: 0 },
     { key: 'sky', name: 'Sky', fog: 2 },
 ];
-// scenery; puzzle and progress entities (level entries, ice gates, gems, ...) change look at runtime and are left out
+// scenery; puzzle and progress entities (level entries, Freezers, gems, ...) change look at runtime and are left out
 const MESH_TYPES = new Set(['Inanimate', 'Rock', 'Procedurally_Animating', 'Tree', 'Stairs', 'Elevator_Platform']);
 const MAP_TYPES = new Set([...MESH_TYPES, 'Group', 'Wall_Set', 'Ocean_Map']);
 const WALL_ALBEDO = 0.75;

@@ -17285,6 +17285,115 @@
     ]
    ]
   },
+  "Action_Icon": {
+   "flags": false,
+   "values": [
+    [
+     "UNKNOWN",
+     0
+    ],
+    [
+     "WALK",
+     1
+    ],
+    [
+     "PUSH",
+     2
+    ],
+    [
+     "PULL",
+     3
+    ],
+    [
+     "CHARM",
+     4
+    ],
+    [
+     "TRANSMUTE",
+     5
+    ],
+    [
+     "TELEPORT",
+     6
+    ],
+    [
+     "SMASH",
+     7
+    ],
+    [
+     "MIRROR",
+     8
+    ],
+    [
+     "WAND",
+     9
+    ],
+    [
+     "TORC",
+     10
+    ],
+    [
+     "PRISM",
+     11
+    ],
+    [
+     "TREASURE",
+     12
+    ],
+    [
+     "CHOP_TREE",
+     13
+    ],
+    [
+     "PRESS_BUTTON",
+     14
+    ],
+    [
+     "RELEASE_BUTTON",
+     15
+    ],
+    [
+     "GOBLIN_KILL",
+     16
+    ],
+    [
+     "DRAGON_KILL",
+     17
+    ],
+    [
+     "TAKE_GEM",
+     18
+    ],
+    [
+     "DROP_GEM",
+     19
+    ],
+    [
+     "RIDE_ON_LILY",
+     20
+    ],
+    [
+     "FALL",
+     21
+    ],
+    [
+     "RESET",
+     22
+    ],
+    [
+     "START",
+     23
+    ],
+    [
+     "RIDE_ON_ROVER",
+     24
+    ],
+    [
+     "NUM_VALUES",
+     25
+    ]
+   ]
+  },
   "Action_Type": {
    "flags": false,
    "values": [
@@ -17868,6 +17977,10 @@
     [
      "DISABLED_IN_LOW_GRAPHICS_MODE",
      17179869184
+    ],
+    [
+     "HIDDEN_IN_REFLECTIONS",
+     34359738368
     ]
    ]
   },
@@ -19385,6 +19498,31 @@
     [
      "RIVER_REDIRECTION",
      1
+    ]
+   ]
+  },
+  "Undo_Record_Flags": {
+   "flags": true,
+   "values": [
+    [
+     "CHECKPOINT",
+     1
+    ],
+    [
+     "GAP",
+     2
+    ],
+    [
+     "CARRY",
+     4
+    ],
+    [
+     "RESET_TO_START",
+     8
+    ],
+    [
+     "RESET_TO_CHECKPOINT",
+     16
     ]
    ]
   },
