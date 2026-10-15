@@ -1,7 +1,7 @@
 // Entity diff blobs on small synthetic buffers, against the field lists in data/schema.json
 import { expect, test } from 'vitest';
-import { SCHEMA } from '../src/data.js';
-import { decodeBlob } from '../src/save.js';
+import { SCHEMA } from '../src/data.ts';
+import { decodeBlob } from '../src/save.ts';
 import { Writer } from './writer.js';
 
 // the first field of a value kind, with its type ('#base' for the base entity data) and index at the current version

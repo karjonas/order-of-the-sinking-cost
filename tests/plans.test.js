@@ -1,15 +1,15 @@
 // Unlock plans worked out once for every requirement, the endgame chain in them, and the next steps
 import { describe, expect, test, vi } from 'vitest';
-import { PROG } from '../src/data.js';
-import { nextSteps, orderNextSteps } from '../src/model/next-steps.js';
-import { unlockPlan } from '../src/model/plans.js';
-import { gatesBehindThemselves } from '../src/model/way-in.js';
+import { PROG } from '../src/data.ts';
+import { nextSteps, orderNextSteps } from '../src/model/next-steps.ts';
+import { unlockPlan } from '../src/model/plans.ts';
+import { gatesBehindThemselves } from '../src/model/way-in.ts';
 
-vi.mock('../src/data.js', async () => {
+vi.mock('../src/data.ts', async () => {
     const SCHEMA = (await import('../data/schema.json')).default;
     return { SCHEMA, PROG: {}, WORLD: {}, worldReady: Promise.resolve() };
 });
-vi.mock('../src/walk-data.js', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
+vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 const level = (name, extra = {}) => ({ n: name, req: [], p: [0, 0, 0], ...extra });
 const keys = (P, root) => [...unlockPlan(P, root).nodes.keys()];
@@ -175,6 +175,12 @@ describe('towers and the endgame chain', () => {
     const open = ['unlocked', 'unlocked', 'locked', 'unlocked', 'unlocked', 'unlocked', 'blocked', 'blocked'];
     test('a tower needs its cheapest levels, as many as it still needs', () => {
         expect(keys(setup(open), ['tower', 0])).toEqual(['l0', 'l1', 't0']);
+    });
+    test('a level reached through a Tower pad needs that Tower', () => {
+        const P = setup(open);
+        P.wayIn[7] = [];
+        P.why[7] = { via: [], pad: [], viaTowers: [0] };
+        expect(keys(P, ['level', 7])).toEqual(['l0', 'l1', 't0', 'l7']);
     });
     test('the gold Sign needs that many gold rooms, each its tower and a step onto its pad', () => {
         const plan = keys(setup(open), ['level', 6]);

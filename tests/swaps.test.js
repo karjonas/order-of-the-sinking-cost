@@ -1,15 +1,15 @@
 // Falls, TELEPORT swaps, lily rides, gates that hold the hero up and plan searches through cycles, on tiny synthetic
 // overworlds
 import { describe, expect, test, vi } from 'vitest';
-import { PROG, WORLD } from '../src/data.js';
-import { walker } from '../src/walk/walker.js';
-import { unlockPlan } from '../src/model/plans.js';
+import { PROG, WORLD } from '../src/data.ts';
+import { walker } from '../src/walk/walker.ts';
+import { unlockPlan } from '../src/model/plans.ts';
 
-vi.mock('../src/data.js', async () => {
+vi.mock('../src/data.ts', async () => {
     const SCHEMA = (await import('../data/schema.json')).default;
     return { SCHEMA, PROG: {}, WORLD: {}, worldReady: Promise.resolve() };
 });
-vi.mock('../src/walk-data.js', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
+vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 const Z_OFFSET = 64;
 // A `width` x `height` grid. walls: per column (i + j * width) the solid z values; water: per column the indices into
@@ -108,7 +108,7 @@ describe('falls', () => {
 describe('TELEPORT swaps', () => {
     // a row of 11 at z 0: the hero's side 0..2, water 3..6 and 10 (surface 0), an island 7..9 with a Rock at 7; by
     // default a wall at 10 ends the line west of the hero
-    const setup = (extra = {}, walls = { 10: [0] }) => {
+    const setup = (extra = {}, walls = { 10: [0] }, latest = NONE) => {
         const water = {};
         for (const i of [3, 4, 5, 6, 10]) water[i] = [0];
         world({
@@ -117,7 +117,7 @@ describe('TELEPORT swaps', () => {
             water,
             extra: { oceans: [[1, 0, 0, 0, 0, 11, 1]], rocks: [[9, 7, 0, 0]], ...extra },
         });
-        return walker(NONE, [], []);
+        return walker(latest, [], []);
     };
     const wizard = (walkGrid, i) => walkGrid.flood([[walkGrid.cellOf(i, 0, 0), 2]]);
     test('the line crosses water and the hero swaps onto the first target', () => {
@@ -125,13 +125,60 @@ describe('TELEPORT swaps', () => {
         expect(columns(walkGrid, walkGrid.flood([walkGrid.cellOf(1, 0, 0)]))).toEqual([0, 1, 2]);
         expect(columns(walkGrid, wizard(walkGrid, 1))).toEqual([0, 1, 2, 7, 8, 9]);
     });
-    test('a wall, a Mirror or a Wardrobe door edge ends the line', () => {
+    test('a wall, a Mirror met on an open side or a Wardrobe door edge ends the line', () => {
         const wall = setup({}, { 5: [0], 10: [0] });
         expect(columns(wall, wizard(wall, 1))).toEqual([0, 1, 2]);
-        const mirror = setup({ movables: [[30, 5, 0, 0, 2]] });
+        const mirror = setup({ movables: [[30, 5, 0, 0, 2]], mirror_facings: [[30, 0, 0]] });
         expect(columns(mirror, wizard(mirror, 1))).toEqual([0, 1, 2]);
         const door = setup({ wardrobes: [[40, 2, 0, 0, 0, 2]] });
         expect(columns(door, wizard(door, 1))).toEqual([0, 1, 2]);
+    });
+    // a Mirror on the island at 8 in place of the Rock; its facing is [quarter turns, shape]. A hero who swaps onto it
+    // walks on to 7 and 9
+    const mirrorAt = (facing, latest = NONE) => {
+        const extra = { rocks: [], movables: [[30, 8, 0, 0, 2]], mirror_facings: facing ? [[30, ...facing]] : [] };
+        return setup(extra, undefined, latest);
+    };
+    const MIRROR_FLAT = 0;
+    const MIRROR_VERTICAL = 1;
+    const MIRROR_VERTICAL_DOWN = 2;
+    test('a Mirror met on its back or a closed side is a target; on an open side it ends the line', () => {
+        // a flat Mirror at θ 0 is open on its west and south sides: the hero west of it meets an open side
+        const open = mirrorAt([0, MIRROR_FLAT]);
+        expect(columns(open, wizard(open, 1))).toEqual([0, 1, 2]);
+        // at θ 180 it is open on its east and north sides: the hero meets its back, swaps onto it and swaps on
+        const back = mirrorAt([2, MIRROR_FLAT]);
+        expect(columns(back, wizard(back, 1))).toEqual([0, 1, 2, 7, 8, 9]);
+        // at θ 90 it is open on its south and east sides: the west side is closed too
+        const closed = mirrorAt([1, MIRROR_FLAT]);
+        expect(columns(closed, wizard(closed, 1))).toEqual([0, 1, 2, 7, 8, 9]);
+        // without a facing every side counts as open
+        const unknown = mirrorAt(null);
+        expect(columns(unknown, wizard(unknown, 1))).toEqual([0, 1, 2]);
+    });
+    test('a vertical Mirror is open on one horizontal side', () => {
+        // open east at θ 0: the hero west of it meets a closed side; at θ 180 it is open west
+        const closed = mirrorAt([0, MIRROR_VERTICAL]);
+        expect(columns(closed, wizard(closed, 1))).toEqual([0, 1, 2, 7, 8, 9]);
+        const open = mirrorAt([2, MIRROR_VERTICAL]);
+        expect(columns(open, wizard(open, 1))).toEqual([0, 1, 2]);
+        // a downward one is open west at θ 0 and east at θ 180
+        const downOpen = mirrorAt([0, MIRROR_VERTICAL_DOWN]);
+        expect(columns(downOpen, wizard(downOpen, 1))).toEqual([0, 1, 2]);
+        const downClosed = mirrorAt([2, MIRROR_VERTICAL_DOWN]);
+        expect(columns(downClosed, wizard(downClosed, 1))).toEqual([0, 1, 2, 7, 8, 9]);
+    });
+    test('the Mirror turned by the save is met on its latest facing', () => {
+        const turned = {
+            get: (pid, field) => {
+                if (pid !== 30 || field !== 'base.theta_target') return undefined;
+                return new Uint8Array(new Float32Array([180]).buffer);
+            },
+            ocean: [],
+            created: new Map(),
+        };
+        const walkGrid = mirrorAt([0, MIRROR_FLAT], turned);
+        expect(columns(walkGrid, wizard(walkGrid, 1))).toEqual([0, 1, 2, 7, 8, 9]);
     });
     test('the line wraps around the world', () => {
         // walls at 3 and 4 end the line east; west of 0 it wraps to 10 and runs on to the Rock at 7
@@ -251,6 +298,44 @@ describe('a hero boarding a drifting Lily', () => {
     });
 });
 
+describe('a Lily a Spawner respawns on a river', () => {
+    // as above, with no Lily in the level data: the Spawner (60) respawns Lily 50 in a river cell, and the hero's shore
+    // at (3, 1) holds the Activator (70) that runs it
+    const setup = (spawner, activator) => {
+        const water = {},
+            walls = {};
+        for (let i = 0; i <= 7; i++) water[i] = [0];
+        for (let i = 0; i < 10; i++) if (i !== 3 && i !== 4) walls[10 + i] = [0];
+        world({
+            width: 10,
+            height: 2,
+            walls,
+            water,
+            extra: {
+                oceans: [[1, 0, 0, 0, 0, 10, 2]],
+                lilies: [],
+                lily_spawns: [[...spawner.slice(0, 4), 50, [activator], ...spawner.slice(4)]],
+                rivers: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [i, 0, 0, 1]),
+            },
+        });
+        const walkGrid = walker(NONE, [], []);
+        return cells(walkGrid, walkGrid.flood([walkGrid.cellOf(3, 1, 0)]));
+    };
+    test('the hero who reaches the Activator boards the Lily and rides it to the island', () => {
+        expect(setup([60, 0, 0, 0], [70, 3, 1, 0])).toEqual(expect.arrayContaining(['8,0', '9,0']));
+    });
+    test('an Activator the hero does not reach respawns nothing', () => {
+        expect(setup([60, 0, 0, 0], [70, 9, 0, 0])).toEqual(['3,1', '4,1']);
+    });
+    test('an Activator or a Spawner that does not exist respawns nothing', () => {
+        expect(setup([60, 0, 0, 0], [70, 3, 1, 0, 0])).toEqual(['3,1', '4,1']);
+        expect(setup([60, 0, 0, 0, 0], [70, 3, 1, 0])).toEqual(['3,1', '4,1']);
+    });
+    test('a Spawner off a river drifts nowhere', () => {
+        expect(setup([60, 9, 0, 0], [70, 3, 1, 0])).toEqual(['3,1', '4,1']);
+    });
+});
+
 describe('a Lily that does not exist', () => {
     // a row of 4 at z 0: dry 0 and 2, water at 1 (surface 0) with a Lily, a wall at 3
     const setup = (lily) => {
@@ -307,6 +392,46 @@ describe('a stone landing on a drifting Lily', () => {
     test('the stone lands where the Lily drifts across its way, not only at the cell the save left it in', () => {
         expect(setup([[50, 6, 0, 0]])).toEqual(['6,1', '8,1']);
         expect(setup([])).toEqual(['8,1']);
+    });
+});
+
+describe('a Lily carrying a Monster', () => {
+    // three rows of 10 at z 0. Row 1: the hero's side 0..2 with a SKIPPABLE Rock at 2, water 3..6 (surface 0), wall at
+    // 7. Column 6 is a river flowing north through all three rows (wrapping round), with a Lily at (6, 0); rows 0 and 2
+    // are wall elsewhere, but for the dry cell (5, 0), a line cell from (6, 0).
+    const rideCells = (monsters) => {
+        const water = {},
+            walls = { 17: [0] };
+        for (let i = 3; i <= 6; i++) water[10 + i] = [0];
+        for (const j of [0, 2]) {
+            water[j * 10 + 6] = [0];
+            for (let i = 0; i < 10; i++) if (i !== 6 && j * 10 + i !== 5) walls[j * 10 + i] = [0];
+        }
+        world({
+            width: 10,
+            height: 3,
+            walls,
+            water,
+            extra: {
+                oceans: [[1, 0, 0, 0, 0, 10, 3]],
+                rocks: [[9, 2, 1, 0]],
+                skippable: [9],
+                lilies: [[50, 6, 0, 0]],
+                rivers: [0, 1, 2].map((j) => [6, j, 0, 2]),
+                monsters,
+            },
+        });
+        const walkGrid = walker(NONE, [], []);
+        // the stone lands on the Lily at (6, 1) and kicks it east, into the wall, leaving it to the river: on through
+        // (6, 2) and round to (6, 0), where the hero on (5, 0) swaps onto the stone
+        const landing = walkGrid.cellOf(6, 1, 0);
+        const lanes = walkGrid.lanes.filter((lane) => lane.landing === landing);
+        return cells(walkGrid, new Set(lanes.flatMap((lane) => lane.ride)));
+    };
+    test('the Monster rides the Lily, so the Lily drifts on through the cell the Monster stood in', () => {
+        // a Monster of kind -2 attacks no cell
+        expect(rideCells([[60, 6, 0, 0, -2]])).toEqual(['6,0']);
+        expect(rideCells([])).toEqual(['6,0']);
     });
 });
 
@@ -397,6 +522,33 @@ describe('switch presses', () => {
         const walkGrid = walker(NONE, [], []);
         const row = cells(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 0, 0)])).filter((cell) => cell.endsWith(',0'));
         expect(row).toEqual(['0,0', '1,0', '2,0', '3,0', '4,0', '5,0', '6,0', '7,0', '8,0', '9,0']);
+    });
+    test('an object that presses the Switch of one flavor presses no other', () => {
+        // three rows of 10 at z 0. Row 0: the hero at 0, a Rock at 1, a flavor-7 Switch at 2, a flavor-8 Switch at 3,
+        // dry 4, a shut flavor-7 Gate at 5, dry 6, a shut flavor-8 Gate at 7, dry 8, a wall at 9. Rows 1 and 2: dry 0..4,
+        // then wall. The Rock reaches either Switch, and the flavor-7 Gate comes first in the latch order, so the Rock
+        // rests on the flavor-7 Switch and the flavor-8 Gate stays shut.
+        const walls = { 9: [0] };
+        for (const j of [1, 2]) for (let i = 5; i < 10; i++) walls[j * 10 + i] = [0];
+        world({
+            width: 10,
+            height: 3,
+            walls,
+            extra: {
+                rocks: [[30, 1, 0, 0]],
+                switches: [
+                    [60, 7, 0, 2, 0, 0],
+                    [62, 8, 0, 3, 0, 0],
+                ],
+                gates: [
+                    [70, 5, 0, 0, 0, 0, 7, 0],
+                    [71, 7, 0, 0, 0, 0, 8, 0],
+                ],
+            },
+        });
+        const walkGrid = walker(NONE, [], []);
+        const row = cells(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 0, 0)])).filter((cell) => cell.endsWith(',0'));
+        expect(row).toEqual(['0,0', '1,0', '2,0', '3,0', '4,0', '5,0', '6,0']);
     });
 });
 

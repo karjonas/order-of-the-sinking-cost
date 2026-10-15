@@ -1,14 +1,14 @@
 // THROUGH beams on a tiny synthetic overworld: a hero walks through walls only inside a powered beam
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { PROG, WORLD } from '../src/data.js';
-import { reachability } from '../src/walk/reachability.js';
-import { walker } from '../src/walk/walker.js';
+import { PROG, WORLD } from '../src/data.ts';
+import { reachability } from '../src/walk/reachability.ts';
+import { walker } from '../src/walk/walker.ts';
 
-vi.mock('../src/data.js', async () => {
+vi.mock('../src/data.ts', async () => {
     const SCHEMA = (await import('../data/schema.json')).default;
     return { SCHEMA, PROG: {}, WORLD: {}, worldReady: Promise.resolve() };
 });
-vi.mock('../src/walk-data.js', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
+vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 const Z_OFFSET = 64,
     LIGHT = 7,
@@ -157,7 +157,7 @@ describe('THROUGH beam', () => {
     test.each([
         ['a beam stop', { beam_stops: [[2, 1, 0]] }],
         ['a Rock', { rocks: [[9, 2, 1, 0]] }],
-        ['a shut Gate', { gates: [[9, 2, 1, 0, 0, 0, 0, 0]] }],
+        ['a shut Gate', { gates: [[9, 2, 1, 0, 0, 0, 0, 0, 5]] }],
     ])('%s ends the beam', (name, extra) => {
         world({ extra });
         const walkGrid = walk(1);

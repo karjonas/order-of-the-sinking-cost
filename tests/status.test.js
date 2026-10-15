@@ -1,6 +1,6 @@
 // The Status.sokoban_status reader at each file version it loads
 import { expect, test } from 'vitest';
-import { parseStatus } from '../src/save.js';
+import { parseStatus } from '../src/save.ts';
 import { Writer } from './writer.js';
 
 // A file of the given version with a distinct value in every field that version has; legacy fields are filled with 0xee

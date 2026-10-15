@@ -1,17 +1,18 @@
 // Routes on tiny synthetic overworlds: rock bridges in pocket floods, magic-mirror hops, the skip lane + TELEPORT
 // swap, ALTER beams, OPEN beams opening Gates, requirement cycles, overlapping areas and mirror marks
 import { describe, expect, test, vi } from 'vitest';
-import { PROG, WORLD } from '../src/data.js';
-import { endpointTarget } from '../src/walk/beams.js';
-import { walker } from '../src/walk/walker.js';
-import { levelAreaOf } from '../src/model/areas.js';
-import { levelsNeedingLevel } from '../src/model/unlocking.js';
+import { PROG, WORLD } from '../src/data.ts';
+import { endpointTarget } from '../src/walk/beams.ts';
+import { levelGeometry } from '../src/walk/geometry.ts';
+import { walker } from '../src/walk/walker.ts';
+import { levelAreaOf } from '../src/model/areas.ts';
+import { levelsNeedingLevel } from '../src/model/unlocking.ts';
 
-vi.mock('../src/data.js', async () => {
+vi.mock('../src/data.ts', async () => {
     const SCHEMA = (await import('../data/schema.json')).default;
     return { SCHEMA, PROG: {}, WORLD: {}, worldReady: Promise.resolve() };
 });
-vi.mock('../src/walk-data.js', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
+vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 const Z_OFFSET = 64;
 const [OPEN, DOUBLE, ALTER] = [0, 3, 7];
@@ -147,6 +148,73 @@ describe('magic-mirror hops', () => {
     });
 });
 
+describe('magic-mirror hops off a Switch', () => {
+    // the 8 x 8 grid of the hops above: a magic Mirror at (4, 4) with its west arm (1..3, 4) and its south arm
+    // (4, 1..3); `north` opens the cells (1..3, 5) beside the west arm too. Flavor 7 has its Switch at `switchAt`
+    // and the Gates `gates`
+    const MIRROR = [[5, 4, 4, 0, -1, 0, 0, -1, 0, 0]];
+    const setup = ({ switchAt = [2, 4], gates, north = false, lane = false, switches = [], rocks = [] }) => {
+        const open = ['1,4', '2,4', '3,4', '4,1', '4,2', '4,3'];
+        if (north) open.push('1,5', '2,5', '3,5');
+        if (lane) open.push('1,5', '2,5', '1,6', '2,6');
+        const walls = {};
+        for (let column = 0; column < 64; column++)
+            if (!open.includes(`${column % 8},${Math.floor(column / 8)}`)) walls[column] = [0];
+        const switchRow = [60, 7, 0, ...switchAt, 0];
+        world({
+            width: 8,
+            height: 8,
+            walls,
+            extra: { magic_mirrors: MIRROR, switches: [switchRow, ...switches], gates, rocks },
+        });
+        return walker(NONE, [], []);
+    };
+    // a plain Gate at (4, 3) and an open notted Gate at (4, 1), both on the south arm
+    const southGates = [
+        [61, 4, 3, 0, 0, 0, 7, 0, 5],
+        [62, 4, 1, 0, 1, 1, 7, 0, 5],
+    ];
+    test('the hero on the Switch hops past the Gate he holds open and lands with the Switch released', () => {
+        // pressed, the Gate at (4, 3) is open and the notted one at (4, 1) shut, so the hop from (2, 4) lands on
+        // (4, 2); released, the notted Gate opens again and the hero walks on to (4, 1)
+        const walkGrid = setup({ gates: southGates });
+        expect(cells(walkGrid, fill(walkGrid, 2, 4, 0))).toEqual(['4,1', '4,2', '1,4', '2,4', '3,4']);
+    });
+    test('the hop lands in the released world even where an object can press the flavor later', () => {
+        // `lane` opens (1..2, 5..6), and a Rock at (2, 5) is pushed south from (2, 6) onto the Switch, which shuts the
+        // notted Gate at (4, 1) for the rest of the flood; the hop comes first, so the hero still walks to (4, 1)
+        const walkGrid = setup({ gates: southGates, lane: true, rocks: [[64, 2, 5, 0]] });
+        const reached = cells(walkGrid, fill(walkGrid, 2, 4, 0));
+        expect(reached).toEqual(expect.arrayContaining(['4,1', '4,2', '4,3']));
+    });
+    test('a Gate he holds open on his own arm lets the ray reach him, and shuts again once he leaves', () => {
+        // the Switch at (1, 4) and a plain Gate at (2, 4): he lands on (4, 1), walks to (4, 3) and hops back onto
+        // (3, 4), but the Gate at (2, 4) is shut again
+        const walkGrid = setup({ switchAt: [1, 4], gates: [[61, 2, 4, 0, 0, 0, 7, 0, 5]] });
+        expect(cells(walkGrid, fill(walkGrid, 1, 4, 0))).toEqual(['4,1', '4,2', '4,3', '1,4', '3,4']);
+    });
+    // a second Switch of flavor 7 at (3, 5)
+    const second = [[63, 7, 0, 3, 5, 0]];
+    test('another Switch of the flavor with no object on it keeps the Gates as they are', () => {
+        const walkGrid = setup({ gates: southGates, north: true, switches: second });
+        expect(cells(walkGrid, fill(walkGrid, 2, 4, 0))).toEqual(['1,4', '2,4', '3,4', '1,5', '2,5', '3,5']);
+    });
+    test('an object on every other Switch of the flavor lets the hero hold his alone', () => {
+        // a Rock at (2, 5) the hero pushes east from (1, 5) onto the second Switch
+        const walkGrid = setup({ gates: southGates, north: true, switches: second, rocks: [[64, 2, 5, 0]] });
+        expect(cells(walkGrid, fill(walkGrid, 2, 4, 0))).toEqual([
+            '4,1',
+            '4,2',
+            '1,4',
+            '2,4',
+            '3,4',
+            '1,5',
+            '2,5',
+            '3,5',
+        ]);
+    });
+});
+
 describe('skip lane and TELEPORT swap', () => {
     // a row at z 0 on the implicit ground floor: the hero's side 10..2 (wrapping), a SKIPPABLE Rock at 2, water at 3..5
     // and 8..9 (surface 0), the island 6..7; a TELEPORT Wardrobe at 11 with its door on the west edge
@@ -181,6 +249,63 @@ describe('skip lane and TELEPORT swap', () => {
         const walkGrid = setup();
         expect(columns(walkGrid, fill(walkGrid, 7, 0, 0))).toEqual([6, 7]);
         expect(columns(walkGrid, fill(walkGrid, 7, 0, 0, { pocket: true }))).toEqual([0, 1, 2, 6, 7, 10, 11]);
+    });
+});
+
+describe('the Lilies a skipping stone kicks', () => {
+    // A 6 x 3 grid at z 0. Row 1: the hero at 0, the stone at 1 with walls above and below (so it is pushed east only),
+    // water at 2 and 3, then what `ahead` says at 4 and a wall at 5. Row 0 is wall. In row 2 a Lily floats at (3, 2),
+    // beside (3, 1) and not beside (2, 1), with (3, 0) wall behind it, so a kick sends it nowhere but its own cell.
+    const setup = ({ ahead, landing = false }) => {
+        const walls = {
+            0: [0],
+            1: [0],
+            2: [0],
+            3: [0],
+            4: [0],
+            5: [0],
+            11: [0],
+            12: [0],
+            13: [0],
+            14: [0],
+            16: [0],
+            17: [0],
+        };
+        const water = { 8: [0], 15: [0] };
+        const rocks = [[9, 1, 1, 0]];
+
+        if (!landing) water[9] = [0];
+        if (ahead === 'wall') walls[10] = [0];
+        if (ahead === 'rock') rocks.push([10, 4, 1, 0]);
+
+        world({
+            width: 6,
+            height: 3,
+            walls,
+            water,
+            extra: {
+                oceans: [[1, 0, 0, 0, 0, 6, 3]],
+                rocks,
+                skippable: [9],
+                lilies: [[50, 3, 2, 0]],
+            },
+        });
+
+        const walkGrid = walker(NONE, [], []);
+        return walkGrid.kicks.map((kick) =>
+            kick.cells.map(
+                (cell) => (cell % walkGrid.width) + ',' + Math.floor((cell % walkGrid.layerCells) / walkGrid.width),
+            ),
+        );
+    };
+    test('the hop where the stone sinks in place against a wall kicks the Lily beside it', () => {
+        expect(setup({ ahead: 'wall' })).toEqual([['3,2']]);
+    });
+    test('the hop where the stone sinks in place against a Rock kicks too', () => {
+        expect(setup({ ahead: 'rock' })).toEqual([['3,2']]);
+    });
+    test('a stone supported where it is kicks nothing', () => {
+        expect(setup({ ahead: 'wall', landing: true })).toEqual([]);
     });
 });
 
@@ -285,6 +410,48 @@ describe('areas named by activated pins', () => {
     });
 });
 
+describe('the level geometry', () => {
+    test('is built once for the same data and again for new data', () => {
+        world({ width: 8 });
+        const geometry = levelGeometry();
+        expect(levelGeometry()).toBe(geometry);
+        world({ width: 8 });
+        expect(levelGeometry()).not.toBe(geometry);
+    });
+    test("walkers share it and a save's ocean change leaves it alone", () => {
+        // column 4 holds ocean 0 (surface 1); the save floods ocean 1 (surface 2) over it
+        world({
+            width: 8,
+            water: { 3: [0], 4: [0] },
+            extra: {
+                oceans: [
+                    [30, 1, 0, 3, 0, 2, 1],
+                    [31, 2, 0, 4, 0, 1, 1],
+                ],
+            },
+        });
+        const geometry = levelGeometry();
+        const flooded = walker({ ...NONE, ocean: [{ pid: 31, index: 0, new: 1 }] }, [], [], geometry);
+        const dry = walker(NONE, [], [], geometry);
+        expect(flooded.deep(flooded.cellOf(4, 0, 1))).toBe(true);
+        expect(dry.deep(dry.cellOf(4, 0, 1))).toBe(false);
+        expect(geometry.waterColumns[4]).toEqual([0]);
+        expect(geometry.solidGrid.some((bits) => bits !== 0)).toBe(false);
+    });
+    test("a walker's grid is its own copy of the static voxels", () => {
+        const walls = {};
+        for (let column = 0; column < 8; column++) walls[column] = [0];
+        world({ width: 8, walls, extra: { rocks: [[50, 3, 0, 1]] } });
+        const geometry = levelGeometry();
+        const first = walker(NONE, [], [], geometry);
+        const second = walker(NONE, [], [], geometry);
+        const reached = (walkGrid) => [...walkGrid.flood([walkGrid.cellOf(0, 0, 1)])];
+        expect(reached(first).length).toBeGreaterThan(1);
+        expect(reached(second)).toEqual(reached(first));
+        expect(geometry.solidGrid.filter((bits) => bits !== 0).length).toBe(8);
+    });
+});
+
 describe('mirror marks', () => {
     test('a destroyed Mirror leaves no mark', () => {
         world({ width: 8, extra: { mechs: [[2, 50, 4, 0, 0]] } });
@@ -294,5 +461,807 @@ describe('mirror marks', () => {
         };
         expect(near(NONE)).toBe(4);
         expect(near({ ...NONE, created: new Map([[50, { type: 'Mirror', destroyed: true }]]) })).toBe(0);
+    });
+});
+
+describe('a Gem pushed onto its slot with turns', () => {
+    const [LIGHT, SLOT, GEM] = [7, 8, 11];
+    const [LIGHT_KIND, GEM_KIND, THROUGH] = [1, 0, 1];
+    const [WIDTH, HEIGHT] = [12, 6];
+
+    // A 12 x 6 room at z 0: walls round the edge and in columns 8 and 9, and the east end (10, 11) is closed but for
+    // row 2. A powered-by-Gem THROUGH light at (1, 2) faces east along row 2; its room's slot is (5, 1). The Gem at
+    // (3, 3) is on no straight line to the slot. `walls`: more wall cells as [i, j].
+    const setup = (walls = []) => {
+        const wallCells = new Set(walls.map(([i, j]) => i + j * WIDTH));
+        for (let i = 0; i < WIDTH; i++) {
+            wallCells.add(i);
+            wallCells.add(i + (HEIGHT - 1) * WIDTH);
+        }
+        for (let j = 1; j < HEIGHT - 1; j++) {
+            for (const i of [0, 8, 9]) wallCells.add(i + j * WIDTH);
+            if (j !== 2) for (const i of [10, 11]) wallCells.add(i + j * WIDTH);
+        }
+        const wallColumns = {};
+        for (const column of wallCells) wallColumns[column] = [0];
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            extra: {
+                lights: [[LIGHT, 1, 2, 0, 0, 0, 0, 0, THROUGH]],
+                gem_slots: [[SLOT, 5, 1, 0, 0]],
+                movables: [
+                    [LIGHT, 1, 2, 0, LIGHT_KIND],
+                    [GEM, 3, 3, 0, GEM_KIND],
+                ],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const reachesEast = (walkGrid) => walkGrid.flood([walkGrid.cellOf(2, 2, 0)]).has(walkGrid.cellOf(10, 2, 0));
+
+    test('powers the room when the push turns once', () => {
+        expect(reachesEast(setup())).toBe(true);
+    });
+    test('stays put when the Gem cannot be pushed', () => {
+        const walls = [
+            [3, 2],
+            [2, 3],
+        ];
+        expect(reachesEast(setup(walls))).toBe(false);
+    });
+});
+
+describe('a Rock pushed into water with turns', () => {
+    const [WIDTH, HEIGHT, ROCK] = [7, 4, 9];
+
+    // A 7 x 4 slab with ground at z 0 that wraps in x and y. Columns 0 and 5 are wall but for the water cell (5, 1)
+    // (surface z 1), so the east half (x 6) is reached only over a bridge there. The Rock at (2, 2) is pushed east,
+    // north, then east into the water. `walls`: more wall cells as [i, j].
+    const setup = (walls = []) => {
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) wallColumns[column] = [0];
+        for (let j = 0; j < HEIGHT; j++) {
+            wallColumns[j * WIDTH] = [0, 1, 2];
+            wallColumns[5 + j * WIDTH] = [0, 1, 2];
+        }
+        delete wallColumns[5 + 1 * WIDTH];
+        for (const [i, j] of walls) wallColumns[i + j * WIDTH] = [0, 1, 2];
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water: { [5 + 1 * WIDTH]: [0] },
+            extra: {
+                oceans: [[1, 1, 0, 5, 1, 1, 1]],
+                rocks: [[ROCK, 2, 2, 1]],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const crosses = (walkGrid) => walkGrid.flood([walkGrid.cellOf(1, 2, 1)]).has(walkGrid.cellOf(6, 1, 1));
+
+    test('makes the bridge when the pushes turn twice', () => {
+        expect(crosses(setup())).toBe(true);
+    });
+    test('makes none when the last cell before the water is wall', () => {
+        expect(crosses(setup([[4, 1]]))).toBe(false);
+    });
+});
+
+describe('a Gem pushed into water', () => {
+    const [LIGHT, SLOT, FIRST, SECOND] = [7, 8, 11, 12];
+    const [LIGHT_KIND, GEM_KIND] = [1, 0];
+    const [WIDTH, HEIGHT] = [7, 4];
+
+    // The slab of 'a Rock pushed into water with turns', with Gems for the Rock. The Gem at (2, 2) is pushed east, north,
+    // then east into the water cell (5, 1); with `straight` the Gem at (3, 1) has a straight way into it. `room`: a
+    // light at (1, 3) that a slot at (4, 3) powers, and `second`: a second Gem at
+    // (2, 3) in that room.
+    const setup = ({ straight = false, room = false, second = false }) => {
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) wallColumns[column] = [0];
+        for (let j = 0; j < HEIGHT; j++) {
+            wallColumns[j * WIDTH] = [0, 1, 2];
+            wallColumns[5 + j * WIDTH] = [0, 1, 2];
+        }
+        delete wallColumns[5 + 1 * WIDTH];
+
+        const movables = [[FIRST, straight ? 3 : 2, straight ? 1 : 2, 1, GEM_KIND]];
+        const extra = { oceans: [[1, 1, 0, 5, 1, 1, 1]], movables };
+        if (straight) extra.bridges = [[FIRST, 2, 1, 1, 5, 1, 1]];
+        if (second) movables.push([SECOND, 2, 3, 1, GEM_KIND]);
+        if (room) {
+            movables.push([LIGHT, 1, 3, 1, LIGHT_KIND]);
+            extra.lights = [[LIGHT, 1, 3, 1, 0, 0, 0, 0, OPEN]];
+            extra.gem_slots = [[SLOT, 4, 3, 1, 0]];
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water: { [5 + 1 * WIDTH]: [0] },
+            extra,
+        });
+
+        return walker(NONE, [], []);
+    };
+    const crosses = (walkGrid) => walkGrid.flood([walkGrid.cellOf(1, 2, 1)]).has(walkGrid.cellOf(6, 1, 1));
+
+    test('sinks into a bridge when the pushes turn', () => {
+        expect(crosses(setup({}))).toBe(true);
+    });
+    test('sinks into a bridge by a straight push', () => {
+        expect(crosses(setup({ straight: true }))).toBe(true);
+    });
+    test('stays on the slot the room needs it for', () => {
+        expect(crosses(setup({ room: true }))).toBe(false);
+        expect(crosses(setup({ straight: true, room: true }))).toBe(false);
+    });
+    test('sinks when the room has more Gems than open slots', () => {
+        expect(crosses(setup({ room: true, second: true }))).toBe(true);
+        expect(crosses(setup({ straight: true, room: true, second: true }))).toBe(true);
+    });
+});
+
+describe('a magic Mirror pushed into water', () => {
+    const [MIRROR, MIRROR_KIND] = [9, 2];
+    const [WIDTH, HEIGHT] = [7, 4];
+
+    // The slab of 'a Gem pushed into water' with a flat magic Mirror at (2, 2) for the Gem. Pushed east, north, then east it
+    // sinks in the water cell (5, 1), which then holds nobody.
+    const setup = () => {
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) wallColumns[column] = [0];
+        for (let j = 0; j < HEIGHT; j++) {
+            wallColumns[j * WIDTH] = [0, 1, 2];
+            wallColumns[5 + j * WIDTH] = [0, 1, 2];
+        }
+        delete wallColumns[5 + 1 * WIDTH];
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water: { [5 + 1 * WIDTH]: [0] },
+            extra: {
+                oceans: [[1, 1, 0, 5, 1, 1, 1]],
+                movables: [[MIRROR, 2, 2, 1, MIRROR_KIND]],
+                magic_mirrors: [[MIRROR, 2, 2, 1, -1, 0, 0, -1, 0, 0]],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+
+    test('is no bridge and holds no hero', () => {
+        const walkGrid = setup();
+        const reached = walkGrid.flood([walkGrid.cellOf(1, 2, 1)]);
+        expect(reached.has(walkGrid.cellOf(5, 1, 1))).toBe(false);
+        expect(reached.has(walkGrid.cellOf(6, 1, 1))).toBe(false);
+    });
+});
+
+describe('a magic Mirror pushed with turns', () => {
+    const [WIDTH, HEIGHT, MIRROR] = [10, 9, 5];
+
+    // A 10 x 9 grid at z 0 on the implicit ground floor. The open cells are row 4 (x 1..8), the loop x 1 and x 6 up to
+    // row 8 and row 8 (x 1..6), the cell (7, 5) and the column x 4 below row 4: water at (4, 3), then ground at
+    // (4, 2) and (4, 1), which a walk reaches over the water only by a hop. The magic Mirror at (6, 6) has its arms
+    // west and south. Pushed south to (6, 4) and west to (4, 4), it hops a hero from (2, 4) to (4, 2). `walls`: more
+    // wall cells as [i, j].
+    const setup = (walls = []) => {
+        const open = new Set(['4,3', '4,2', '4,1', '7,5']);
+        for (let i = 1; i <= 8; i++) open.add(`${i},4`);
+        for (let j = 4; j <= 8; j++) open.add(`1,${j}`).add(`6,${j}`);
+        for (let i = 1; i <= 6; i++) open.add(`${i},8`);
+        for (const [i, j] of walls) open.delete(`${i},${j}`);
+
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            if (!open.has(`${column % WIDTH},${Math.floor(column / WIDTH)}`)) wallColumns[column] = [0];
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water: { [4 + 3 * WIDTH]: [0] },
+            extra: {
+                oceans: [[1, 0, 0, 4, 3, 1, 1]],
+                movables: [[MIRROR, 6, 6, 0, 2]],
+                magic_mirrors: [[MIRROR, 6, 6, 0, -1, 0, 0, -1, 0, 0]],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const hops = (walkGrid) => walkGrid.flood([walkGrid.cellOf(6, 8, 0)]).has(walkGrid.cellOf(4, 2, 0));
+
+    test('hops from the arm once the pushes turn onto the junction', () => {
+        expect(hops(setup())).toBe(true);
+    });
+    test('hops nowhere when the push cell behind the last push is wall', () => {
+        expect(hops(setup([[7, 4]]))).toBe(false);
+    });
+});
+
+describe('a skipping stone launched by a hero with CHARM', () => {
+    const [WIDTH, HEIGHT, STONE] = [12, 5, 9];
+
+    // A 12 x 5 grid at z 0 on the implicit ground floor. The Wardrobe (11, 2) has its door on the west edge and gives
+    // CHARM; the land row 2 runs west to (8, 2). Row 1 is water (surface 0) from x 3 to 7 but for the islet (4, 1),
+    // which holds the Switch of flavor 7, and the islet (8, 1) holds the MIRRORABLE skipping stone. The islets have
+    // walls to the north and south or water beside them, and (9, 1) is wall, so nothing pushes the stone. The Gate
+    // (10, 3) leads to (10, 4). A hero at (9, 2) steps west, and the stone, two cells off, steps west into the water,
+    // skips over x 7..5 and stops on the Switch. `walls`: more wall cells as [i, j]. `freezer`: the stone's Freezer, closed
+    // when true, open when false, none when null.
+    const setup = ({ walls = [], charm = [40], freezer = null } = {}) => {
+        const open = new Set(['4,1', '8,1', '3,1', '5,1', '6,1', '7,1', '10,3', '10,4']);
+        for (let i = 8; i <= 11; i++) open.add(`${i},2`);
+        for (const [i, j] of walls) open.delete(`${i},${j}`);
+
+        const wallColumns = {};
+        const water = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            if (!open.has(`${column % WIDTH},${Math.floor(column / WIDTH)}`)) wallColumns[column] = [0];
+        }
+        for (const i of [3, 5, 6, 7]) water[i + WIDTH] = [0];
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water,
+            extra: {
+                oceans: [[1, 0, 0, 0, 1, WIDTH, 1]],
+                rocks: [[STONE, 8, 1, 0]],
+                skippable: [STONE],
+                mirrorable: [STONE],
+                wardrobes: [[40, 11, 2, 0, 2, 2]],
+                charm,
+                switches: [[60, 7, 0, 4, 1, 0]],
+                gates: [[61, 10, 3, 0, 0, 0, 7, 0, 5]],
+            },
+        });
+        if (freezer !== null) PROG.freezers = [{ pid: 30, p: [8, 1, 0], req: [] }];
+
+        return walker(NONE, [], freezer === null ? [] : [freezer]);
+    };
+    const opens = (walkGrid, options) => walkGrid.flood([walkGrid.cellOf(11, 2, 0)], null, null, options);
+    const reachesPocket = (walkGrid) => opens(walkGrid).has(walkGrid.cellOf(10, 4, 0));
+
+    test('presses the Switch the stone lands on, which opens the Gate', () => {
+        expect(reachesPocket(setup())).toBe(true);
+    });
+    test('presses nothing without a CHARM Wardrobe', () => {
+        expect(reachesPocket(setup({ charm: [] }))).toBe(false);
+    });
+    test('presses nothing when no cell by the stone has an open step west', () => {
+        expect(
+            reachesPocket(
+                setup({
+                    walls: [
+                        [8, 2],
+                        [9, 2],
+                    ],
+                }),
+            ),
+        ).toBe(false);
+    });
+    test('a stone in a closed Freezer notes the Freezer and presses once it is open', () => {
+        const stoneFront = new Set();
+        const closed = setup({ freezer: true });
+        expect(opens(closed, { stoneFront }).has(closed.cellOf(10, 4, 0))).toBe(false);
+        expect([...stoneFront]).toEqual([0]);
+        expect(reachesPocket(setup({ freezer: false }))).toBe(true);
+    });
+});
+
+describe('a monster Gate and the Monsters pushed to their death', () => {
+    const [WIDTH, HEIGHT, GOAL] = [11, 4, 10];
+
+    // An 11 x 4 grid at z 0 on the implicit ground floor. The open cells are row 0 (x 1..10) and the rooms of rows 1
+    // and 2 (x 3..7). A monster Gate at (9, 0) shuts the goal (10, 0). `monsters`: the Monsters as [pid, i, j, kind]
+    // (kind 2: a dragon breathing west, 0: east, -2: a plain Monster); `water`: a water cell as [i, j]; `walls`: more
+    // wall cells as [i, j].
+    const setup = ({ monsters, water = [], walls = [] }) => {
+        const open = new Set();
+        for (let i = 1; i <= 10; i++) open.add(`${i},0`);
+        for (let i = 3; i <= 7; i++) open.add(`${i},1`).add(`${i},2`);
+        for (const [i, j] of walls) open.delete(`${i},${j}`);
+
+        const wallColumns = {};
+        const waterColumns = {};
+        const oceans = [];
+
+        if (water.length > 0) {
+            const [waterI, waterJ] = water;
+            open.add(`${waterI},${waterJ}`);
+            waterColumns[waterI + waterJ * WIDTH] = [0];
+            oceans.push([1, 0, 0, waterI, waterJ, 1, 1]);
+        }
+
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            if (!open.has(`${column % WIDTH},${Math.floor(column / WIDTH)}`)) wallColumns[column] = [0];
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water: waterColumns,
+            extra: {
+                oceans,
+                monsters: monsters.map(([pid, i, j, kind]) => [pid, i, j, 0, kind]),
+                gates: [[61, 9, 0, 0, 0, 0, 0, 1, 5]],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const opens = (walkGrid) => walkGrid.flood([walkGrid.cellOf(1, 0, 0)]).has(walkGrid.cellOf(GOAL, 0, 0));
+
+    describe('into water', () => {
+        // the Monster at (4, 1) is pushed east from (3, 1) to (5, 1) and into the water at (6, 1)
+        const room = { monsters: [[1, 4, 1, -2]], water: [6, 1] };
+
+        test('opens the Gate once the only Monster of its room drowns', () => {
+            expect(opens(setup(room))).toBe(true);
+        });
+        test('keeps the Gate shut when the Monster cannot be pushed to the water', () => {
+            expect(opens(setup({ ...room, walls: [[5, 1]] }))).toBe(false);
+        });
+        test('keeps the Gate shut while another Monster of the room lives', () => {
+            expect(opens(setup({ ...room, monsters: [...room.monsters, [2, 7, 2, -2]] }))).toBe(false);
+        });
+    });
+
+    describe('into fire', () => {
+        // a dragon at (7, 2) breathes west along row 2; the dragon at (4, 1) breathes east and is pushed north from
+        // (4, 0) into that fire, where the two dragons burn each other
+        const room = {
+            monsters: [
+                [1, 4, 1, 0],
+                [2, 7, 2, 2],
+            ],
+        };
+
+        test('opens the Gate once two dragons that face each other burn', () => {
+            expect(opens(setup(room))).toBe(true);
+        });
+        test('keeps the Gate shut when the dragon cannot reach the fire', () => {
+            expect(
+                opens(
+                    setup({
+                        ...room,
+                        walls: [
+                            [4, 2],
+                            [3, 1],
+                        ],
+                    }),
+                ),
+            ).toBe(false);
+        });
+        test('keeps the Gate shut when the other dragon faces away', () => {
+            expect(
+                opens(
+                    setup({
+                        monsters: [
+                            [1, 4, 1, 0],
+                            [2, 7, 2, 0],
+                        ],
+                    }),
+                ),
+            ).toBe(false);
+        });
+    });
+});
+
+describe('a Monster pushed beside a goblin', () => {
+    const [WIDTH, HEIGHT, GOAL] = [24, 4, 10];
+
+    // A 24 x 4 grid at z 0 on the implicit ground floor. The open cells are row 0 (x 1..10), the cell (3, 1), row 2
+    // (x 3..18) and the goblin's cell. A monster Gate at (9, 0) shuts the goal (10, 0). Its room ends at column 18, so a
+    // goblin in column 19 or beyond stands in the next room and holds the Gate shut by nothing. A plain Monster at
+    // (16, 2) is pushed east from (15, 2), to (17, 2) and to (18, 2). `goblin`: the goblin's column in row 2 (the cells
+    // between 18 and it are wall); `fences`: Fences as [i, j, side].
+    const setup = ({ goblin = 19, fences = [] } = {}) => {
+        const open = new Set();
+        for (let i = 1; i <= 10; i++) open.add(`${i},0`);
+        for (let i = 3; i <= 18; i++) open.add(`${i},2`);
+        open.add('3,1').add(`${goblin},2`);
+
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            if (!open.has(`${column % WIDTH},${Math.floor(column / WIDTH)}`)) wallColumns[column] = [0];
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            extra: {
+                monsters: [
+                    [1, 16, 2, 0, -2],
+                    [2, goblin, 2, 0, -1],
+                ],
+                gates: [[61, 9, 0, 0, 0, 0, 0, 1, 5]],
+                fences: fences.map(([i, j, side], index) => [80 + index, i, j, 0, side]),
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const opens = (walkGrid) => walkGrid.flood([walkGrid.cellOf(1, 0, 0)]).has(walkGrid.cellOf(GOAL, 0, 0));
+
+    test('opens the Gate once the only Monster of its room is pushed next to the goblin', () => {
+        expect(opens(setup())).toBe(true);
+    });
+    test('keeps the Gate shut when no cell the Monster reaches is beside the goblin', () => {
+        expect(opens(setup({ goblin: 20 }))).toBe(false);
+    });
+    test('keeps the Gate shut when a Fence stands between the goblin and the Monster', () => {
+        expect(opens(setup({ fences: [[18, 2, 0]] }))).toBe(false);
+    });
+});
+
+describe('a TRANSMUTE hero', () => {
+    const [WIDTH, HEIGHT, DRUID, TREE, DRAGON] = [8, 4, 70, 71, 72];
+
+    // An 8 x 4 grid at z 0 on the implicit ground floor. The open cells are row 0 (x 1..6) and the cell (2, 1), which
+    // joins it. A TRANSMUTE Wardrobe at (1, 0) has its door on its east edge: stepping out through it gives the hero
+    // TRANSMUTE and no push, and stepping back in gives the push back; (2, 1) is another way onto (2, 0) with the
+    // push. `extra`: more level data; `walls`: more wall cells as [i, j].
+    const setup = ({ extra, walls = [], druids = [DRUID] }) => {
+        const open = new Set(['2,1']);
+        for (let i = 1; i <= 6; i++) open.add(`${i},0`);
+        for (const [i, j] of walls) open.delete(`${i},${j}`);
+
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            if (!open.has(`${column % WIDTH},${Math.floor(column / WIDTH)}`)) wallColumns[column] = [0];
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            extra: { wardrobes: [[DRUID, 1, 0, 0, 0, 2]], transmute: druids, ...extra },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const reaches = (walkGrid, i) => walkGrid.flood([walkGrid.cellOf(2, 1, 0)]).has(walkGrid.cellOf(i, 0, 0));
+
+    describe('and a Tree', () => {
+        // the Tree at (3, 0) is turned into a crystal from (2, 0), then pushed east to (4, 0) by the hero who has
+        // his push back
+        const room = { extra: { trees: [[TREE, 3, 0, 0]] } };
+
+        test('turns it into a crystal he pushes on and walks into its cell', () => {
+            expect(reaches(setup(room), 3)).toBe(true);
+        });
+        test('leaves the Tree standing with no TRANSMUTE Wardrobe', () => {
+            expect(reaches(setup({ ...room, druids: [] }), 3)).toBe(false);
+        });
+        test('cannot push the crystal into a wall', () => {
+            expect(reaches(setup({ ...room, walls: [[4, 0]] }), 3)).toBe(false);
+        });
+    });
+
+    describe('and a dragon', () => {
+        // the dragon at (3, 0) breathes north into wall; the monster Gate at (5, 0) holds its room shut until the
+        // dragon is a crystal
+        const room = {
+            extra: { monsters: [[DRAGON, 3, 0, 0, 1]], gates: [[61, 5, 0, 0, 0, 0, 0, 1, 5]] },
+        };
+
+        test('turns it into a crystal, which opens the monster Gate of its room', () => {
+            expect(reaches(setup(room), 5)).toBe(true);
+        });
+        test('leaves the Gate shut while another Monster of the room lives', () => {
+            const extra = { monsters: [...room.extra.monsters, [73, 6, 0, 0, -2]], gates: room.extra.gates };
+            expect(reaches(setup({ extra }), 5)).toBe(false);
+        });
+    });
+});
+
+describe('Rocks sunk side by side in a gap', () => {
+    const [WIDTH, HEIGHT, WATER_ROW] = [11, 5, 2];
+    const [FIRST, SECOND, THIRD] = [31, 32, 33];
+
+    // An 11 x 5 grid with ground at z 0 (hero level z 1). The room x 0..4 is open; a corridor along row 2 runs east
+    // from x 5 + `gap` to x 9, and `gap` water cells (surface z 1) at x 5.. of row 2 lie between the room and the
+    // corridor, the rest of columns 5.. being wall. Rocks: the first at (3, 2) on the water row, the second at (4, 3)
+    // and the third at (4, 1), each pushed onto the water row to follow it. `rocks`: how many of the three stand there.
+    // `walls`: more wall cells as [i, j]. `straight`: the first Rock has a straight bridge from (2, 2) into the first
+    // water cell.
+    const setup = (gap, rocks, { walls = [], straight = false } = {}) => {
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            const i = column % WIDTH;
+            const j = Math.floor(column / WIDTH);
+            const inGap = j === WATER_ROW && i >= 5 && i < 5 + gap;
+            const inCorridor = j === WATER_ROW && i >= 5 + gap && i < WIDTH - 1;
+            if (inGap) continue;
+
+            if (i >= 5 && !inCorridor) {
+                wallColumns[column] = [0, 1, 2];
+            } else {
+                wallColumns[column] = [0];
+            }
+        }
+        for (const [i, j] of walls) wallColumns[i + j * WIDTH] = [0, 1, 2];
+
+        const water = {};
+        for (let i = 5; i < 5 + gap; i++) water[i + WATER_ROW * WIDTH] = [0];
+
+        const placed = [
+            [FIRST, 3, 2, 1],
+            [SECOND, 4, 3, 1],
+            [THIRD, 4, 1, 1],
+        ];
+
+        const bridges = [];
+        if (straight) bridges.push([FIRST, 2, WATER_ROW, 1, 5, WATER_ROW, 1]);
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water,
+            extra: {
+                oceans: [[1, 1, 0, 5, WATER_ROW, gap, 1]],
+                rocks: placed.slice(0, rocks),
+                bridges,
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const reached = (walkGrid) => walkGrid.flood([walkGrid.cellOf(0, WATER_ROW, 1)]);
+    const crosses = (walkGrid, gap) => reached(walkGrid).has(walkGrid.cellOf(5 + gap, WATER_ROW, 1));
+    const standsOn = (walkGrid, i) => reached(walkGrid).has(walkGrid.cellOf(i, WATER_ROW, 1));
+
+    test('two Rocks close a gap of two water cells', () => {
+        expect(crosses(setup(2, 2), 2)).toBe(true);
+    });
+    test('three Rocks close a gap of three water cells', () => {
+        expect(crosses(setup(3, 3), 3)).toBe(true);
+    });
+    test('a gap of two water cells is left open by one Rock, which does not sink', () => {
+        const walkGrid = setup(2, 1);
+        expect(crosses(walkGrid, 2)).toBe(false);
+        expect(standsOn(walkGrid, 5)).toBe(false);
+    });
+    test('two Rocks do not close three water cells', () => {
+        const walkGrid = setup(3, 2);
+        expect(crosses(walkGrid, 3)).toBe(false);
+        expect(standsOn(walkGrid, 5)).toBe(false);
+    });
+    test('the second Rock cannot close the gap when it cannot be pushed onto the water row', () => {
+        expect(crosses(setup(2, 2, { walls: [[4, 4]] }), 2)).toBe(false);
+    });
+    test('a Rock rolls over the cell a straight bridge sank and closes the gap', () => {
+        expect(crosses(setup(2, 2, { straight: true }), 2)).toBe(true);
+    });
+});
+
+describe('the target of a TELEPORT swap', () => {
+    // Builds the walker. A hero in walk layer 2 seeds a flood with [cell, 2].
+    const build = () => walker(NONE, [], []);
+    const wizardFlood = (walkGrid, i, j, z = 0) => walkGrid.flood([[walkGrid.cellOf(i, j, z), 2]]);
+    // The solid z values per column of a grid: `wall` in every column not in `openCells` ("i,j"), `floor` in the rest
+    const solidColumns = (width, height, openCells, wall, floor = []) => {
+        const solid = {};
+        for (let column = 0; column < width * height; column++) {
+            const isOpen = openCells.has(`${column % width},${Math.floor(column / width)}`);
+            solid[column] = isOpen ? floor : wall;
+        }
+        return solid;
+    };
+
+    describe('landing on a Switch', () => {
+        // A row of 8 at z 0 on the implicit ground floor: the hero starts at 0, the Switch of flavor 7 is at 1 and the
+        // Rock at `rockAt`; the shut Gate of flavor 7 at 4 closes the way to 5. `wall`: a wall cell.
+        const setup = ({ rockAt = 2, wall = -1 } = {}) => {
+            const walls = { 6: [0], 7: [0] };
+            if (wall >= 0) walls[wall] = [0];
+            world({
+                width: 8,
+                walls,
+                extra: {
+                    rocks: [[64, rockAt, 0, 0]],
+                    switches: [[60, 7, 0, 1, 0, 0]],
+                    gates: [[61, 4, 0, 0, 0, 0, 7, 0, 5]],
+                },
+            });
+            return build();
+        };
+
+        test('presses it, which opens the Gate', () => {
+            const walkGrid = setup();
+            expect(columns(walkGrid, wizardFlood(walkGrid, 0, 0))).toEqual([0, 1, 2, 3, 4, 5]);
+        });
+        test('presses nothing when a wall ends the line from the Switch', () => {
+            const walkGrid = setup({ rockAt: 3, wall: 2 });
+            expect(columns(walkGrid, wizardFlood(walkGrid, 0, 0))).toEqual([0, 1]);
+        });
+    });
+
+    describe('filling a Gem_Slot', () => {
+        const [LIGHT, SLOT, GEM] = [7, 8, 11];
+        const [LIGHT_KIND, GEM_KIND, THROUGH] = [1, 0, 1];
+        const [WIDTH, HEIGHT] = [12, 6];
+
+        // A 12 x 6 room at z 0: walls round the edge and in columns 8 and 9, and the east end (10, 11) is closed but for
+        // row 2. A powered-by-Gem THROUGH light at (1, 2) faces east along row 2; its room's slot is (5, 1) and the Gem
+        // is at (5, 3), in line with the slot. `extraWalls`: more wall cells as [i, j].
+        const setup = (extraWalls = []) => {
+            const wallCells = new Set(extraWalls.map(([i, j]) => i + j * WIDTH));
+            for (let i = 0; i < WIDTH; i++) {
+                wallCells.add(i);
+                wallCells.add(i + (HEIGHT - 1) * WIDTH);
+            }
+            for (let j = 1; j < HEIGHT - 1; j++) {
+                for (const i of [0, 8, 9]) wallCells.add(i + j * WIDTH);
+                if (j !== 2) for (const i of [10, 11]) wallCells.add(i + j * WIDTH);
+            }
+            const walls = {};
+            for (const column of wallCells) walls[column] = [0];
+            world({
+                width: WIDTH,
+                height: HEIGHT,
+                walls,
+                extra: {
+                    lights: [[LIGHT, 1, 2, 0, 0, 0, 0, 0, THROUGH]],
+                    gem_slots: [[SLOT, 5, 1, 0, 0]],
+                    movables: [
+                        [LIGHT, 1, 2, 0, LIGHT_KIND],
+                        [GEM, 5, 3, 0, GEM_KIND],
+                    ],
+                },
+            });
+            return build();
+        };
+        const reachesEast = (walkGrid) => wizardFlood(walkGrid, 5, 1).has(walkGrid.cellOf(10, 2, 0));
+
+        test('powers the room, and the light casts its beam', () => {
+            expect(reachesEast(setup())).toBe(true);
+        });
+        test('powers nothing when a wall ends the line from the slot', () => {
+            expect(reachesEast(setup([[5, 2]]))).toBe(false);
+        });
+    });
+
+    describe('sinking into water', () => {
+        const [WIDTH, HEIGHT, ROCK] = [7, 4, 9];
+
+        // A 7 x 4 slab with ground at z 0. The corridor is row 1 (x 1..3 and the island 5) with the water cell (4, 1)
+        // (surface z 1) between; the Rock at (2, 2) is boxed in by walls, so only a swap moves it. A hero in layer 2 at
+        // (2, 1) swaps it into (2, 1); a hero in layer 0 at (1, 1) pushes it east, twice, into the water. `walls`: more
+        // wall cells as [i, j].
+        const setup = (walls = []) => {
+            const open = new Set(['1,1', '2,1', '3,1', '5,1', '2,2']);
+            for (const [i, j] of walls) open.delete(`${i},${j}`);
+            const solid = solidColumns(WIDTH, HEIGHT, open, [0, 1, 2], [0]);
+            delete solid[4 + 1 * WIDTH];
+            world({
+                width: WIDTH,
+                height: HEIGHT,
+                walls: solid,
+                water: { [4 + 1 * WIDTH]: [0] },
+                extra: { oceans: [[1, 1, 0, 4, 1, 1, 1]], rocks: [[ROCK, 2, 2, 1]] },
+            });
+            return build();
+        };
+        const crosses = (walkGrid) =>
+            walkGrid
+                .flood([
+                    [walkGrid.cellOf(1, 1, 1), 0],
+                    [walkGrid.cellOf(2, 1, 1), 2],
+                ])
+                .has(walkGrid.cellOf(5, 1, 1));
+
+        test('makes the bridge once the hero pushes the swapped Rock into the water', () => {
+            expect(crosses(setup())).toBe(true);
+        });
+        test('makes none when the last cell before the water is wall', () => {
+            expect(crosses(setup([[3, 1]]))).toBe(false);
+        });
+    });
+
+    describe('unblocking a beam', () => {
+        const [LIGHT, ROCK] = [7, 12];
+        const [LIGHT_KIND, THROUGH] = [1, 1];
+        const [WIDTH, HEIGHT] = [12, 5];
+
+        // A 12 x 5 room at z 0 where only row 2 (x 1..7 and 10, 11) and the cells (6, 0) and (6, 1) are open. A powered
+        // THROUGH light at (1, 2) faces east; the Rock at (6, 2) stops its beam, and walls at x 8 and 9 shut off the east
+        // end. A hero in layer 2 at (6, 0) swaps with the Rock, which lands off the beam's line. `walls`: more wall
+        // cells as [i, j]; `side`: whether (6, 0) and (6, 1) are open; `from`: where the hero starts.
+        const setup = ({ walls = [], side = true, from = [6, 0] } = {}) => {
+            const open = new Set(['10,2', '11,2']);
+            if (side) open.add('6,0').add('6,1');
+            for (let i = 1; i <= 7; i++) open.add(`${i},2`);
+            for (const [i, j] of walls) open.delete(`${i},${j}`);
+            world({
+                width: WIDTH,
+                height: HEIGHT,
+                walls: solidColumns(WIDTH, HEIGHT, open, [0]),
+                extra: {
+                    lights: [[LIGHT, 1, 2, 0, 0, 0, 0, 0, THROUGH]],
+                    gem_slots: POWERED_ROOM,
+                    movables: [[LIGHT, 1, 2, 0, LIGHT_KIND]],
+                    rocks: [[ROCK, 6, 2, 0]],
+                },
+            });
+            const walkGrid = build();
+            return wizardFlood(walkGrid, ...from).has(walkGrid.cellOf(10, 2, 0));
+        };
+
+        test('lets the beam run on, through the walls to the east end', () => {
+            expect(setup()).toBe(true);
+        });
+        test('leaves it stopped when a wall ends the line from the hero', () => {
+            expect(setup({ walls: [[6, 1]] })).toBe(false);
+        });
+        test('leaves it stopped when the Rock would land on the beam', () => {
+            // a hero in the beam at (4, 2) swaps with the Rock east of him, and it would stop the beam at (4, 2); no
+            // cell off the beam leads to the Rock
+            expect(setup({ side: false, from: [4, 2] })).toBe(false);
+        });
+    });
+});
+
+describe('a Rock far from its Switch', () => {
+    const [WIDTH, HEIGHT, SWITCH, GATE, ROCK] = [40, 20, 60, 61, 62];
+
+    // A 40 x 20 slab of open ground inside a wall border. The pocket cell (20, 18) is shut in by walls and the Gate
+    // (20, 17) of flavor 7, whose Switch lies at (1, 1) and which a Rock at (37, 17) presses after more than 50 pushes:
+    // more than 256 cells of the walk back from the Switch. `walls`: more wall cells as [i, j].
+    const setup = (walls = []) => {
+        const wallCells = new Set(['19,18', '21,18']);
+        for (const [i, j] of walls) wallCells.add(`${i},${j}`);
+
+        const wallColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            const [i, j] = [column % WIDTH, Math.floor(column / WIDTH)];
+            const border = i === 0 || j === 0 || i === WIDTH - 1 || j === HEIGHT - 1;
+            if (border || wallCells.has(`${i},${j}`)) wallColumns[column] = [0];
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            extra: {
+                switches: [[SWITCH, 7, 0, 1, 1, 0]],
+                gates: [[GATE, 20, 17, 0, 0, 0, 7, 0, 5]],
+                rocks: [[ROCK, 37, 17, 0]],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const reachesPocket = (walkGrid) => fill(walkGrid, 10, 10, 0).has(walkGrid.cellOf(20, 18, 0));
+
+    test('presses the Switch', () => {
+        expect(reachesPocket(setup())).toBe(true);
+    });
+    test('presses nothing when walls box the Rock in', () => {
+        expect(
+            reachesPocket(
+                setup([
+                    [36, 17],
+                    [37, 16],
+                ]),
+            ),
+        ).toBe(false);
     });
 });

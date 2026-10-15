@@ -1,13 +1,13 @@
 // Fire, pushes, elevators and rock bridges on tiny synthetic overworlds (one row of cells)
 import { describe, expect, test, vi } from 'vitest';
-import { PROG, WORLD } from '../src/data.js';
-import { walker } from '../src/walk/walker.js';
+import { PROG, WORLD } from '../src/data.ts';
+import { walker } from '../src/walk/walker.ts';
 
-vi.mock('../src/data.js', async () => {
+vi.mock('../src/data.ts', async () => {
     const SCHEMA = (await import('../data/schema.json')).default;
     return { SCHEMA, PROG: {}, WORLD: {}, worldReady: Promise.resolve() };
 });
-vi.mock('../src/walk-data.js', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
+vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 const Z_OFFSET = 64;
 // A `width` x 1 row; walls: per column the solid z values; water: per column the indices into extra.oceans
@@ -181,7 +181,7 @@ describe('switch gates', () => {
     const run = (more = {}) => {
         world(10, floor(10), {
             switches: [[60, 7, 0, 2, 0, 1], ...(more.switches || [])],
-            gates: [[61, 4, 0, 1, 0, 0, 7, 0], ...(more.gates || [])],
+            gates: [[61, 4, 0, 1, 0, 0, 7, 0, 5], ...(more.gates || [])],
             rocks: more.rocks || [],
         });
         const walkGrid = walker(NONE, [], []);
@@ -193,16 +193,128 @@ describe('switch gates', () => {
     test("pushing a Rock onto every Switch of a flavor not pressed opens the flavor's shut gates", () => {
         expect(run({ rocks: [[64, 1, 0, 1]] })).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     });
+    test('one object for a flavor with two Switches keeps its gates shut, with the hero on the other', () => {
+        expect(run({ switches: [[62, 7, 0, 3, 0, 1]], rocks: [[64, 1, 0, 1]] })).toEqual([0, 1, 2, 3]);
+    });
     test('a Switch of the flavor behind the gate keeps it shut', () => {
         expect(run({ switches: [[62, 7, 0, 6, 0, 1]] })).toEqual([0, 1, 2, 3]);
     });
     // an open notted Gate of the same flavor at column 7
-    const notted = [[63, 7, 0, 1, 1, 1, 7, 0]];
+    const notted = [[63, 7, 0, 1, 1, 1, 7, 0, 5]];
     test('a flavor with notted gates and no object for its Switch stays as it is', () => {
         expect(run({ gates: notted })).toEqual([0, 1, 2, 3]);
     });
     test("a press opens a flavor's shut gates and shuts its notted ones together", () => {
         expect(run({ gates: notted, rocks: [[64, 1, 0, 1]] })).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    });
+});
+
+describe('a Switch under water', () => {
+    // walls under every column at z 0 but for a pool at column 3 whose floor holds a Switch at z 0; a Rock at column
+    // 2; a shut Gate of the Switch's flavor at column 8, west of the start across the wrap
+    const run = (surface) => {
+        const walls = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [i, [0]]));
+        walls[3] = [];
+        world(
+            10,
+            walls,
+            {
+                oceans: [[30, surface, 0, 3, 0, 1, 1]],
+                switches: [[60, 7, 0, 3, 0, 0]],
+                gates: [[61, 8, 0, 1, 0, 0, 7, 0, 5]],
+                rocks: [[64, 2, 0, 1]],
+            },
+            { 3: [0] },
+        );
+        const walkGrid = walker(NONE, [], []);
+        return xs(walkGrid, fill(walkGrid, 0, 1), 1);
+    };
+    test('a Rock pushed into the water sinks onto it when it lies one below the surface, opening the Gate', () => {
+        expect(run(1)).toEqual([0, 1, 2, 4, 5, 6, 7, 8, 9]);
+    });
+    test('deeper down, the Rock stops at the surface - 1 above it', () => {
+        expect(run(2)).toEqual([0, 1, 2, 9]);
+    });
+});
+
+describe('closing Gates', () => {
+    // a Switch at column 4 beside a shut Gate of its flavor at column 5, closing up (4) or down (5); columns 6-10 are
+    // a step up, walls to z 1, so the hero walks at z 2 there
+    const run = ({ closes = 4, switchColumn = 4, more = {} } = {}) => {
+        const step = { 6: [0, 1], 7: [0, 1], 8: [0, 1], 9: [0, 1], 10: [0, 1] };
+        world(12, floor(12, step), {
+            switches: [[60, 7, 0, switchColumn, 0, 1], ...(more.switches || [])],
+            gates: [[61, 5, 0, 1, 0, 0, 7, 0, closes]],
+            rocks: more.rocks || [],
+        });
+        const walkGrid = walker(NONE, [], []);
+        return xs(walkGrid, fill(walkGrid, 3, 1), 2);
+    };
+    test('a hero stepping off the Switch into the Gate is lifted onto the cell above as it closes', () => {
+        expect(run()).toEqual([5, 6, 7, 8, 9, 10]);
+    });
+    test('a Gate that closes downward lifts nobody', () => {
+        expect(run({ closes: 5 })).toEqual([]);
+    });
+    test('a Switch two cells from the Gate lifts nobody', () => {
+        expect(run({ switchColumn: 3 })).toEqual([]);
+    });
+    // a second Switch of the flavor at column 1, and a Rock at column 2 the hero pushes onto it from column 3
+    const second = [[62, 7, 0, 1, 0, 1]];
+    test('another Switch of the flavor with no object keeps the Gate shut', () => {
+        expect(run({ more: { switches: second } })).toEqual([]);
+    });
+    test('an object on every other Switch of the flavor lets the hero hold the last one', () => {
+        expect(run({ more: { switches: second, rocks: [[64, 2, 0, 1]] } })).toEqual([5, 6, 7, 8, 9, 10]);
+    });
+});
+
+describe('Freezers', () => {
+    // a pit at column 3 holds a Freezer at z 0
+    const run = (closed) => {
+        world(8, floor(8, { 3: [] }));
+        PROG.freezers = [{ p: [3, 0, 0] }];
+        const walkGrid = walker(NONE, [], [closed]);
+        return xs(walkGrid, fill(walkGrid, 0, 1), 1);
+    };
+    test('a closed Freezer holds up the hero on top of it', () => {
+        expect(run(true)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    });
+    test('an open Freezer leaves a pit the hero falls into', () => {
+        expect(run(false)).toEqual([0, 1, 2]);
+    });
+    test('a flood that walks no Freezer tops stops at the closed Freezer', () => {
+        world(8, floor(8, { 3: [] }));
+        PROG.freezers = [{ p: [3, 0, 0] }];
+        const walkGrid = walker(NONE, [], [true]);
+        const options = { reveal: false, pocket: true, frozenHolds: false };
+        const reached = walkGrid.flood([walkGrid.cellOf(0, 0, 1)], null, null, options);
+        expect(xs(walkGrid, reached, 1)).toEqual([0, 1, 2]);
+    });
+    // a ledge at z 3 over columns 0..1, a pit at column 2 holding the Freezer, then a floor at z 1 over columns 3..5
+    const dropOntoFreezer = (options) => {
+        world(8, { 0: [0, 1, 2], 1: [0, 1, 2], 3: [0], 4: [0], 5: [0], 7: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] });
+        PROG.freezers = [{ p: [2, 0, 0] }];
+        const walkGrid = walker(NONE, [], [true]);
+        const reached = walkGrid.flood([walkGrid.cellOf(0, 0, 3)], null, null, options);
+        return [3, 1].map((z) => xs(walkGrid, reached, z));
+    };
+    test('a flood that walks no Freezer tops walks off a ledge into the pit and no further', () => {
+        expect(dropOntoFreezer({ pocket: true, frozenHolds: false })).toEqual([[0, 1], []]);
+    });
+    test('a fall lands on the closed Freezer when the flood lets drops land on tops', () => {
+        expect(dropOntoFreezer({ pocket: true, frozenHolds: false, topDrops: true })).toEqual([
+            [0, 1],
+            [2, 3, 4, 5],
+        ]);
+    });
+    test('a step from the side still does not land on the closed Freezer', () => {
+        world(8, floor(8, { 3: [] }));
+        PROG.freezers = [{ p: [3, 0, 0] }];
+        const walkGrid = walker(NONE, [], [true]);
+        const options = { reveal: false, pocket: true, frozenHolds: false, topDrops: true };
+        const reached = walkGrid.flood([walkGrid.cellOf(0, 0, 1)], null, null, options);
+        expect(xs(walkGrid, reached, 1)).toEqual([0, 1, 2]);
     });
 });
 
@@ -294,6 +406,38 @@ describe('pads to a Marker', () => {
     };
     test('the mover lands on the first supported cell at or below the Marker', () => {
         expect(run([6, 0, 7])).toEqual([0, 1, 2, 3, 4, 6, 7, 8]);
+    });
+    test('a pad frozen in a closed Freezer under the hero sends him nowhere', () => {
+        // a pit at column 3 holds the Freezer, the pad in it; a wall at column 5
+        const walkOverFreezer = (closed) => {
+            world(10, floor(10, { 3: [], 5: [0, 1] }));
+            PROG.freezers = [{ p: [3, 0, 0] }];
+            PROG.teleporters = [{ pid: 80, p: [3, 0, 0], l: 0, major: 0, target: 81, en: 1, to: [6, 0, 7] }];
+            const walkGrid = walker(NONE, [{ en: true, disc: true }], [closed]);
+            return xs(walkGrid, fill(walkGrid, 0, 1), 1);
+        };
+        expect(walkOverFreezer(true)).toEqual([0, 1, 2, 3, 4]);
+        expect(walkOverFreezer(false)).toEqual([0, 1, 2, 6, 7, 8]);
+    });
+    test('a pad to a pad frozen in a closed Freezer sends the mover nowhere', () => {
+        // the pad at column 1 targets the pad at column 6, inside the Freezer there; a wall at column 5
+        const walkToFrozenPad = (closed) => {
+            world(10, floor(10, { 5: [0, 1] }));
+            PROG.freezers = [{ p: [6, 0, 1] }];
+            PROG.teleporters = [
+                { pid: 80, p: [1, 0, 1], l: 0, major: 0, target: 81, en: 1 },
+                { pid: 81, p: [6, 0, 1], l: 0, major: 0, target: 80, en: 1 },
+            ];
+            const pads = [
+                { en: true, disc: true },
+                { en: true, disc: true },
+            ];
+            const walkGrid = walker(NONE, pads, [closed]);
+            const reached = fill(walkGrid, 0, 1);
+            return [1, 2].map((z) => xs(walkGrid, reached, z));
+        };
+        expect(walkToFrozenPad(true)).toEqual([[0, 1, 2, 3, 4], []]);
+        expect(walkToFrozenPad(false)).toEqual([[0, 1, 2, 3, 4, 6, 7, 8], []]);
     });
     test('a Marker over deep water sends the mover nowhere', () => {
         world(10, floor(10, { 5: [0, 1], 6: [], 7: [] }), { oceans: [[30, 0, 0, 6, 0, 2, 1]] }, { 6: [0], 7: [0] });

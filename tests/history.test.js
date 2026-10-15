@@ -1,6 +1,6 @@
 // The overworld.history reader on small synthetic files
 import { expect, test } from 'vitest';
-import { latestOf, parseHistory, rawF32 } from '../src/save.js';
+import { latestOf, parseHistory, rawF32 } from '../src/save.ts';
 import { Writer } from './writer.js';
 
 // one undo record: header, move transactions (default: one v3 transaction with one single move), lily groups (default:
@@ -219,6 +219,29 @@ test('CREATION_OR_DESTRUCTION keeps its destroyed byte; latestOf keeps the lates
     expect(latest.created.get(6)).toEqual({ type: 'Rock', destroyed: true });
     // a created entity's position axis missing from its blob is 0
     expect(['x', 'y', 'z'].map((axis) => rawF32(latest.get(5, 'base.position.' + axis)))).toEqual([3, 4, 0]);
+});
+
+// a CHANGE diff blob at type version `typeVersion` of one u32 field of the type's own (`index`), from 0xffffffff
+function ownU32Blob(typeVersion, index, value) {
+    return [
+        ...new Writer()
+            .u16(1)
+            .u16(typeVersion)
+            .u16(0x1000 | index)
+            .u32(0xffffffff)
+            .u32(value)
+            .u8(0xfd)
+            .done(),
+    ];
+}
+
+test("latestOf keeps a Gem_Slot's flags and a Gem's attached_to_entity_id", () => {
+    const slotRecords = [[10, 1, [1, 1, 0], [change(4, ownU32Blob(7, 0, 3))]]];
+    const slotLatest = latestOf(parseHistory(historyFile(slotRecords, ['Gem_Slot']).buf));
+    expect([...slotLatest.get(4, 'flags')]).toEqual([3, 0, 0, 0]);
+    const gemRecords = [[10, 1, [1, 1, 0], [change(5, ownU32Blob(15, 6, 0))]]];
+    const gemLatest = latestOf(parseHistory(historyFile(gemRecords, ['Gem']).buf));
+    expect([...gemLatest.get(5, 'attached_to_entity_id')]).toEqual([0, 0, 0, 0]);
 });
 
 test('an Activator reset destroys and creates the same pid in one record: the creation wins', () => {

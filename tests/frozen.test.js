@@ -1,11 +1,11 @@
-// A level frozen in a closed ice gate starts its pocket walk in the gate's cell, not on top of it
+// A level frozen in a closed Freezer starts its pocket walk in the Freezer's cell, not on top of it
 import { expect, test, vi } from 'vitest';
-import { reachability } from '../src/walk/reachability.js';
+import { reachability } from '../src/walk/reachability.ts';
 
 // A row of 10 at z 0 on the implicit ground floor: the hero at 0..2; walls at z 0 in columns 3..6 (a ledge at z 1)
-// and a high wall in column 9. Ice gate 0 holds level X in the wall cell (3, 0, 0); ice gate 1 sits in the air at
+// and a high wall in column 9. Freezer 0 holds level X in the wall cell (3, 0, 0); Freezer 1 sits in the air at
 // (2, 0, 1), next to the ledge; level W stands in the pocket 7..8, which the ledge drops into.
-vi.mock('../src/data.js', async () => {
+vi.mock('../src/data.ts', async () => {
     const SCHEMA = (await import('../data/schema.json')).default;
     const WIDTH = 10,
         Z_OFFSET = 64,
@@ -51,7 +51,7 @@ vi.mock('../src/data.js', async () => {
     };
     return { SCHEMA, PROG, WORLD, worldReady: Promise.resolve() };
 });
-vi.mock('../src/walk-data.js', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
+vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 test('the frozen level seeds its pocket from the gate cell', () => {
     const history = { hero: [0, 0, 0], heroes: new Map(), heroAt: [], actions: [] },

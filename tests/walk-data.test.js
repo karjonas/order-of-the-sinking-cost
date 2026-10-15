@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, expect, test } from 'vitest';
-import { staticRoles } from '../src/model/level-roles.js';
-import { floorHeights } from '../src/walk/reachability.js';
-import { FLOOR_HEIGHTS, STATIC_ROLES, walkReady } from '../src/walk-data.js';
+import { staticRoles } from '../src/model/static-roles.ts';
+import { floorHeights } from '../src/walk/reachability.ts';
+import { FLOOR_HEIGHTS, STATIC_ROLES, walkReady } from '../src/walk-data.ts';
 
 const DATA = join(import.meta.dirname, '..', 'data');
 const stored = JSON.parse(readFileSync(join(DATA, 'walk.json'), 'utf8'));

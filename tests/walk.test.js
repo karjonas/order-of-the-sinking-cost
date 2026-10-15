@@ -3,12 +3,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
 import { savesDir } from '../scripts/saves.js';
-import { PROG, worldReady } from '../src/data.js';
-import { latestOf, parseHistory, parseStatus, protectedHeroes } from '../src/save.js';
-import { walker } from '../src/walk/walker.js';
-import { ROLE } from '../src/model/level-roles.js';
-import { nextSteps } from '../src/model/next-steps.js';
-import { computeProgress, setProgressCache } from '../src/model/progress.js';
+import { PROG, worldReady } from '../src/data.ts';
+import { latestOf, parseHistory, parseStatus, protectedHeroes } from '../src/save.ts';
+import { walker } from '../src/walk/walker.ts';
+import { ROLE } from '../src/model/level-roles.ts';
+import { nextSteps } from '../src/model/next-steps.ts';
+import { computeProgress, setProgressCache } from '../src/model/progress.ts';
 
 const read = (camp, name) => new Uint8Array(readFileSync(join(savesDir(), camp, name)));
 const hasSave = (camp) =>
@@ -24,15 +24,16 @@ test('static roles', () => {
     expect(ROLE).toBeTruthy();
     const levelRoles = [...ROLE.need.l];
     expect(levelRoles.length).toBe(PROG.levels.length);
-    expect(levelRoles.filter(Boolean).length).toBe(771);
-    expect(levelRoles.filter((role) => role === 1).length).toBe(163);
-    expect(levelRoles.filter((role) => !role).length).toBe(149);
+    expect(levelRoles.filter(Boolean).length).toBe(769);
+    expect(levelRoles.filter((role) => role === 1).length).toBe(166);
+    expect(levelRoles.filter((role) => !role).length).toBe(151);
     expect(ROLE.need.g.length).toBe(PROG.freezers.length);
     expect(ROLE.bg.l.length).toBe(PROG.levels.length);
 });
 
 // kept hero positions outside the cells reachability() fills (seeded as it seeds them: a position that lands nowhere
-// or in deep water seeds nothing), not counting the dead ones inside a wall no beam runs through
+// or in deep water seeds nothing), not counting the dead ones inside a wall no beam runs through nor the ones that land
+// nowhere (a hero riding a Lily over deep water)
 function heroesOutside(status, history, progress) {
     const latest = latestOf(history),
         levels = PROG.levels;
@@ -59,9 +60,10 @@ function heroesOutside(status, history, progress) {
     });
     const reached = flood(seeds, null, new Set()),
         isReached = (cell) => reached.has(cell) || reached.has(land(cell));
-    return [...history.heroes.values()].filter(
-        (position) => !insideWall(cellOf(...position)) && !isReached(cellOf(...position)),
-    );
+    return [...history.heroes.values()].filter((position) => {
+        const cell = cellOf(...position);
+        return !insideWall(cell) && land(cell, false) >= 0 && !isReached(cell);
+    });
 }
 
 describe.each([['default', 2]])('save %s', (camp, maxOutside) => {
