@@ -10,6 +10,7 @@
     "build": "vp build",
     "test": "vp test",
     "lint": "vp lint",
+    "typecheck": "vp check --no-fmt --no-lint",
     "fmt": "vp fmt src tests scripts vite.config.js",
     "fmt:check": "vp fmt --check src tests scripts vite.config.js",
     "trace": "node scripts/trace.js",

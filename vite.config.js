@@ -172,6 +172,7 @@ export default defineConfig({
     },
     lint: {
         ignorePatterns: ['data/**', 'viewer.html', 'ida/**', 'node_modules/**'],
+        options: { typeAware: true, typeCheck: true },
         categories: { correctness: 'error', suspicious: 'error' },
         rules: {
             'no-unused-vars': [
@@ -188,5 +189,15 @@ export default defineConfig({
             // helpers stay next to the code that uses them
             'unicorn/consistent-function-scoping': 'off',
         },
+        overrides: [
+            {
+                // the type-aware rules the JavaScript scripts and tests are not held to
+                files: ['scripts/**/*.js', 'tests/**/*.js'],
+                rules: {
+                    'typescript/no-misused-spread': 'off',
+                    'typescript/require-array-sort-compare': 'off',
+                },
+            },
+        ],
     },
 });

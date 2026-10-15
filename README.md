@@ -22,18 +22,18 @@ Open the viewer, then drag your save folder onto the page or use **Open save fol
   starts on it.
 - **The list**: the levels the selected goal still needs. Playable ones come first, then the ones you can't reach yet,
   then the locked ones, ranked by what they open toward the goal and then by distance from your hero. Each says what it
-  leads to, such as "opens ice gate Heroes and Mirrors" or "unlocks greenhouse". Levels that are only one of several
+  leads to, such as "opens ice cage Heroes and Mirrors" or "unlocks greenhouse". Levels that are only one of several
   routes and not on the cheapest one fold away under "N more on other routes". Chips narrow it by state, tower and
   area.
-- **Unlock paths**: click anything locked (a level, tower, ice gate or sign) and it shows the numbered chain of levels
-  to solve first, on the map and in the panel.
-- **Reasons**: a level you can't reach says why, for example "behind ice gate · Heroes and Mirrors",
+- **Unlock paths**: click anything locked (a level, tower, ice cage, ice gate or sign) and it shows the numbered chain
+  of levels to solve first, on the map and in the panel.
+- **Reasons**: a level you can't reach says why, for example "behind ice cage · Heroes and Mirrors",
   "may need mirrors", "needs the way onto the Sky" or "no known route".
 - **Map**: the overworld's ground, sky and underworld, with your fog of war, your hero and the current level. It
   shows the list's levels, by state or by their role for the goal (Required, One of several, Optional), and what is
-  left for the goal: towers, ice gates and the signs that open them, teleporters, gold rooms, voice logs, map scrolls
-  and treasures.
-- **Sidebar**: the goals ladder, with gold rooms; ice gates, teleporters, voice logs and treasures to find; progress per area; and stats the game tracks (rank, play time and more).
+  left for the goal: towers, ice cages and gates with the signs that open them, teleporters, gold rooms, voice logs,
+  map scrolls and treasures.
+- **Sidebar**: the goals ladder, with the Antipode towers and teleporters toward Endgame; ice cages and gates, teleporters, voice logs and treasures to find; progress per area; and stats the game tracks (rank, play time and more).
 - **Live**: with a live folder it re-reads the save every few seconds while you play, so you can keep it on a second
   screen.
 
@@ -47,20 +47,20 @@ files: only data derived from the game, such as level names, requirements and a 
 ## How it works
 
 - **Your save:**
-  - `Status.sokoban_status` gives each level's solved/entered flags, your rank, the ice gates opened, the achievements
-    and the level you're in.
+  - `Status.sokoban_status` gives each level's solved/entered flags, your rank, the ice cages and gates opened, the
+    achievements and the level you're in.
   - `overworld.history` is the game's undo log. Replaying it gives the overworld's current state (gates, rocks,
     lilies, water, monsters, your skill) and every position your hero has stood on.
 - **Level state:** each level is solved, partly solved, entered, unlocked, not reachable yet or locked. The unlock
-  rules (level requirements, "any of" requirements, ice gates, signs that need a rank, tower or gold rooms, dropdowns,
-  towers) come from the game's level data and were checked against the game's own code.
+  rules (level requirements, "any of" requirements, ice cages and gates, signs that need a rank, tower or gold rooms,
+  dropdowns, towers) come from the game's level data and were checked against the game's own code.
 - **Required or Optional:** first decided once, at build time, by walking the world from a new game's start and
-  opening the ice gates it meets, round by round. A level is marked Optional only when the walk proves you can finish
-  without it. When in doubt, it stays Required. Per goal, a level is then Required when every route to the goal needs
-  it, One of several when only some do, and Optional when none does.
+  opening the ice cages and gates it meets, round by round. A level is marked Optional only when the walk proves you
+  can finish without it. When in doubt, it stays Required. Per goal, a level is then Required when every route to the
+  goal needs it, One of several when only some do, and Optional when none does.
 - **Reachability:** a flood fill over the overworld's 3D grid. It models:
   - walls and floors, rocks at their current places, lilies (on a river, along the whole loop they drift), fences;
-  - gates driven by switches, once rocks or other objects can be pushed onto every switch, and ice gates;
+  - gates driven by switches, once rocks or other objects can be pushed onto every switch, and ice cages and gates;
   - water surfaces, where a hero drowns unless something holds the hero up at the surface;
   - elevators, and teleporters you have discovered;
   - falls from sky ledges into the places below them, so a level reached only that way says it needs the sky;
@@ -68,8 +68,8 @@ files: only data derived from the game, such as level names, requirements and a 
 
   It starts from everywhere your hero has stood, every level you've entered, every activated area pin and every
   discovered teleporter. Anywhere you've been counts as reachable, however you got there.
-- **Goals and unlock paths:** a search over the AND/OR graph of levels, ice gates, signs, towers, gold rooms and
-  ranks gives every unlock path; each goal's levels and roles are read off it. Requirements can form loops, and the
+- **Goals and unlock paths:** a search over the AND/OR graph of levels, ice cages and gates, signs, towers, gold rooms
+  and ranks gives every unlock path; each goal's levels and roles are read off it. Requirements can form loops, and the
   search handles them.
 
 The details are in [docs/](docs/):
@@ -83,10 +83,10 @@ The details are in [docs/](docs/):
 
 ## Limitations
 
-- **Reachability is approximate.** The model walks, falls, takes elevators and pads, opens ice gates and switch gates,
-  and follows a few planned tricks: a rock pushed into water as a bridge, a skipping stone the Wizard swaps onto (riding
-  a lily too), a magic mirror alone in its room, and the Beamcaster powers a hero standing in a beam uses (walking
-  through walls, jumps, double steps, squeezing past fences, opening a gate). It leaves out:
+- **Reachability is approximate.** The model walks, falls, takes elevators and pads, opens ice cages, ice gates and
+  switch gates, and follows a few planned tricks: a rock pushed into water as a bridge, a skipping stone the Wizard
+  swaps onto (riding a lily too), a magic mirror alone in its room, and the Beamcaster powers a hero standing in a beam
+  uses (walking through walls, jumps, double steps, squeezing past fences, opening a gate). It leaves out:
   - **Pushing for real:** a push is checked one cell deep, but the pushed thing stays where it is. No pushing rows,
     pulling, charming, transmuting or swapping with a dragon.
   - **Mirrors turning things:** fire, beams and the Wizard's line stop at a mirror instead of turning, so no beam
@@ -117,8 +117,8 @@ The details are in [docs/](docs/):
 
 The page is built from `src/` with [Vite+](https://viteplus.dev/), installed locally, into a single self-contained
 `viewer.html`. It needs data generated from your own copy of the game with `npm run data`. See
-[scripts/README.md](scripts/README.md) for the pipeline and for `npm run dev`, `npm run build`, `npm test` and
-`npm run lint`.
+[scripts/README.md](scripts/README.md) for the pipeline and for `npm run dev`, `npm run build`, `npm test`,
+`npm run typecheck` and `npm run lint`.
 
 ## License
 
