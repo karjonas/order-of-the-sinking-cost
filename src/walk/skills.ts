@@ -1,0 +1,214 @@
+// Wardrobes, the hero's walk layer and the TELEPORT swap (SKILLS.md "Wardrobes", "TELEPORT and PULL")
+import { CHARM_FLAG, PROTECTION_FLAG, rawU32, TELEPORT_FLAG, TRANSMUTE_FLAG } from '../save.ts';
+import type { Position, World } from '../types.ts';
+import { cellOnSide, cellOf, keyOf, WARDROBE_MARK } from './cells.ts';
+import type { GridShape } from './cells.ts';
+import type { FloodState } from './flood.ts';
+import { exists } from './groups.ts';
+import { blocked, insideWall, land } from './support.ts';
+import type { WalkGrid } from './walker.ts';
+
+// walk layers: any skill (0), PROTECTION, TELEPORT, TRANSMUTE (a hero who left a TRANSMUTE Wardrobe by its door: he
+// pushes nothing and turns what he bumps into a crystal)
+export const PROTECTED = 1;
+export const WIZARD = 2;
+export const TRANSMUTING = 3;
+
+// the number of walk layers
+export const LAYER_COUNT = 4;
+
+// a Wardrobe's skill: PROTECTION, or another one
+const PROTECTION_SKILL = 1;
+
+// Skill_Flags MULTIPUSH and SINGLE_PUSH
+const PUSH_FLAGS = 3;
+
+/** A seed of a flood: a cell (walk layer 0) or a cell and its walk layer. */
+export type LayeredCell = [cell: number, layer: number];
+
+// A Wardrobe door is the cell edge its +x axis points to: fire does not cross it; a hero leaving through it adds its
+// skill (1 PROTECTION, 2 another) to the ones it has, in place of SINGLE_PUSH, and one entering through it gets the
+// default skill back; the cell's other edges and vertical moves change nothing.
+
+/** The skill of the Wardrobe door a hero leaving `cell` on side `side` passes; -1 when no door is there. */
+export function doorOut(walkGrid: WalkGrid, cell: number, side: number): number {
+    const wardrobe = walkGrid.wardrobes.get(cell);
+    if (wardrobe?.[0] === side) return wardrobe[1];
+    return -1;
+}
+
+/** The skill of the Wardrobe door a hero entering `cell` from side `side` passes; -1 when no door is there. */
+export function doorIn(walkGrid: WalkGrid, cell: number, side: number): number {
+    const wardrobe = walkGrid.wardrobes.get(cell);
+    if (wardrobe?.[0] === (side + 2) % 4) return wardrobe[1];
+    return -1;
+}
+
+/** A Wardrobe of the level data inside the grid: its cell, door side and skill, level-data existence and kind. */
+export interface WardrobeCell {
+    pid: number;
+    cell: number;
+    side: number;
+    skill: number;
+    existence: number | undefined;
+    teleport: boolean;
+    charm: boolean;
+    transmute: boolean;
+}
+
+/** The Wardrobes of the level data whose cell lies inside the grid, in list order. */
+export function levelWardrobes(shape: GridShape, world: World): WardrobeCell[] {
+    const teleportPids = new Set(world.teleport || []);
+    const charmPids = new Set(world.charm || []);
+    const transmutePids = new Set(world.transmute || []);
+    const wardrobes: WardrobeCell[] = [];
+
+    for (const [pid, i, j, z, side, skill, existence] of world.wardrobes || []) {
+        const cell = keyOf(shape, i, j, z);
+        if (cell < 0) continue;
+
+        const teleport = teleportPids.has(pid);
+        const charm = charmPids.has(pid);
+        const transmute = transmutePids.has(pid);
+        wardrobes.push({ pid, cell, side, skill, existence, teleport, charm, transmute });
+    }
+
+    return wardrobes;
+}
+
+/** Collects the existing Wardrobes: per cell, its [door side, skill]. */
+export function placeWardrobes(walkGrid: WalkGrid): void {
+    for (const { pid, cell, side, skill, existence } of walkGrid.geometry.wardrobes) {
+        if (exists(walkGrid, pid, existence)) walkGrid.wardrobes.set(cell, [side, skill]);
+    }
+}
+
+/** Collects the cells of the existing TELEPORT Wardrobes. */
+export function placeTeleportDoors(walkGrid: WalkGrid): void {
+    for (const { cell, teleport } of walkGrid.geometry.wardrobes) {
+        if (teleport && walkGrid.wardrobes.has(cell)) walkGrid.teleportDoors.add(cell);
+    }
+}
+
+/** Collects the cells of the existing CHARM Wardrobes. */
+export function placeCharmDoors(walkGrid: WalkGrid): void {
+    for (const { cell, charm } of walkGrid.geometry.wardrobes) {
+        if (charm && walkGrid.wardrobes.has(cell)) walkGrid.charmDoors.add(cell);
+    }
+}
+
+/** Whether the current hero holds CHARM in the latest skill_flags. */
+export function heroHoldsCharm(walkGrid: WalkGrid): boolean {
+    const guy = walkGrid.world.guy;
+    const skills = walkGrid.latest.get(guy?.[0], 'skill_flags');
+    return skills !== undefined && (rawU32(skills) & CHARM_FLAG) !== 0;
+}
+
+/** Whether a hero leaving `cell` on side `side` passes the door of a CHARM Wardrobe. */
+export function leavesByCharmDoor(walkGrid: WalkGrid, cell: number, side: number): boolean {
+    if (!walkGrid.charmDoors.has(cell)) return false;
+    return walkGrid.wardrobes.get(cell)?.[0] === side;
+}
+
+/**
+ * Whether a flood starts with a hero who holds CHARM: the current hero does, or the cells the flood stays `outside` of
+ * hold a CHARM Wardrobe, whose door the hero left on the way to the cells he stands in.
+ */
+export function startsWithCharm(walkGrid: WalkGrid, outside: Set<number> | null): boolean {
+    if (walkGrid.charmHero) return true;
+    if (!outside) return false;
+
+    for (const cell of walkGrid.charmDoors) {
+        if (outside.has(cell)) return true;
+    }
+
+    return false;
+}
+
+/** Collects the cells of the existing TRANSMUTE Wardrobes. */
+export function placeTransmuteDoors(walkGrid: WalkGrid): void {
+    for (const { cell, transmute } of walkGrid.geometry.wardrobes) {
+        if (transmute && walkGrid.wardrobes.has(cell)) walkGrid.transmuteDoors.add(cell);
+    }
+}
+
+/** The current hero's walk layer, from the latest skill_flags (else the level data's PROTECTION). */
+export function heroLayerOf(walkGrid: WalkGrid): number {
+    const guy = walkGrid.world.guy;
+    const skills = walkGrid.latest.get(guy?.[0], 'skill_flags');
+    if (!skills) {
+        if (guy?.[1]) return PROTECTED;
+        return 0;
+    }
+
+    const skillBits = rawU32(skills);
+    if (skillBits & PROTECTION_FLAG) return PROTECTED;
+    if (skillBits & TELEPORT_FLAG) return WIZARD;
+
+    const transmutes = (skillBits & TRANSMUTE_FLAG) !== 0;
+    const pushes = (skillBits & PUSH_FLAGS) !== 0;
+    if (transmutes && !pushes) return TRANSMUTING;
+
+    return 0;
+}
+
+/**
+ * The cell a hero with TELEPORT swaps into from `cell` along side `side`: the TELEPORT line runs at the cell's z,
+ * crosses water and air, wraps with the grid (inside the fast-travel box at map-room z) and ends at the first target.
+ * -1 when it ends at a solid voxel outside a THROUGH beam, a Tree, Sign, Treasure_Display or Judge, a shut Gate, a
+ * frozen cell, a Mirror met on an open side (the line turns there; the turn is not modelled), a Wardrobe door edge, or
+ * back at the cell. A Mirror met on its back or a closed side is a target like any other.
+ */
+export function swapCell(walkGrid: WalkGrid, floodState: FloodState, cell: number, side: number): number {
+    const { width, height, mirrorSides, swapTargets } = walkGrid;
+    const enteredSide = (side + 2) % 4;
+    let previous = cell;
+    let next = cellOnSide(walkGrid, cell, side);
+
+    for (let stepsTaken = 0; stepsTaken < width + height && next !== cell; stepsTaken++) {
+        if (blocked(walkGrid, floodState, next)) return -1;
+        if (doorOut(walkGrid, previous, side) >= 0 || doorIn(walkGrid, next, side) >= 0) return -1;
+        if (swapTargets.has(next)) return next;
+
+        const openSides = mirrorSides.get(next);
+        if (openSides !== undefined) {
+            if (openSides & (1 << enteredSide)) return -1;
+            return next;
+        }
+
+        previous = next;
+        next = cellOnSide(walkGrid, next, side);
+    }
+
+    return -1;
+}
+
+/** The current hero's seed: the cell the hero stands in at `position` (-1 inside a wall), and the walk layer. */
+export function heroSeed(walkGrid: WalkGrid, position: Position): LayeredCell {
+    const cell = cellOf(walkGrid, ...position);
+    const heroLayer = walkGrid.heroLayer;
+    if (heroLayer === PROTECTED && walkGrid.attacked.has(cell)) return [cell, PROTECTED];
+    if (insideWall(walkGrid, cell)) return [-1, heroLayer];
+    return [land(walkGrid, walkGrid.noFlood, cell, false), heroLayer];
+}
+
+/**
+ * The walk layer after a step from `cell` on side `side` into `next`: a hero leaving a Wardrobe by its door takes its
+ * skill (PROTECTION, TELEPORT, or another one on top of its own); one entering a Wardrobe by its door gets the default
+ * skill back.
+ */
+export function layerAfterStep(walkGrid: WalkGrid, cell: number, side: number, next: number, layer: number): number {
+    const marks = walkGrid.marks;
+    if (!((marks[cell] | marks[next]) & WARDROBE_MARK)) return layer;
+
+    const skillOut = doorOut(walkGrid, cell, side);
+    if (skillOut === PROTECTION_SKILL) return PROTECTED;
+    if (skillOut > PROTECTION_SKILL) {
+        if (walkGrid.teleportDoors.has(cell)) return WIZARD;
+        if (layer === 0 && walkGrid.transmuteDoors.has(cell)) return TRANSMUTING;
+        return layer;
+    }
+
+    if (doorIn(walkGrid, next, side) > 0) return 0;
+    return layer;
+}
