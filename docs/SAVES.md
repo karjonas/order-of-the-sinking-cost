@@ -55,7 +55,7 @@ Version 33:
 | u8 | rank (`Character_Rank` 0..5: Visitor, Egressant, Pusher, Arranger, Intrepid, Sokoban); it only goes up |
 | s64 × 2 | play time, Apollo time duration |
 | s64 | achievements: bit `n` = `Achievement` value `n`; bit 0 is set too |
-| u32 | Skipping Stones treasures: bit = `Treasure.treasure_index` (6 treasures; the overworld displays show the popcount) |
+| u32 | Skipping Stones treasures: bit = `Treasure.treasure_index` (the overworld displays show the popcount) |
 | 10 × u32 | gameplay counters ([Status.sokoban_status fields](PROGRESSION.md#statussokoban_status-fields)); written and saved, never read |
 | s64 | artifacts: bit = `Artifact.kind`, only kinds 3-6 (unobtainable; always 0) |
 | u32 | current area pin: the Pid of the Area_Pin whose `local_area` box holds the hero. Recomputed every frame; 0 inside levels |
@@ -66,8 +66,8 @@ Version 33:
 | str16 | the level shown behind the main menu |
 | u32 n, n × (str16 level, u8 `Level_State_Flags`) | per-level state: SOLVED 1, PARTIALLY_SOLVED 2, ENTERED 4 (never set), TOWER_UNLOCK_SIGNALLED 8. A level gets an entry, flags 0, when it is first loaded |
 | u32 n, n × (str16, s64, str16) | string table, legacy (only loaded and saved) |
-| u32 n, n × Pid | opened ice gates (`Freezer`) on the overworld |
-| u32 n, n × Pid | opened ice gates in other levels |
+| u32 n, n × Pid | opened Freezers (`Freezer`) on the overworld |
+| u32 n, n × Pid | opened Freezers in other levels |
 
 Older files leave fields out or carry legacy ones. A field the file lacks keeps its default: 0 or empty, and 1 for
 overworld reached.
@@ -87,7 +87,7 @@ overworld reached.
 | < 33 | no menu level string: only the current level |
 | < 10 | no string table; 14..27 a legacy `u32 n, n × str16` list after it |
 | 6..14 | a legacy `u32 n, n × str16` list after the string table, or after the level list when there is no string table |
-| < 7 | no opened ice gates lists; < 29 no list for other levels |
+| < 7 | no opened Freezers lists; < 29 no list for other levels |
 
 Which levels unlock what, and what counts toward towers and 100%, is in
 [Level_Entry unlocking and state](PROGRESSION.md#level_entry-unlocking-and-state) and
@@ -232,7 +232,7 @@ Values: plain data (ints, floats, bools, enums, fixed arrays and structs of them
 Strings and resource pointers (`*Triangle_Mesh`, `*Material`, `*Texture`, by name) as str64. Dynamic arrays as s64
 count + elements, each element plain data or a resource name as above.
 
-`data/schema.json` holds the index lists for `Undoable_Entity_Data` and all 88 entity types.
+`data/schema.json` holds the index lists for `Undoable_Entity_Data` and every entity type.
 
 ### Move_Transaction and Single_Move
 

@@ -8,21 +8,21 @@ are in [Notation](README.md#notation).
 
 | File | Contents |
 |---|---|
-| `data/levels.package` | `simp`, 2015 members: 974 `data-common/<level>.entities`, 974 `data-common/<level>.level_manifest`, 66 `data/level_sets/<set>.level_set`, 1 `data-pc/all.asset_manifest` |
-| `data/materials.package` | `simp`, 10178 text `.material` files under `data/art/...` |
-| `data/shaders.package` | `simp`, 2840 `data-pc/*.shader` |
-| `data/animation.package` | `simp`, 4163 members: 2773 `data-common/*.anim`, 1336 `.sound_events` (under `data/art/animation/<character>/animation/`), 30 `data/animations/*.animation_graph`, 24 `data/animations/*.animation_names` |
+| `data/levels.package` | `simp`: a `data-common/<level>.entities` and a `data-common/<level>.level_manifest` per level, the `data/level_sets/<set>.level_set` lists, one `data-pc/all.asset_manifest` |
+| `data/materials.package` | `simp`, text `.material` files under `data/art/...` |
+| `data/shaders.package` | `simp`, `data-pc/*.shader` |
+| `data/animation.package` | `simp`: `data-common/*.anim`, `.sound_events` (under `data/art/animation/<character>/animation/`), `data/animations/*.animation_graph`, `data/animations/*.animation_names` |
 | `data/All.variables` | text variables, `:/Startup` section (`steam`, `running_packaged`, ...). A `data/Local.variables` is read too when present; none ships |
 | `data/Gameplay.keymap`, `Developer.keymap`, `Developer_Local.keymap` | key bindings (`<name>.keymap` and `<name>_Local.keymap`) |
 | `data/strings/*.localization`, `data/strings/subtitles/` | text (below) |
 | `data/fonts/` | `.ttf` / `.otf` fonts |
 | `data/sound/GeneratedSoundBanks/Windows` | sound banks |
 | `data/mesh_outlines.mesh_outlines` | outline meshes (not decoded) |
-| `data-common/<level>.all_paint_data` | per-entity vertex paint, 974 (below) |
-| `data-common/<level>.all_lightmap_data` | lightmaps, 974 (not decoded) |
-| `data-pc/<mesh>.compressed_mesh` | 3942 meshes (below) |
-| `data-pc/<name>.texture` | 3767 textures (below), plus 990 `*-probe_array.texture` light-probe arrays |
-| `data-pc/__<level>.texture` | 936 level pictures, covering all 920 overworld levels: the level's start state from above, 2048 × 1152 BC1 |
+| `data-common/<level>.all_paint_data` | per-entity vertex paint, one per level (below) |
+| `data-common/<level>.all_lightmap_data` | lightmaps, one per level (not decoded) |
+| `data-pc/<mesh>.compressed_mesh` | meshes (below) |
+| `data-pc/<name>.texture` | textures (below), plus `*-probe_array.texture` light-probe arrays |
+| `data-pc/__<level>.texture` | level pictures, covering every overworld level: the level's start state from above, 2048 × 1152 BC1 |
 
 ### simp packages
 
@@ -49,7 +49,7 @@ A flat archive. Member data is contiguous from 0x40 to the table of contents, wh
 |---|---|
 | `<level>.entities` | level entities, below |
 | `<level>.level_manifest` | text: a `[1]` line, then `;;;;; textures` and `;;;;; meshes` sections, one resource name per line (`<name>~<level>` for per-level tint maps) |
-| `<set>.level_set` | text: a `[1]` version line, then one level name per line. `#` starts a comment, also after a name. `*directive` lines (`*choice`, `*worlds_collide`, `*glyphs`, ...) are not levels. A level can be in several sets; 36 levels are in none |
+| `<set>.level_set` | text: a `[1]` version line, then one level name per line. `#` starts a comment, also after a name. `*directive` lines (`*choice`, `*worlds_collide`, `*glyphs`, ...) are not levels. A level can be in several sets; a few levels are in none |
 | `all.asset_manifest` | binary, starts `03 00 00 00` (not decoded) |
 
 ### `<level>.entities`
@@ -58,7 +58,7 @@ A flat archive. Member data is contiguous from 0x40 to the table of contents, wh
 char[4] 'enty'
 u16     version                  7 (versions <= 6 have no type table)
 s64     BASE_ENTITY_VERSION      25
-s64     n; n × { str64 entity type name; s64 type version }   the same table as in .history; all 88 types in every level
+s64     n; n × { str64 entity type name; s64 type version }   the same table as in .history; every type in every level
 u32     entity count
 count × { u32 Pid; u16 type index; u32 blob length; blob }
 ```
@@ -69,11 +69,11 @@ field missing from the blob holds the type default (position 0, scale 1, ...). F
 `Undoable_Entity_Data` fields first, then the type's own (bit 0x1000).
 
 Pids are scoped to the level. The save's `.history` refers to them raw, but the same Pid appears in several levels
-with unrelated types: 84,387 Pids occur in more than one level, 30,202 of them with different types. The namespace is
-not a level id. 80 namespaces occur, a level mixes many (the overworld mostly 101, 73, 80, 121, 135, 115) and one
-namespace spans hundreds of levels. `#1021-1` is the `Level_State` in 449 levels. Cross-entity references
-(`unlocked_by_id`, `extension_of`, `target_id`, `map_label_marker_id`, ...) resolve inside the same level (226,296 of
-226,322; all on the overworld).
+with unrelated types: many Pids occur in more than one level, often with different types. The namespace is
+not a level id. A level mixes many namespaces (the overworld mostly 101, 73, 80, 121, 135, 115) and one
+namespace spans hundreds of levels. `#1021-1` is the `Level_State` in every level that has one. Cross-entity references
+(`unlocked_by_id`, `extension_of`, `target_id`, `map_label_marker_id`, ...) resolve inside the same level (nearly
+all; every one on the overworld).
 
 ### The grid
 
@@ -119,7 +119,7 @@ entity count × { Pid; array index }
 ```
 
 A paint value is one vertex's RGBA8 (byte 0 = red). The array replaces the mesh's own vertex colours when its checksum
-equals the mesh's checksum (all 102,774 overworld entries with a mesh match, with equal vertex counts). The shaders
+equals the mesh's checksum (every overworld entry with a mesh matches, with equal vertex counts). The shaders
 read it as layer weights, not colour: red exposes layer B (`blended2`, `ground_general`: weight
 `clamp(r + h * (r + mask - 1))`, h = `blend_hardness`, mask = the `MASKS_tex` channel), blue attenuates normals.
 
@@ -193,37 +193,37 @@ set when the material (or a parent) has `<name> true`. In `ground_general` that 
 - Fields: `corner` (local, from the position), `dimensions` (w, d, h) and `bits.slots`, a bit set in 64-bit words.
 - Bit k is the voxel at local = corner + (k % w, ⌊k / w⌋ % d, ⌊k / (w · d)⌋). Its world cell is
   round(R(orientation) · local + position); an unrotated set uses its position's cell + local. The scale is not applied
-  (the 5 scaled overworld Wall_Sets are not rotated). The puzzle levels hold 54 Wall_Sets turned +90° and 26 turned
-  −90°.
-- 30 overworld Wall_Sets are rotated; only 4 of them (the 90° ones) depend on the turn's direction.
+  (the scaled overworld Wall_Sets are not rotated). The puzzle levels hold Wall_Sets turned +90° and −90°.
+- Some overworld Wall_Sets are rotated; only the 90° ones among them depend on the turn's direction.
 - An `OCEAN_HOLE` Wall_Set's voxels clear the map squares in the same world cell ([Ocean_Map (water)](#ocean_map-water)).
 
 ## Localisation and display names
 
-`data/strings/<language>.localization`: 11 files (`de`, `en`, `es`, `fr`, `it`, `ja`, `ko`, `pt-br`, `ru`, `s-cn`,
+`data/strings/<language>.localization`: one file per language (`de`, `en`, `es`, `fr`, `it`, `ja`, `ko`, `pt-br`, `ru`, `s-cn`,
 `t-cn`), plus `subtitles/`. UTF-8 text with UNIX line endings; the first line is a `#` comment. A key line starts with
-a backtick. The value is the following lines, up to a blank line or the next key. `en` has 932 keys.
+a backtick. The value is the following lines, up to a blank line or the next key.
 
-| Keys (en count) | What |
+| Keys | What |
 |---|---|
-| `judge_*` (425), `sign_*` (151) | Judge and Sign text |
-| `area_g_*`, `area_s_*`, `area_u_*` (83) | area names, keyed by `Area_Pin.local_area_name` (ground, sky, underworld). All 82 overworld pins have one; `area_g_beamcaster` has no pin |
-| `rank_visitor` .. `rank_sokoban`, `rank_granted` (7) | `Character_Rank` names; "Rank Granted: %" |
-| `campaign_*` (37) | campaign folder names: `campaign_name_default` and the random word lists ([Campaigns and level sets](PROGRESSION.md#campaigns-and-level-sets)) |
-| `menu_*` (73), `credits_*` (31), `Gamepad_*` / `gamepad_*` (30), `month_*` (12), `error_*` (11) | interface text |
+| `judge_*`, `sign_*` | Judge and Sign text, most of the keys |
+| `area_g_*`, `area_s_*`, `area_u_*` | area names, keyed by `Area_Pin.local_area_name` (ground, sky, underworld). Every overworld pin has one; `area_g_beamcaster` has no pin |
+| `rank_visitor` .. `rank_sokoban`, `rank_granted` | `Character_Rank` names; "Rank Granted: %" |
+| `campaign_*` | campaign folder names: `campaign_name_default` and the random word lists ([Campaigns and level sets](PROGRESSION.md#campaigns-and-level-sets)) |
+| `menu_*`, `credits_*`, `Gamepad_*` / `gamepad_*`, `month_*`, `error_*` | interface text |
 | the rest | key names and one-off strings |
 
 Not in the game files:
 - **Level names.** Levels have no display names. A level is known by its `Level_Entry.level_name`, which is also its
   file name; the viewer shows that.
 - **Achievement names.** The localisation has no achievement keys; the names are Steam's. The game unlocks a Steam
-  achievement by its `Achievement` value name (the Steam API name), and Steam's bit is the value − 1. The viewer
-  rebuilds the display names from the value name, and all 32 match Steam's English names: HEROES "Heroes", MIRRORS "Mirror Isles", SKIPPING "Skipping Stones", PROMISE
-  "Beamcasters", ENDGAME1 "Endgame", ENDGAME2 "Second Endgame", ENDGAME3 "Final Endgame"; `TOWER_<w>` "Antipode <w>",
-  `TOWER_<w>_SKY` "High <w>", `TOWER_<w>_UNDERWORLD` "Low <w>", `GOLD_<w>` "Gold <w>"; any other value is its name in
-  sentence case (ASCEND "Ascend"). `<w>` is the tower's worlds: one world by name (Heroes, Mirrors, Skipping Stones,
-  Beamcasters), a pair as its letters joined by `x` (H, M, S, and B for P: "HxS", "MxB").
-- **Tower names** in the viewer follow the same worlds text: "<w> tower", "High <w> tower", "Low <w> tower".
+  achievement by its `Achievement` value name (the Steam API name), and Steam's bit is the value − 1. Steam's English
+  names: HEROES "Heroes", MIRRORS "Mirror Isles", SKIPPING "Skipping Stones", PROMISE "Beamcasters", ENDGAME1
+  "Endgame", ENDGAME2 "Endgame High", ENDGAME3 "Endgame Low", ASCEND "Ascend", DESCEND "Descend", COMPLETIONIST
+  "Completionist"; `TOWER_<w>` "Antipode <w>", `TOWER_<w>_SKY` "High <w>", `TOWER_<w>_UNDERWORLD` "Low <w>", `GOLD_<w>`
+  "Gold <w>". `<w>` is the tower's worlds: one world by name (Heroes, Mirrors, Skipping Stones, Beamcasters), a pair as
+  its letters joined by `x` (H, M, S, and B for P: "HxS", "MxB"). The descriptions name the endings "the Endgame", "the
+  Second Endgame" and "the Final Endgame", and the ground towers "the <w> teleporter to the Antipode".
+- **Tower names** in the viewer are the names of their achievements: "Antipode <w>", "High <w>", "Low <w>".
 
 ## Jai type information
 
@@ -258,7 +258,7 @@ Member flags: CONSTANT 1, IMPORTED 2, USING 4, PROCEDURE_WITH_VOID_POINTER_TYPE_
 `using #as` sets 0x14: `Type_Info_Struct.info` and every entity type's `entity` member carry it. A note is the text
 after `@` in the source: `@v14` → `v14`, `@NoSerialize` → `NoSerialize`.
 
-`enum_type_flags` is 0x10000 on 43 enums and 0 on 147. The 43 are the types declared `enum_flags`: nearly all are
+`enum_type_flags` is 0x10000 on the types declared `enum_flags` and 0 on the other enums. Nearly all of those are
 `*_Flags`, plus the member `Flags` enum and Jai's own `Struct_*_Flags`. The runtime tests the bit itself: the value
 printer writes such an enum as its set names joined by ` | `, and the command-line parser refuses an argument "declared
 enum_flags". `Mesh_Index_Format` has 0x40000 as well. Nothing reads that bit: no code tests bit 18 of an enum's flags or uses

@@ -44,15 +44,15 @@ latest change at or before its record key holds PROTECTION (else the level-data 
 - Every existence-group Ocean_Map is in the map rooms; nothing on the playable layers drains except by an ocean reset.
 - Viewer recipe: for each OCEAN_CHANGE (latest per (pid, index)), `water = new & 1`; with `map.oceans[pid]`, square = (x0 + idx % sx, y0 + ⌊idx / sx⌋); paint `water_rgb` where that bit becomes 1 and the stored cell height is below `zw`.
 
-### Ice gates in the save
+### Freezers in the save
 
-- All 757 overworld freezers are one square. No `judge_unlock_level` and no Judge on the overworld.
-- `other` unlockers on the overworld are all Signs (23 ids, 17 signs).
+- Every overworld freezer is one square. No `judge_unlock_level` and no Judge on the overworld.
+- `other` unlockers on the overworld are all Signs.
 - Opened = Pid in Status list A, or the gate is satisfied now (the unlock pass runs at every overworld load).
 
 ### Teleporters in the save
 
-- 322 MAJOR (161 world pads, 161 map-room twins) and 102 MINOR. Each world pad (layers 0-2) pairs by `target_id` with a twin in a map room (layers 3-5, mostly existence-group members, `enabled_t_target` 0). Stepping on a pad discovers it and its twin: the twin's CHANGE sets `entity_flags` (existence), `enabled_t_target` 1 and `discovered`, in the same record as the world pad's discovery. A twin never comes first.
+- MAJOR pads come in pairs, a world pad and its map-room twin; MINOR pads stand alone. Each world pad (layers 0-2) pairs by `target_id` with a twin in a map room (layers 3-5, mostly existence-group members, `enabled_t_target` 0). Stepping on a pad discovers it and its twin: the twin's CHANGE sets `entity_flags` (existence), `enabled_t_target` 1 and `discovered`, in the same record as the world pad's discovery. A twin never comes first.
 - Discovery and travel: [Teleporter pads and fast travel](MOVEMENT.md#teleporter-pads-and-fast-travel).
 - `discovered` = latest CHANGE, default = level data (only the crossroads pad's map-room twin is discovered in data). `enabled` = latest `enabled_t_target` > 0, else data.
 - The discovered-teleporter carry-over runs only when loading the history resets the overworld world state (`level_data_version` newer than the save's; "World state has been reset, because we changed this level."). It reloads the old state and keeps MAJOR pads that were enabled and discovered, also opening a Freezer in the same cell and clearing their fog region. For the viewer the history is the only source.
@@ -67,7 +67,7 @@ latest change at or before its record key holds PROTECTION (else the level-data 
 
 ## Fog of war
 
-Data: `data/fog.json`. The type table spells `Fog_Of_War` plainly. `Fog_Volume` (324) has no region state and takes no part.
+Data: `data/fog.json`. The type table spells `Fog_Of_War` plainly. `Fog_Volume` has no region state and takes no part.
 
 - Fog layers follow the ground-layer table ([Ground layers](WORLD.md#ground-layers)): 0 ONGROUND, 1 UNDERGROUND, 2 SKYGROUND, 3-5 the map rooms. Boundaries −4 / 10 / 75.16. An entity in a Group with `bind_to_layer` takes that layer.
 - A **primary** `Fog_Of_War` (`ground_primary_fog`, `underworld_primary_fog`, `sky_primary_fog`) owns one region per screen of its layer: `region_states` has `ceil(squares_x / squares_per_screen_x) × ceil(squares_y / squares_per_screen_y)` = 10 × 12 = 120 entries (needs `per_screen_camera`).
@@ -76,8 +76,8 @@ Data: `data/fog.json`. The type table spells `Fog_Of_War` plainly. `Fog_Volume` 
 - A region clears when a hero on the fog's layer stands in it with `z ≤ top`. Top = the region's `Fog_Of_War_Z` (`z + ascent`) or else the fog's own `z + ascent` (ascent < 0 → 6.5).
 - At level load, before the history is applied: the region under each hero at its level-data position on the fog's layer clears; each `Fog_Of_War_Clear` with `radius` 0 and `clear_neighboring_screen` 0 clears its region (none on the overworld); PARTIAL regions become CLEARED. After that, every frame clears the region under each hero on the current layer.
 - Other clears: Markers named `hack_intro_fog_clear`; discovered Teleporters (the carry-over, [Teleporters in the save](#teleporters-in-the-save)).
-- `Fog_Of_War_Clear` with `clear_neighboring_screen` (89 on the overworld): when its screen clears, the neighbour EAST (sx + 1), NORTH (sy + 1), WEST (sx − 1) or SOUTH (sy − 1) is set CLEARED at once, floor-mod 10 × 12 on wrapping levels, and the rule chains. Radius markers only start `manual_clear_time`.
-- Non-primary `Fog_Of_War` (25, all sky): one `region_states` entry (none with `clear_as_part_of_room`), set PARTIAL when any hero is inside `position ± props.box_extents` (half-open; the point is moved to its copy nearest the box, so 12 boxes that cross the seam cover both sides). `create_overhang` boxes also build overhang geometry; `only_overhang_no_fog` ones draw no fog.
+- `Fog_Of_War_Clear` with `clear_neighboring_screen`: when its screen clears, the neighbour EAST (sx + 1), NORTH (sy + 1), WEST (sx − 1) or SOUTH (sy − 1) is set CLEARED at once, floor-mod 10 × 12 on wrapping levels, and the rule chains. Radius markers only start `manual_clear_time`.
+- Non-primary `Fog_Of_War` (all in the sky): one `region_states` entry (none with `clear_as_part_of_room`), set PARTIAL when any hero is inside `position ± props.box_extents` (half-open; the point is moved to its copy nearest the box, so boxes that cross the seam cover both sides). `create_overhang` boxes also build overhang geometry; `only_overhang_no_fog` ones draw no fog.
 - `Fog_Of_War_Z` sets its region's vertical extent: `[z − descent, z + ascent]` (4.5 / 6.5 when negative). The first one per region wins.
 - **Saved state**: `region_states` is entity state (`NoEditorSave`, empty in level data). It is in `overworld.history` as CHANGE actions on the fog Pids, each carrying the whole array. Current state = the `new` of the action with the largest record key ([Overworld state from the save](#overworld-state-from-the-save)). No action = all FILLED. Nothing in Status.
 - Undo never reverts a fog CHANGE in play, but the undone record and its CHANGE are freed. A region cleared during a move that was then undone is not in the saved history: after a reload it is FILLED again unless a hero stands in it (the first frame clears it) or a later move cleared it. Nothing else brings back a clear lost to undo.
@@ -88,7 +88,7 @@ Data: `data/fog.json`. The type table spells `Fog_Of_War` plainly. `Fog_Volume` 
 
 - An area is an `Area_Pin` (`local_area_name`, `local_area_image`, `map_label_marker_id`, `activated`) plus the `Marker`s with `script_name` `local_area` whose `script_target_entity_id` is that pin: oriented boxes (position, orientation, scale, `props.box_extents`).
 - Every frame the game resets `current_area_pin` to 0 and the best priority to +∞ (skipped while the active hero entry has no living Guy: every Guy in it has DEAD in `status_flags`), then walks the Entity_Manager's Marker array, skipping zero-extent boxes. A `local_area` box holding a hero is a candidate. The box test uses the hero's `position` (not `visual_position`), moved to its copy nearest the box as in [Wrapping](WORLD.md#wrapping) (by the fast-travel box for boxes at map-room z). A candidate counts only if its `float_parameter` is strictly lower (`<`) than the best so far, and only a candidate whose pin is `activated` updates the best priority and the current pin. On equal priority the first in the array wins. The array is in record order: the level loader reads the entity records in file order and registers each one, which appends it to its type's array. Destroying an entity swaps the last one of its type into its place, but no Spawner prototype, transmute or smash on the overworld is a Marker, so the order holds in play. With no box, or inside a level, it is 0. Status keeps the pin's Pid. A second pin slot in the area state takes every candidate box, whatever its pin's activation; nothing reads it.
-- A level is entered while the hero stands on its Level_Entry's cell, so the area shown there is the box rule at the entry's position. An entry outside every `local_area` box shows no area.
+- A level is entered from its Level_Entry's cell ([Winning and other inputs](SKILLS.md#winning-and-other-inputs)), so the area shown there is the box rule at the entry's position. An entry outside every `local_area` box shows no area.
 - Since an unactivated pin's box doesn't lower the best priority, a box inside a lower-`float_parameter` box is named only while the outer pin is not activated. The overworld has such nested boxes. So in an overlap the named area depends on the save's activated pins.
 - The local area map, opened by TAB inside a map room, shows `current_area_pin`'s name and image ([Wrapping](WORLD.md#wrapping)).
 - The area title (`show_area_title`) appears when the current pin becomes a non-zero pin other than the last one shown, in normal camera mode only. Leaving every box shows nothing. The HUD draws the name and `local_area_image` only from `current_area_pin`.

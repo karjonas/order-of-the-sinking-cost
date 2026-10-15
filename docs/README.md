@@ -18,7 +18,7 @@ meant to be enough to rebuild the viewer's map and progress logic with nothing e
 | [ENTITIES.md](ENTITIES.md) | The overworld's entity types, the existence groups that make entities appear and vanish together, and the collectibles. |
 | [MOVEMENT.md](MOVEMENT.md) | How a move resolves (support, falling, water, pushing and pulling) and every mechanic that moves things: gates, rocks, skipping stones, monsters, beams, mirrors, rovers, lilies, rivers, elevators, pads and Spawners. |
 | [SKILLS.md](SKILLS.md) | The hero's inputs: skills, wardrobes, a direction press, TELEPORT and PULL, CHARM, TRANSMUTE and the other skills, winning, and the move flags. |
-| [PROGRESSION.md](PROGRESSION.md) | The game's progression rules: Level_Entry unlocking (ice gates, Signs, towers), the campaign status fields, achievements and ranks, the endings, campaigns and level sets, the in-game progress displays, treasures and gold rooms, and the overworld level data. |
+| [PROGRESSION.md](PROGRESSION.md) | The game's progression rules: Level_Entry unlocking (Freezers, Signs, towers), the campaign status fields, achievements and ranks, the endings, campaigns and level sets, the in-game progress displays, treasures and gold rooms, and the overworld level data. |
 | [STATE.md](STATE.md) | What a save keeps of a level and how it is read: the undo history, the overworld state from the save, fog of war and areas. |
 | [VIEWER.md](VIEWER.md) | The viewer's own model built on the game's rules: the walk, level states, roles, unlock plans, goals and their roles, level areas, the page and the spoiler rules. The game does none of those; they are how the viewer approximates what the player can reach. |
 | [SAVES.md](SAVES.md) | Byte layouts of the save files, `settings.menu_state`, `Status.sokoban_status` and the `<level>.history` undo files, with every version the game reads. Types are in [Notation](#notation). |
@@ -30,8 +30,9 @@ meant to be enough to rebuild the viewer's map and progress logic with nothing e
 
 - Names are the game's own: type, field and enum names from its Jai type information (exported to
   `data/schema.json`), plus its strings and its level and resource names. A common name is added where it helps:
-  ice gate (`Freezer`), Beamcaster (`Promesst_Light`). The [Glossary](#glossary) lists them.
-- Counts are for the overworld unless stated.
+  Beamcaster (`Promesst_Light`). A `Freezer` keeps its game name, and the viewer shows it as an ice cage (model A,
+  `GAME_OVER_Freezer_A`) or an ice gate (model B, `GAME_OVER_Freezer_B`). The [Glossary](#glossary) lists them.
+- Statements are about the overworld unless stated.
 - Positions are overworld squares unless a section says otherwise. [Positions and cells](WORLD.md#positions-and-cells)
   explains the coordinate systems.
 - Status is the campaign status file `Status.sokoban_status`
@@ -58,7 +59,7 @@ meant to be enough to rebuild the viewer's map and progress logic with nothing e
 |---|---|
 | hero, Guy | `Guy`; the active one is named by Pid in each undo record |
 | level, star on the map | `Level_Entry` (`level_name` = the level file) |
-| ice gate, freezer | `Freezer` (open = `unfrozen`) |
+| Freezer, ice cage, ice gate | `Freezer` (open = `unfrozen`); the viewer shows it as an ice cage (model A, `GAME_OVER_Freezer_A`) or an ice gate (model B, `GAME_OVER_Freezer_B`) |
 | gate, barrier | `Gate` (open = `open`), driven by `Switch`es of the same `flavor`, or by Monsters (`is_monster_gate`) |
 | button | `Switch` |
 | rock, boulder, crystal, stone | `Rock`; crystal = a TRANSMUTE product (`transmuted_from_entity_type`); stone = `properties` SKIPPABLE |
@@ -83,7 +84,7 @@ meant to be enough to rebuild the viewer's map and progress logic with nothing e
 | voice log | `Voice_Log` |
 | tower | `Tower` |
 | dropdown level | `Level_Entry.dropdown`: a tower level that counts only for the tower's gold status |
-| sign | `Sign`; some open ice gates by rank, tower or gold rooms ([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)) |
+| sign | `Sign`; some open Freezers by rank, tower or gold rooms ([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)) |
 | rank | Status `rank` (`Character_Rank`, Visitor to Sokoban) |
 | gold room | where a ground tower's MINOR pad leads: its `gold_room_endpoint` Teleporter in the ground antipode hub ([Treasures and gold rooms](PROGRESSION.md#treasures-and-gold-rooms)) |
 | crossroads, antipode hub | the hub area of each layer (`area_g_crossroads`, `area_s_upper_crossroads`, `area_u_crossroads_low`), and the hubs half a period from them ([Endings](PROGRESSION.md#endings)) |

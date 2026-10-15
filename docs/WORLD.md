@@ -8,33 +8,34 @@ wrapping and map rooms.
 | Path | Contents |
 |---|---|
 | `sinking_star.exe` | the game (Jai, Thekla) |
-| `data/levels.package` | `simp` archive: one `<level>.entities` and one `<level>.level_manifest` per level (974 levels), 66 `.level_set` lists, one asset manifest |
+| `data/levels.package` | `simp` archive: one `<level>.entities` and one `<level>.level_manifest` per level, the `.level_set` lists, one asset manifest |
 | `data/materials.package`, `shaders.package`, `animation.package` | materials (text), shaders, animations and sound events |
-| `data/strings/*.localization` | 11 text files (`en`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pt-br`, `ru`, `s-cn`, `t-cn`) plus `subtitles/`. A key line starts with a backtick; its value lines follow up to a blank line. `Language` has 11 values |
+| `data/strings/*.localization` | one text file per language (`en`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pt-br`, `ru`, `s-cn`, `t-cn`) plus `subtitles/`. A key line starts with a backtick; its value lines follow up to a blank line. `Language` has a value for each |
 | `data/fonts`, `data/sound` | fonts; sound banks (`GeneratedSoundBanks`) |
 | `data/*.keymap`, `All.variables`, `Local.variables` | key bindings and variables (text) |
-| `data-common/<level>.all_paint_data`, `.all_lightmap_data` | per-level vertex paint and lightmaps (974 each) |
+| `data-common/<level>.all_paint_data`, `.all_lightmap_data` | per-level vertex paint and lightmaps, one each per level |
 | `data-pc/*.compressed_mesh`, `*.texture` | LZ4-compressed meshes and textures; `data-pc/__<level>.texture` is a level's start-state screenshot |
 
 Saves are not in the game folder ([Levels, level sets and saves](#levels-level-sets-and-saves)). Package and file layouts: [Game data packages](GAMEDATA.md#game-data-packages).
 
 ## Levels, level sets and saves
 
-- A level is one `.entities` file: a type table (all 88 entity types in every level) and a flat entity list. Each level has exactly one `Settings` entity.
+- A level is one `.entities` file: a type table (every entity type, in every level) and a flat entity list. Each level has exactly one `Settings` entity.
 - Every entity has a Pid (`namespace << 20 | serial`, written `#ns-serial`), unique only inside its level. References between entities (`unlocked_by_id`, `target_id`, `tower_id`, `map_label_marker_id`, `group_id`, ...) are Pids in the same level.
-- `Settings.special_level`: `OVERWORLD` (only `overworld`), `INTRO` (`intro`), `END1` and `HEROES_CAGE_DISAPPEAR` (one level each), `NONE` for the other 970.
-- A puzzle level is entered from its `Level_Entry` once that entry is enabled. Loading a level gives it a `Level_State_Flags` entry in the campaign status; a win sets `SOLVED` ([Level_Entry unlocking and state](PROGRESSION.md#level_entry-unlocking-and-state)).
-- Level sets (`.level_set`) are ordered level lists with `*choice`, `*worlds_collide` and `*glyphs` directives. 66 sets; 36 levels are in none; a level can be in several. Each overworld level is in exactly one set outside `drafts*`, `tests*`, `render_tests*`, `gyms*`, `unplaced_levels` and `design_illustrations`. That set is an authoring group, not an area: one set spans nearly the grid's whole width. `data/progress.json` keeps it per level (`set`).
-- `Door` is in 935 levels. The 3 overworld Doors (mesh `GAME_SOKO_Exit_A`) lead to `intro` with `target_link` `~end1`, `~end2`, `~end3`. `Door.switch_to_level_set` switches level sets.
-- `Level_State` (Pid `#1021-1` in 449 levels) holds per-level runtime state: `misc_flags` (`Level_State_Misc_Flags`), `skipping_stones_treasure_flags`, ...
+- `Settings.special_level`: `OVERWORLD` (only `overworld`), `INTRO` (`intro`), `END1` and `HEROES_CAGE_DISAPPEAR` (one level each), `NONE` for every other level.
+- A puzzle level is entered from its `Level_Entry` once that entry is enabled, by the TakeOrDrop action while one living hero stands on it ([Winning and other inputs](SKILLS.md#winning-and-other-inputs)). Loading a level gives it a `Level_State_Flags` entry in the campaign status; a win sets `SOLVED` ([Level_Entry unlocking and state](PROGRESSION.md#level_entry-unlocking-and-state)).
+- Level sets (`.level_set`) are ordered level lists with `*choice`, `*worlds_collide` and `*glyphs` directives. A few levels are in no set; a level can be in several. Each overworld level is in exactly one set outside `drafts*`, `tests*`, `render_tests*`, `gyms*`, `unplaced_levels` and `design_illustrations`. That set is an authoring group, not an area: one set spans nearly the grid's whole width. `data/progress.json` keeps it per level (`set`).
+- `Door` is in nearly every level. The 3 overworld Doors (mesh `GAME_SOKO_Exit_A`) lead to `intro` with `target_link` `~end1`, `~end2`, `~end3`. `Door.switch_to_level_set` switches level sets.
+- `Level_State` (Pid `#1021-1` where a level has one) holds per-level runtime state: `misc_flags` (`Level_State_Misc_Flags`), `skipping_stones_treasure_flags`, ...
+  - `light_colors_entered` and `light_colors_used` are 32-bit masks with one bit per `Promesst_Power` colour index. `entered` gets a colour's bit when a coloured entity stands in a beam of that colour, and drives the first-time hint events. `used` gets it when a move actually uses a beam of that colour (with the `character_beam_use_<colour>` events). No gameplay reads `used`.
 - `Overworld_Unlock` is in 6 levels (`promesst1_streamlined`, `promesst2_streamlined`, `promesst2.5_deeper`, `promesst3_streamlined`, `skipping_stones`, `ingame_particles`). Touching it marks the level `PARTIALLY_SOLVED`.
-- Level_Entries outside the overworld: 26 in `intro`, 1 in `end3_promesst_red`. They do not count for completion.
-- 56 levels wrap their grid (`grid.wrapping`): `overworld`, `intro`, the `torus_*` and `wrapping_mirror*` levels, `promesst1..3_streamlined`, `frontier`, `ortho*` and others.
+- Level_Entries outside the overworld: the post-credits ones in `intro`, and one in `end3_promesst_red`. They do not count for completion.
+- Some levels wrap their grid (`grid.wrapping`): `overworld`, `intro`, the `torus_*` and `wrapping_mirror*` levels, `promesst1..3_streamlined`, `frontier`, `ortho*` and others.
 - `Settings.story_tag` names story levels: `overworld`, `skipping_stones`, `skipping_pals`, `promesst1`..`3`, `magnitudes_intro`.
 - Boats exist only in 5 story levels (`skipping_stones`, `skipping_pals`, `end3_skipping_1`, `end3_skipping_red`, `skipping_near_beams_v2`). `Boat.identity` picks a dialogue speaker. The overworld has none.
 
 Saves live in `%USERPROFILE%\Saved Games\Order of the Sinking Star\`: `settings.menu_state` plus one folder per
-campaign. A campaign folder holds `Status.sokoban_status` (rank, achievements, per-level flags, opened ice gates,
+campaign. A campaign folder holds `Status.sokoban_status` (rank, achievements, per-level flags, opened Freezers,
 counters) and one `<level>.history` per level with its kept undo state. Saves go through a save thread that writes
 `_temp_<name>` and then replaces the target. A level's `.history` is deleted when the level is won. Status names the
 current level until it is saved again, so file times can't tell leaving a level from playing it. Campaign naming and
@@ -42,7 +43,7 @@ level-set selection: [Campaigns and level sets](PROGRESSION.md#campaigns-and-lev
 
 ## The overworld: coordinates, layers, screens, wrapping
 
-The overworld is ONE level, `overworld` (205,362 entities, 181,753 of them `Inanimate` scenery). Ground, sky,
+The overworld is ONE level, `overworld` (most of its entities are `Inanimate` scenery). Ground, sky,
 underworld and the three map rooms are height bands of the same grid, not separate levels.
 
 ### Settings (overworld values)
@@ -98,7 +99,7 @@ The game builds a layer table from Settings and the three `FAST_TRAVEL` `Camera_
 
 - A `Group` with `bind_to_layer` (`Group_Layer_Index`: GROUND, SKY, UNDERWORLD, FAST_TRAVEL_GROUND, FAST_TRAVEL_SKY, FAST_TRAVEL_UNDERWORLD) puts its members on that layer whatever their z.
 - `data/progress.json` `map.layers` draws underworld z −57..−4, ground −4..10, sky 10..75.16 (−57 is the lowest height drawn), in that order.
-- Per layer: Level_Entries 466 ground / 221 underworld / 233 sky; Towers 6 / 6 / 4; Area_Pins 29 / 28 / 25.
+- Each layer has its own Level_Entries, Towers and Area_Pins.
 - One `Annihilator` sits at z −100. Anything falling below it is annihilated.
 
 ### Screens and rooms
@@ -131,16 +132,17 @@ Drawing and the TAB map:
   - What it shows: the normal world draw, framed on that box (inferred). Only the current ground layer's scenery groups are drawn, those above the camera's z hidden. The overhead-only overhang groups need an overhead weight over 0.5, so they never show in mode 2. Mode 2 draws no map overlays: the Level_Entry markers and the Area_Pin name labels need the overhead weight, which is 0 there, and a layer of 2 or less, so they never show inside a map room. The area-name toggle (`action_activate`) works only in mode 1.
   - The HUD draws only `current_area_pin`'s `local_area_name` and `local_area_image` ([Areas](STATE.md#areas)).
 - Overhead map bounds (anchor "Could not figure out the overhead view bounds"): by default the grid, [corner − 0.5, corner + size − 0.5]. With the overhead `Camera_Controls` flag `adjust_to_explored_fog`: the box of cleared fog screens on the layer, at least 5 × 5 screens (95 × 65 = MAIN_MAP_INITIAL_BOUNDS) plus a 4-square pad. An axis where that box touches both grid edges takes the layer's MAIN_MAP `Camera_Marker` box instead: ground centre (79, 76) extents (94.6, 78.9); sky (70.2, 77), (94.4, 78.9); underworld (80, 77), (84.6, 78.9). Half-height = max(bounds_w × window_h / window_w, bounds_h) / 2: the bounds fit on both axes. The view centres on the bounds' centre, so the fully zoomed-out ground map centres near x 79, not on the grid centre 70.5.
-- The ocean band on the TAB map is land, not the seam: the easternmost screen column (x 147..165) has 1–26 land squares per column, most others 15–104.
+- The ocean band on the TAB map is land, not the seam: the easternmost screen column (x 147..165) has far fewer land squares per column than most others.
 
 ### Map rooms
 
 - Each map room is the whole 190 × 156 world scaled into the fast-travel box: x scale 0.263, y 0.233, offsets 40.9 / 104.0, largest error 1.5 cells. Room z: underworld twins at 78, ground at 89, sky at 105 (one at 109). The FAST_TRAVEL markers at (60, 122) ± (25.4, 18.8) match the box.
-- Every MAJOR pad on a layer has a twin in a map room: 161 world pads, 161 twins (ground 73 ↔ room at z 89, underworld 48 ↔ z 78, sky 40 ↔ z 105). All 161 twins target their world pad.
+- Every MAJOR pad on a layer has a twin in a map room (ground ↔ room at z 89, underworld ↔ z 78, sky ↔ z 105). Every twin targets its world pad.
 - Map-room geometry is existence-group content ([Existence groups](ENTITIES.md#existence-groups)): most of it is absent until a pad's discovery makes its Group exist.
 - A map-room layer is one room ([Screens and rooms](#screens-and-rooms)), so the whole z 78 room is a single room for Gem_Slot power and for magic Mirrors.
 - Three twin links in the underworld room (z 78) need a mechanic to walk:
   - (55, 114, 78) → (48, 117, 78), FUGreenBeamRoom → FUZap, through the THROUGH Promesst_Light at (58, 114, 78). The room's only Gem_Slot (59, 114, 78), the Gem on it and the light are all members of Group FUGreenBeamRoom. The room powers the moment that Group exists, and the beam comes on ("beam_on"), so the link opens on its own. The light reads `powered` 0 in the level data and both saves because FUGreenBeamRoom has never existed: no z 78 Group has ever changed `exists` in the default save.
   - (72, 130, 78) → (72, 125, 78), FUThiefMirrorableMirror → FUMirrorableMirror, through the magic Mirror at (71, 126, 78): the hero goes (71, 127) → (72, 126), then south onto the pad. Magic Mirrors use no room power, and the hero stands in the Mirror's room (the whole layer), so ACTIVATE works there unpowered ([Magic mirrors](MOVEMENT.md#magic-mirrors)).
-  - (45, 124, 78) → (49, 123, 78), FURoverstravaganzaSouth → FUCrystalRover: a 6-cell island in deep water, reached by riding the `mirrorable` Rover at (47, 124, 77), θ 0. The Rover sits in an ice gate whose `unlocked_by_id` is the Level_Entry `mirror_crystal_rover`, so it can drive only after that level is solved. The Rover, its ice gate and the pad (49, 123, 78) are members of FUCrystalRover, which does not exist by default. The twin (45, 124, 78) starts disabled, and only its world pad (18, 87, −21) enables it; that pad lies inside the closed underworld pocket of `crystal_rover_*`, `perch_3_rovers`, `triple_skip` and `quadruple_skip`. Its `also_discover` enables (49, 123) and so makes the Rover exist. So the ride is that pocket's way out, to (32, 83, −21) in the main underworld region, never its way in: riding west from (49, 123) the hero arrives on a disabled twin. Where the Rover's track stops, at the fenced east edge of (49, 124), and boarding at (46, 124) are inferred.
-- Where the other two links lead: the green-beam link is the way out of the underworld pocket at (52, 42, −21) to (27, 58, −21) in the main region, and its far twin (48, 117) is also enabled by the twin (53, 112, 78); the magic-Mirror link joins the pocket at (118, 112, −21) to the one at (121, 90, −21).
+  - (45, 124, 78) → (49, 123, 78), FURoverstravaganzaSouth → FUCrystalRover: a small island in deep water, reached by riding the `mirrorable` Rover at (47, 124, 77), θ 0. The Rover sits in a Freezer whose `unlocked_by_id` is the Level_Entry `mirror_crystal_rover`, so it can drive only after that level is solved. The Rover, its Freezer and the pad (49, 123, 78) are members of FUCrystalRover, which does not exist by default. The twin (45, 124, 78) starts disabled, and only its world pad (18, 87, −21) enables it; that pad lies inside the closed underworld pocket of `crystal_rover_*`, `perch_3_rovers`, `triple_skip` and `quadruple_skip`. Its `also_discover` enables (49, 123) and so makes the Rover exist. So the ride is that pocket's way out, to (32, 83, −21) in the main underworld region, never its way in: riding west from (49, 123) the hero arrives on a disabled twin. Where the Rover's track stops, at the fenced east edge of (49, 124), and boarding at (46, 124) are inferred.
+- Where the other two links lead: the green-beam link (55, 114) → (48, 117) is a fast-travel link only. The pocket at (52, 42, −21) is entered and left on foot along the THROUGH beam of the light at (59, 42, −21), whose Freezer is opened by `breaking_bread`; the far twin (48, 117) is also enabled by the twin (53, 112, 78). The magic-Mirror link is the only way from the pocket at (118, 112, −21) to the one at (121, 90, −21), which is otherwise entered only through its own pad; the game needs it.
+- The Rover link: the map-room Rover (47, 124, 77) is frozen until `mirror_crystal_rover` (30, 86, −21) is solved; afterwards it carries the hero from (45, 124) to (49, 123), linking the (18, 87, −21) pocket to (32, 83, −21) for fast travel.
