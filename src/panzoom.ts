@@ -91,6 +91,7 @@ export interface PanZoom {
 interface ZoomTarget {
     width: number;
     point: WorldPoint;
+    capCentre: WorldPoint;
     clientX: number;
     clientY: number;
     time: number;
@@ -113,6 +114,7 @@ interface Pinch {
     distance: number;
     width: number;
     point: WorldPoint;
+    capCentre: WorldPoint;
     clampWidth: (width: number) => number;
 }
 
@@ -394,9 +396,31 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         return (width) => Math.min(highest, Math.max(lowest, width));
     };
 
+    // the centre of the copy of the cap box nearest the view's centre. A zoom gesture keeps the copy it started with:
+    // the copy nearest the moving view flips when the view crosses halfway between two copies.
+    const capCentreAt = (): WorldPoint => {
+        const cap = capBox();
+        const capCentreX = cap.x + cap.w / 2;
+        const capCentreY = cap.y + cap.h / 2;
+        const viewCentreX = viewBox.x + viewBox.w / 2;
+        const viewCentreY = viewBox.y + viewBox.h / 2;
+        return {
+            x: capCentreX + nearestCopy(viewCentreX - capCentreX, content.w),
+            y: capCentreY + nearestCopy(viewCentreY - capCentreY, content.h),
+            shiftX: shift.x,
+            shiftY: shift.y,
+        };
+    };
+
     // sizes the view to `width` (keeping its aspect) with the world point (from worldAt) under the client position;
     // false while the svg has no size
-    const anchor = (width: number, point: WorldPoint, clientX: number, clientY: number): boolean => {
+    const anchor = (
+        width: number,
+        point: WorldPoint,
+        capCentre: WorldPoint,
+        clientX: number,
+        clientY: number,
+    ): boolean => {
         const svgRect = rect();
         if (!(svgRect.width > 0 && svgRect.height > 0)) return false;
 
@@ -425,13 +449,12 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         // shows the whole box centred
         if (zoomingOut && width > cap * 0.75) {
             const pull = Math.min(1, (width - cap * 0.75) / (cap * 0.25));
-            const capCentre = capBox();
-            const capCentreX = capCentre.x + capCentre.w / 2;
-            const capCentreY = capCentre.y + capCentre.h / 2;
+            const capCentreX = capCentre.x + shift.x - capCentre.shiftX;
+            const capCentreY = capCentre.y + shift.y - capCentre.shiftY;
             const viewCentreX = viewBox.x + width / 2;
             const viewCentreY = viewBox.y + height / 2;
-            viewBox.x += pull * (capCentreX + nearestCopy(viewCentreX - capCentreX, content.w) - viewCentreX);
-            viewBox.y += pull * (capCentreY + nearestCopy(viewCentreY - capCentreY, content.h) - viewCentreY);
+            viewBox.x += pull * (capCentreX - viewCentreX);
+            viewBox.y += pull * (capCentreY - viewCentreY);
         }
 
         applyView();
@@ -441,7 +464,7 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
     const zoomNow = (clientX: number, clientY: number, factor: number): void => {
         stop();
         touch();
-        anchor(limits()(viewBox.w * factor), worldAt(clientX, clientY), clientX, clientY);
+        anchor(limits()(viewBox.w * factor), worldAt(clientX, clientY), capCentreAt(), clientX, clientY);
     };
 
     // zoom steps accumulate into a target width; the view eases towards it with the anchored point held under the client position
@@ -459,6 +482,7 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         zoomTarget = {
             width: limits()(startWidth * factor),
             point: worldAt(clientX, clientY),
+            capCentre: previous ? previous.capCentre : capCentreAt(),
             clientX,
             clientY,
             time: previous ? previous.time : performance.now(),
@@ -477,7 +501,7 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         const done = Math.abs(target.width - width) < target.width * 0.004;
         if (done) width = target.width;
 
-        if (!anchor(width, target.point, target.clientX, target.clientY) || done) {
+        if (!anchor(width, target.point, target.capCentre, target.clientX, target.clientY) || done) {
             zoomTarget = null;
             options.onIdle?.();
         } else {
@@ -563,7 +587,8 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
             const pair = pointerPair();
             if (pair.distance < 1) return;
 
-            anchor(pinch.clampWidth((pinch.width * pinch.distance) / pair.distance), pinch.point, pair.x, pair.y);
+            const width = pinch.clampWidth((pinch.width * pinch.distance) / pair.distance);
+            anchor(width, pinch.point, pinch.capCentre, pair.x, pair.y);
         } else if (drag && drag.pointerId === event.pointerId) {
             if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 3) {
                 wasDragged = true;
@@ -633,6 +658,7 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
                 distance: Math.max(1, pair.distance),
                 width: viewBox.w,
                 point: worldAt(pair.x, pair.y),
+                capCentre: capCentreAt(),
                 clampWidth: limits(),
             };
             drag = null;

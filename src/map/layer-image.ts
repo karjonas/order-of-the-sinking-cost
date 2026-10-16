@@ -9,6 +9,7 @@ import { gridCol, mapCol } from '../walk/cells.ts';
 import { FLOOR_HEIGHTS } from '../walk-data.ts';
 import { FOG_RGB, oklab, oklabRgb } from './colors.ts';
 import type { Rgb } from './colors.ts';
+import { pngUrl } from './png.ts';
 
 /** The squares of each map layer that a change turned into water, as world (x, y) per square. */
 export type OceanSquares = Record<string, Array<[x: number, y: number]>>;
@@ -100,15 +101,11 @@ const WATER_RGB: Rgb = [51, 104, 139];
 /** A data URL of a map-sized image (MAP_SCALE pixels per square) whose RGBA bytes fill(pixels) writes. */
 export function imageUrl(fill: (pixels: Uint8ClampedArray) => void): string {
     const [width, height] = PROG.map.size;
-    const canvas = document.createElement('canvas');
-    canvas.width = width * MAP_SCALE;
-    canvas.height = height * MAP_SCALE;
-
-    const context = canvas.getContext('2d')!;
-    const image = context.createImageData(canvas.width, canvas.height);
-    fill(image.data);
-    context.putImageData(image, 0, 0);
-    return canvas.toDataURL();
+    const imageWidth = width * MAP_SCALE;
+    const imageHeight = height * MAP_SCALE;
+    const pixels = new Uint8ClampedArray(imageWidth * imageHeight * 4);
+    fill(pixels);
+    return pngUrl(imageWidth, imageHeight, pixels);
 }
 
 /** Writes a colour (and alpha) to the pixel at a byte offset of image data. */
