@@ -1,11 +1,13 @@
 // Rocks and spare Gems pushed into water with turns: a Rock or Gem the walk can push to a cell where it sinks makes the
 // water cell a bridge (MOVEMENT.md "Objects in water", VIEWER.md "Moves")
+import { attackedAt } from './attacks.ts';
 import { BRIDGE_MARK, cellOnSide, PUSH, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { missChanged, PRESS_CELLS, PRESS_FALL, pressInputs, walled } from './gates.ts';
 import type { PressMiss } from './gates.ts';
 import { levelWater, waterAt } from './ocean.ts';
 import { requeue, visitReached } from './queue.ts';
+import { reachedEntries } from './room-answers.ts';
 import { holdsStone, standable } from './support.ts';
 import { swappedTo, visitSwaps } from './swaps.ts';
 import type { WalkGrid } from './walker.ts';
@@ -52,7 +54,7 @@ function fallsThroughSurfaces(surfaces: Array<number | null>, sinkSurface: numbe
  * first cell that holds it, or sinks in the first cell of water level with its height, where it becomes a bridge.
  * null where the push fails or the Rock never lands.
  */
-function landingOf(walkGrid: WalkGrid, floodState: FloodState, from: number, side: number): Landing | null {
+export function landingOf(walkGrid: WalkGrid, floodState: FloodState, from: number, side: number): Landing | null {
     const { grid, layerCells } = walkGrid;
     const fromZ = Math.floor(from / layerCells) - Z_BIAS;
     let cell = cellOnSide(walkGrid, from, side);
@@ -89,7 +91,8 @@ function landingOf(walkGrid: WalkGrid, floodState: FloodState, from: number, sid
 
 /**
  * Calls visit(landing) for each push of the object in `from` that the hero can make from a cell the flood reached in
- * layer 0, as a Rock lands in landingOf. None when the object cannot stand in `from`. The push cells turned down because
+ * layer 0, as a Rock lands in landingOf. None when the object cannot stand in `from` or `from` is attacked (the hero
+ * steps into it and dies). The push cells turned down because
  * the flood has not reached them go to `miss`.
  */
 export function pushLandings(
@@ -102,6 +105,7 @@ export function pushLandings(
     const { layerCells, visited } = walkGrid;
     const z = Math.floor(from / layerCells) - Z_BIAS;
     if (walled(walkGrid, floodState, from) || !holdsStone(walkGrid, floodState, from, z)) return;
+    if (attackedAt(walkGrid, from)) return;
 
     for (let side = 0; side < 4; side++) {
         const pushCell = cellOnSide(walkGrid, from, (side + 2) % 4);
@@ -206,6 +210,25 @@ function bridgeOf(walkGrid: WalkGrid, floodState: FloodState, rockCell: number, 
 }
 
 /**
+ * The first water cell where the stored answer of the Rock's room (room-answers.ts) has the Rock in `rockCell` sink
+ * into a bridge that joins new ground, from a start the walk has reached, else -1. The start cells not reached, and the
+ * cells beside a water cell that joined nothing, go to `miss`.
+ */
+function storedBridgeOf(walkGrid: WalkGrid, floodState: FloodState, rockCell: number, miss: PressMiss): number {
+    const entries = walkGrid.rooms.byCell.get(rockCell);
+    if (!entries) return -1;
+
+    for (const entry of reachedEntries(walkGrid, floodState.outside, entries, miss.pushCells)) {
+        for (const waterCell of entry.bridges.get(rockCell) ?? []) {
+            if (floodState.bridged.has(waterCell)) continue;
+            if (joinsNewGround(walkGrid, floodState, waterCell, miss)) return waterCell;
+        }
+    }
+
+    return -1;
+}
+
+/**
  * Whether the Rock can still sink: it exists (a crystal Rock needs its target turned), it has not sunk, and its straight
  * bridge has not sunk it either (`bridgeTaken`).
  */
@@ -285,7 +308,8 @@ export function sinkTurned(walkGrid: WalkGrid, floodState: FloodState): boolean 
         if (miss && !missChanged(walkGrid, floodState, miss, swaps)) continue;
 
         const newMiss: PressMiss = { inputs: pressInputs(floodState) + swaps, pushCells: [], wallStops: [] };
-        const waterCell = bridgeOf(walkGrid, floodState, cell, newMiss);
+        let waterCell = storedBridgeOf(walkGrid, floodState, cell, newMiss);
+        if (waterCell < 0) waterCell = bridgeOf(walkGrid, floodState, cell, newMiss);
 
         if (waterCell < 0) {
             rockMisses[rockIndex] = newMiss;

@@ -16,6 +16,14 @@ function attack(walkGrid: WalkGrid, cell: number): void {
     walkGrid.attackCount.set(cell, (walkGrid.attackCount.get(cell) ?? 0) + 1);
 }
 
+/**
+ * Whether a goblin or a dragon's fire attacks `cell`. A hero who steps into it dies in that turn's attack unless he is
+ * protected, so a push that moves him into the cell the object leaves is no push for a hero without PROTECTION.
+ */
+export function attackedAt(walkGrid: WalkGrid, cell: number): boolean {
+    return (walkGrid.cellFlags[cell] & FIRE) !== 0;
+}
+
 /** A goblin's facing: GOBLIN; a dragon's: its facing side, from its latest theta_target, else the level data's. */
 function foeFacing(walkGrid: WalkGrid, pid: number, kind: number): number {
     if (kind < 0) return GOBLIN;
@@ -94,6 +102,11 @@ export function placeAttacks(walkGrid: WalkGrid): void {
         if (kind >= GOBLIN) foes.push([cell, facing, monsterIndex]);
     }
 
+    castAttacks(walkGrid, foes);
+}
+
+/** Runs the attacks of the goblins and dragons `foes` (their cell, facing and index into `monsters`). */
+function castAttacks(walkGrid: WalkGrid, foes: Array<[cell: number, facing: number, monsterIndex: number]>): void {
     for (const [foeCell, facing, monsterIndex] of foes) {
         if (facing === GOBLIN) {
             goblinAttacks(walkGrid, foeCell);
@@ -104,4 +117,26 @@ export function placeAttacks(walkGrid: WalkGrid): void {
         walkGrid.fireOf.set(monsterIndex, fireCells);
         for (const fireCell of fireCells) addTo(walkGrid.burningBy, fireCell, monsterIndex);
     }
+}
+
+/**
+ * Works out the attacks of the living goblins and dragons again, for the Freezers and objects as the grid has them now:
+ * a dragon's fire runs through a Freezer that is open and stops at one that is closed.
+ */
+export function recastAttacks(walkGrid: WalkGrid): void {
+    for (const cell of walkGrid.attacked) walkGrid.cellFlags[cell] &= ~FIRE;
+
+    walkGrid.attacked.clear();
+    walkGrid.burning.clear();
+    walkGrid.burningBy.clear();
+    walkGrid.fireOf.clear();
+    walkGrid.attackCount.clear();
+
+    const foes: Array<[cell: number, facing: number, monsterIndex: number]> = [];
+
+    walkGrid.monsters.forEach(({ cell, facing }, monsterIndex) => {
+        if (facing >= GOBLIN) foes.push([cell, facing, monsterIndex]);
+    });
+
+    castAttacks(walkGrid, foes);
 }

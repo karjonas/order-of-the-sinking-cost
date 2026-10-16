@@ -189,15 +189,17 @@ as `map`, and fog. Level roles (Required / Optional, the Freezers each level sit
 ### data/walk.json
 
 What the walk model ([The walk model (viewer)](VIEWER.md#the-walk-model-viewer)) works out from the level data alone,
-so the page doesn't redo it on every load. `scripts/build-walk.js` runs the page's own `staticRoles()` and
-`floorHeights()` over `progress.json` and writes it last in the pipeline.
+so the page doesn't redo it on every load. `scripts/build-walk.js` runs the room search (`searchRooms()`), then the
+page's own `staticRoles()` and `floorHeights()` with the room answers in use, over `progress.json`, and writes it last
+in the pipeline.
 
 | Key | Shape |
 |---|---|
-| `inputs` | {`progress.json`, `world.json`}: the SHA-256 (hex) of each input file's bytes. `tests/walk-data.test.js` fails when they no longer match, or when the walk on the current code gives other roles or floors |
+| `inputs` | {`progress.json`, `world.json`}: the SHA-256 (hex) of each input file's bytes. `tests/walk-data.test.js` fails when they no longer match, or when the walk on the current code gives other roles, floors or room answers |
 | `roles.need` | {l, g}: one digit per level (`progress.json` `levels` order) and per Freezer (`freezers` order): 2 Required, 1 Required as one of several, 0 Optional ([Level roles (viewer)](VIEWER.md#level-roles-viewer)) |
 | `roles.bg` | {l, g}: per level and per Freezer, the indices into `freezers` of the Freezers it sits behind, ascending |
 | `floors` | {underworld, ground, sky}: per map layer key, zlib + base64 of one byte per map column (W × H = 29640, row-major, row 0 = north, as `map.json`): the highest z where the walk on the level data stands the hero there, plus 128; 0 where it stands him nowhere. The flood: gates as stored, no Freezer closed, every teleporter enabled and discovered, seeded at every Level_Entry, pad and Area_Pin. All values are whole numbers |
+| `rooms` | {searched, variants, answered, empty, states, capped, data}: the exhaustive push search of the screen rooms ([Room answers](VIEWER.md#room-answers)) on the level data, with every Freezer closed and, for a room with up to three Freezers around it, with each other combination of them open. `searched`: rooms with an object and a place for the hero to start, searched with every Freezer closed; `variants`: rooms searched with some Freezers open (a merged room counts once for each combination that makes it); `answered`: answers stored that have entries; `empty`: answers stored with no entries, for rooms with no start, nothing to tell or too many positions (a walker that finds such a room as the level data has it does not search it again); `states`: positions visited in all; `capped`: the first cell of each room (or merged room) that hit the cap of 200 000 positions (no entries). `data`: zlib + base64 of JSON, a list of rooms `[cells, attackers, entries, opens]`: `cells` the room's cells (grid cell keys, ascending, each as the difference from the one before, the first from 0); `attackers` the pids of the Monsters whose attacks cross the room or the cells beside it, with the Freezers of `opens` open; `entries` the answers, one per start and one for all starts together, each `[reps, bridges, holders, filled, dead]`: `reps` a cell of each start piece of ground; `bridges`, `holders` and `filled` flat lists of `key, count, values…` (per Rock its water cells, per Switch cell its objects, per Gem_Slot cell its Gems, a Rock, object or Gem by the cell the level data puts it in); `dead` the cells of the Monsters that die; `opens` the states of the Freezers around the room (the Freezers in its cells or beside them, above or below, ascending by index) the answer holds for, each a bit set with bit n set when the nth of those Freezers is open (0: all closed). A cell key is `(z + 80) × W × H + row × W + column` on the walk's grid |
 
 ## Drawing the map
 

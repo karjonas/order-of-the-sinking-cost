@@ -29,6 +29,9 @@ import { magicMirrorHops } from './mirror-isles.ts';
 import type { SwitchHop } from './mirror-isles.ts';
 import type { RoomMonster } from './monster-gates.ts';
 import { deep, placeWater } from './ocean.ts';
+import { NO_ROOMS, roomIndexOf } from './room-answers.ts';
+import type { RoomIndex } from './room-answers.ts';
+import { searchTouchedRooms } from './room-search.ts';
 import {
     heroHoldsCharm,
     heroLayerOf,
@@ -175,6 +178,8 @@ export interface WalkGrid extends GridShape {
     // the cells of the objects that press no Switch
     notPressers: Set<number>;
     heroLayer: number;
+    // the stored room answers this walker may use (the rooms the save leaves as the level data has them)
+    rooms: RoomIndex;
     triggers: Triggers;
     // per world pad, the map-room pads that target it (the geometry's); their cells; per cell, the pocket a flood from
     // a pad cell found
@@ -329,6 +334,7 @@ function newWalkGrid(
         transmuteDoors: new Set(),
         notPressers: new Set(),
         heroLayer: 0,
+        rooms: NO_ROOMS,
         triggers: NO_TRIGGERS,
         twinsOf: geometry.twinsOf,
         twinCells: [],
@@ -383,6 +389,19 @@ export function walker(
     closedFreezers: readonly boolean[],
     geometry: LevelGeometry = levelGeometry(),
 ): Walker {
+    return walkerOf(buildWalkGrid(latest, teleporterStates, closedFreezers, geometry));
+}
+
+/**
+ * The grid of the walk model for one overworld state, built as walker() does, for callers that read the grid itself:
+ * the room search (room-search.ts) and the tests of the walk.
+ */
+export function buildWalkGrid(
+    latest: LatestValues,
+    teleporterStates: TeleporterState[],
+    closedFreezers: readonly boolean[],
+    geometry: LevelGeometry = levelGeometry(),
+): WalkGrid {
     const walkGrid = newWalkGrid(geometry, latest, teleporterStates, closedFreezers);
     placeWallSets(walkGrid);
     const unmovedRocks = placeEntities(walkGrid);
@@ -419,11 +438,26 @@ export function walker(
     placeTransmuteDoors(walkGrid);
     placeNotPressers(walkGrid);
     walkGrid.heroLayer = heroLayerOf(walkGrid);
+    walkGrid.rooms = roomIndexOf(walkGrid);
+    placeTouchedRooms(walkGrid);
     walkGrid.triggers = triggerIndex(walkGrid);
     placeTwins(walkGrid);
     walkGrid.revealedPads = revealedPadsOf(walkGrid);
     placeMechanics(walkGrid);
 
+    return walkGrid;
+}
+
+/**
+ * Adds the answers of the rooms the stored answers do not cover, searched on this grid. None where no answers are set,
+ * as the search then runs live (room-answers.ts).
+ */
+function placeTouchedRooms(walkGrid: WalkGrid): void {
+    if (walkGrid.rooms !== NO_ROOMS) searchTouchedRooms(walkGrid, walkGrid.rooms);
+}
+
+/** What a walker gives its callers, over a built grid. */
+function walkerOf(walkGrid: WalkGrid): Walker {
     return {
         flood: (seeds, outside, front, options) => flood(walkGrid, seeds, outside, front, options),
         skyEntrances: () => skyEntrances(walkGrid),

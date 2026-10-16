@@ -38,6 +38,7 @@ import { bringObjectOnto, missChanged, pressInputs } from './gates.ts';
 import type { PressMiss } from './gates.ts';
 import { exists } from './groups.ts';
 import { requeue, visitReached } from './queue.ts';
+import { reachedEntries } from './room-answers.ts';
 import { LAYER_COUNT } from './skills.ts';
 import { blocked, holdsStone, standable } from './support.ts';
 import { swappedTo, visitSwaps } from './swaps.ts';
@@ -555,7 +556,33 @@ function gemToSlot(
 }
 
 /**
- * Pushes the free Gems the hero reaches onto the Gem_Slots they turn to: any pushes the walk back from the slot finds.
+ * The cell of a free Gem of the turn's room that the stored answer of the slot's room (room-answers.ts) has stand on
+ * the slot, from a start the walk has reached, else -1. The start cells not reached go to `miss`.
+ */
+function storedGemToSlot(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    beamFlood: BeamFlood,
+    turn: GemTurn,
+    miss: PressMiss,
+): number {
+    const { slotCell, gemCells } = turn;
+    const entries = walkGrid.rooms.byCell.get(slotCell);
+    if (!entries) return -1;
+
+    for (const entry of reachedEntries(walkGrid, floodState.outside, entries, miss.pushCells)) {
+        for (const gemCell of entry.filled.get(slotCell) ?? []) {
+            if (!gemCells.has(gemCell) || beamFlood.gemsMoved.has(gemCell)) continue;
+            if (!blocked(walkGrid, floodState, gemCell)) return gemCell;
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * Pushes the free Gems the hero reaches onto the Gem_Slots they turn to: the Gems the stored answer of the slot's room
+ * has stand on it, else any pushes the walk back from the slot finds.
  * A slot's search that found no Gem is looked at again only once what it reads has changed. Returns whether any Gem
  * moved.
  */
@@ -569,7 +596,9 @@ function pushTurnedGems(walkGrid: WalkGrid, floodState: FloodState, beamFlood: B
         const slotCell = turn.slotCell;
         if (pushedOnto.has(slotCell)) continue;
 
-        const startable = gemPushable(walkGrid, floodState, beamFlood, turn) || floodState.swapsAt.has(slotCell);
+        const stored = walkGrid.rooms.byCell.has(slotCell);
+        const startable =
+            gemPushable(walkGrid, floodState, beamFlood, turn) || floodState.swapsAt.has(slotCell) || stored;
         if (!startable) continue;
 
         const slotZ = Math.floor(slotCell / walkGrid.layerCells) - Z_BIAS;
@@ -580,7 +609,8 @@ function pushTurnedGems(walkGrid: WalkGrid, floodState: FloodState, beamFlood: B
         if (miss && !missChanged(walkGrid, floodState, miss)) continue;
 
         const newMiss: PressMiss = { inputs: pressInputs(floodState), pushCells: [], wallStops: [] };
-        const gemCell = gemToSlot(walkGrid, floodState, beamFlood, turn, newMiss);
+        let gemCell = storedGemToSlot(walkGrid, floodState, beamFlood, turn, newMiss);
+        if (gemCell < 0) gemCell = gemToSlot(walkGrid, floodState, beamFlood, turn, newMiss);
 
         if (gemCell < 0) {
             turnMisses[turnIndex] = newMiss;

@@ -489,6 +489,22 @@ export interface WalkFile {
 
     /** Per map layer key, zlib + base64 of the highest z where the walk stands the hero, plus 128. */
     floors: MapLayerValues<string>;
+
+    /**
+     * The push search of the screen rooms: how many rooms it searched with every Freezer closed, how many with some
+     * Freezers open, how many answers it stores that have something to tell, how many it stores for rooms with nothing
+     * to tell, no start or too many positions, how many positions it visited, the first cell of each room that hit the
+     * cap, and zlib + base64 of the answers as JSON.
+     */
+    rooms: {
+        searched: number;
+        variants: number;
+        answered: number;
+        empty: number;
+        states: number;
+        capped: number[];
+        data: string;
+    };
 }
 
 /** One field of an entity type in data/schema.json: k is p plain (sz bytes), s string, r resource name or a array of `e`. */

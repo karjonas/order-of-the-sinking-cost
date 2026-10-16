@@ -1,28 +1,32 @@
-// data/walk.json against the walk on the current level data and code: a stale file (other inputs, or walk rules that
-// changed since `npm run data:walk`) fails here
-import { createHash } from 'node:crypto';
+// data/walk.json against the walk on the current level data and code: a stale file (other inputs, or walk code that
+// changed since `npm run data:walk`) fails here. The room answers are checked by their inputs; the full search that
+// recomputes them runs only with WALK_FULL=1 (PowerShell: $env:WALK_FULL = '1'; npm test -- run tests/walk-data.test.js)
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { inflateSync } from 'node:zlib';
 import { beforeAll, expect, test } from 'vitest';
+import { walkInputs } from '../scripts/lib/walk-inputs.js';
+import { PROG } from '../src/data.ts';
 import { staticRoles } from '../src/model/static-roles.ts';
-import { floorHeights } from '../src/walk/reachability.ts';
+import { NO_HISTORY, floorHeights } from '../src/walk/reachability.ts';
+import { packRooms, roomAnswers, setRoomAnswers } from '../src/walk/room-answers.ts';
+import { searchRooms } from '../src/walk/room-search.ts';
+import { teleporterStatesOf } from '../src/walk/teleporters.ts';
+import { buildWalkGrid } from '../src/walk/walker.ts';
 import { FLOOR_HEIGHTS, STATIC_ROLES, walkReady } from '../src/walk-data.ts';
 
 const DATA = join(import.meta.dirname, '..', 'data');
 const stored = JSON.parse(readFileSync(join(DATA, 'walk.json'), 'utf8'));
-const sha256 = (name) =>
-    createHash('sha256')
-        .update(readFileSync(join(DATA, name)))
-        .digest('hex');
+const FULL_SEARCH = process.env.WALK_FULL === '1';
 
 beforeAll(async () => {
     await walkReady;
 });
 
-test('walk.json was built from the current data files', () => {
-    const names = Object.keys(stored.inputs);
-    expect(names).toContain('progress.json');
-    for (const name of names) expect(stored.inputs[name], name).toBe(sha256(name));
+test('walk.json was built from the current inputs', () => {
+    const current = walkInputs();
+    expect(Object.keys(stored.inputs)).toEqual(Object.keys(current));
+    for (const [name, hash] of Object.entries(current)) expect(stored.inputs[name], name).toBe(hash);
 });
 
 test('the stored static roles are the ones the walk works out', () => {
@@ -42,3 +46,30 @@ test('the stored floor heights are the ones the walk works out', () => {
         expect(Buffer.from(storedBytes).equals(Buffer.from(bytes)), key).toBe(true);
     }
 });
+
+test.skipIf(!FULL_SEARCH)(
+    'the stored room answers are the ones the room search works out',
+    { timeout: 120_000 },
+    () => {
+        const used = roomAnswers();
+        setRoomAnswers(null);
+
+        try {
+            const allFreezersClosed = PROG.freezers.map(() => true);
+            const walkGrid = buildWalkGrid(NO_HISTORY, teleporterStatesOf(null), allFreezersClosed);
+            const result = searchRooms(walkGrid);
+
+            const storedJson = inflateSync(Buffer.from(stored.rooms.data, 'base64')).toString();
+            expect(JSON.stringify(packRooms(result.rooms))).toBe(storedJson);
+            expect(stored.rooms.searched).toBe(result.searched);
+            expect(stored.rooms.variants).toBe(result.variants);
+            const answered = result.rooms.filter((room) => room.entries.length > 0).length;
+            expect(stored.rooms.answered).toBe(answered);
+            expect(stored.rooms.empty).toBe(result.rooms.length - answered);
+            expect(stored.rooms.states).toBe(result.states);
+            expect(stored.rooms.capped).toEqual(result.capped);
+        } finally {
+            setRoomAnswers(used);
+        }
+    },
+);

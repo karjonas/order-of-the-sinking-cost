@@ -238,7 +238,7 @@ export const NO_TRIGGERS: Triggers = {
 };
 
 /** A new flood's state. */
-function newFloodState(
+export function newFloodState(
     triggers: Triggers,
     laneCount: number,
     outside: Set<number> | null,
@@ -346,8 +346,12 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
     const rocks = [...rockTurnsOf(walkGrid), ...crystalTurnsOf(walkGrid, transmutes)];
     const rocksAt = new Map<number, number[]>();
 
+    // a Rock whose room has a stored answer is due once the walk reaches a start of that answer
     rocks.forEach(({ cell }, rockIndex) => {
         for (const side of SIDES) addTo(rocksAt, cellOnSide(walkGrid, cell, side), rockIndex);
+        for (const entry of walkGrid.rooms.byCell.get(cell) ?? []) {
+            for (const rep of entry.reps) addTo(rocksAt, rep, rockIndex);
+        }
     });
 
     const mirrorTurns = mirrorTurnsOf(walkGrid);
@@ -358,6 +362,20 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
     });
 
     const monsterGates = monsterGatesOf(walkGrid);
+
+    // a Monster whose room has a stored answer is due once the walk reaches a start of that answer
+    for (const [monsterCell, monsterIndex] of monsterGates.monsterAt) {
+        for (const entry of walkGrid.rooms.byCell.get(monsterCell) ?? []) {
+            for (const rep of entry.reps) addTo(monsterGates.monstersAt, rep, monsterIndex);
+        }
+    }
+
+    // the pushes for the beams of a Gem_Slot whose room has a stored answer start from a start of that answer
+    for (const { slotCell } of walkGrid.beamMoves.gemTurns) {
+        for (const entry of walkGrid.rooms.byCell.get(slotCell) ?? []) {
+            for (const rep of entry.reps) walkGrid.beamMoves.pushCells.add(rep);
+        }
+    }
 
     const flavors: FlavorLatch[] = [];
     for (const [flavor, { open, shut }] of walkGrid.latch) flavors.push({ flavor, open, shut });

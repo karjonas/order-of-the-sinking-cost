@@ -1,11 +1,13 @@
 // Gates and Switches: the latches that switch presses change, the moves that bring an object onto a Switch, and an
 // OPEN beam bumping a Gate open (MOVEMENT.md "Gates, switches and buttons", "Promesst beams and powers")
 import { latestFlag } from '../save.ts';
+import { attackedAt } from './attacks.ts';
 import { addTo, cellOnSide, GATE, neighbourOf, PUSH, SIDES, SOLID, SUPPORT, THRU, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { exists, place, put } from './groups.ts';
 import { deep, levelWater, waterAt } from './ocean.ts';
 import { push, requeue, settle, visitReached } from './queue.ts';
+import { reachedEntries } from './room-answers.ts';
 import { LAYER_COUNT } from './skills.ts';
 import { landingsOf, skipsOver } from './skipping-stones.ts';
 import { blocked, gateShutNow, holdsStone, standable } from './support.ts';
@@ -377,7 +379,8 @@ export function openGateAhead(
  * a cell. `accepts`: whether the pushable in `from` is an object the walk is after, given whether the way on from it
  * skips and whether a skip on the way is a stone a hero with CHARM launches; any other pushable ends its branch.
  * `stays`: whether an object may be pushed through the cell `from` (all cells when left out). `charms`: whether a hero
- * with CHARM launches skipping stones (left out: none).
+ * with CHARM launches skipping stones (left out: none). A push from an attacked cell is never made: the hero steps into
+ * it and dies.
  */
 export interface WalkBackRule {
     heroPushes: (pushCell: number) => boolean;
@@ -433,6 +436,7 @@ export function bringObjectOnto(
 
         const visitWay: PushWay = (from, pushCell, skip, charmed) => {
             if (found >= 0) return;
+            if (!charmed && attackedAt(walkGrid, from)) return;
 
             if (!heroPushes(pushCell)) {
                 miss.pushCells.push(pushCell);
@@ -467,9 +471,38 @@ export function bringObjectOnto(
 }
 
 /**
+ * The cell of an object not in `taken`, and not one that presses another flavor's Switch, that the stored answer of the
+ * Switch's room (room-answers.ts) has stand on the Switch cell, from a start the walk has reached, else -1. The start
+ * cells not reached go to `miss`.
+ */
+function storedObjectOnto(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    switchCell: number,
+    taken: Set<number>,
+    miss: PressMiss,
+): number {
+    const entries = walkGrid.rooms.byCell.get(switchCell);
+    if (!entries) return -1;
+
+    const { grid, notPressers } = walkGrid;
+
+    for (const entry of reachedEntries(walkGrid, floodState.outside, entries, miss.pushCells)) {
+        for (const objectCell of entry.holders.get(switchCell) ?? []) {
+            if (!(grid[objectCell] & PUSH)) continue;
+            if (taken.has(objectCell) || floodState.pressing.has(objectCell) || notPressers.has(objectCell)) continue;
+            return objectCell;
+        }
+    }
+
+    return -1;
+}
+
+/**
  * The cell of an object not in `taken`, and not one that presses another flavor's Switch, that the walk can bring onto
- * the Switch cell, pushing from cells it reached without a Wardrobe skill or that lie `outside` it (a way with a skip
- * only carries a skipping stone), else -1.
+ * the Switch cell: the stored answer of its room has it stand there, or the walk back from the Switch finds it,
+ * pushing from cells it reached without a Wardrobe skill or that lie `outside` it (a way with a skip only carries a
+ * skipping stone). Else -1.
  */
 function objectOnto(
     walkGrid: WalkGrid,
@@ -478,6 +511,9 @@ function objectOnto(
     taken: Set<number>,
     miss: PressMiss,
 ): number {
+    const stored = storedObjectOnto(walkGrid, floodState, switchCell, taken, miss);
+    if (stored >= 0) return stored;
+
     const { visited, notPressers, stoneCells, charmStones } = walkGrid;
     const outside = floodState.outside;
 

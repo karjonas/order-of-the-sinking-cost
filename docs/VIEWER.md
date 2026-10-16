@@ -8,7 +8,7 @@ reach.
 
 The viewer's own approximation of where the hero can go: `walker()` and `reachability()`, data from
 `data/world.json` and `data/progress.json` ([Derived data files](DATAFILES.md#derived-data-files)). What the walk
-gives on the level data alone (the static roles and the map's floor heights) is worked out at build time and stored in
+gives on the level data alone (the static roles, the map's floor heights and the room answers) is worked out at build time and stored in
 `data/walk.json` ([data/walk.json](DATAFILES.md#datawalkjson)). It is fitted to the game's rules but is not the game's
 walk code. Every simplification is listed at the end of this section.
 
@@ -72,7 +72,7 @@ re-derived inside it.
 
 ### Support and open cells
 
-- Supported (`supported`): SOLID in the cell itself, as the game holds an entity inside a wall voxel ([Support](MOVEMENT.md#support)); such a cell is entered only as a THRU cell, along a THROUGH beam, so a hero who steps into a floating wall voxel stays in it, over water or air; FLOOR in the cell; a cell of a Lily's drift ([Cells](#cells)); a notted Gate the flood has shut in the cell below; a closed Freezer in the cell below, except in the floods of pockets, where only a fall lands on one ([Pockets, leads and why](#pockets-leads-and-why)); SUPPORT in the cell below, unless that is a Gate the flood has opened; a bridged water cell ([Moves](#moves)), and in a pocket flood every rock bridge's water cell; a powered DOUBLE beam cell over water with z within 0.6 of the surface; else the implicit ground floor, ground layer only: z ≤ 0 on a dry column, z < 0 in water. The map rooms' implicit floor is left out: a fall that starts in a map room lands inside that room's layer or nowhere.
+- Supported (`supported`): SOLID in the cell itself, as the game holds an entity inside a wall voxel ([Support](MOVEMENT.md#support)); such a cell is entered only as a THRU cell, along a THROUGH beam, so a hero who steps into a floating wall voxel stays in it, over water or air; FLOOR in the cell; a cell of a Lily's drift ([Cells](#cells)); a notted Gate the flood has shut in the cell below; a closed Freezer in the cell below, except in the floods of pockets, where only a fall lands on one ([Pockets, leads and why](#pockets-leads-and-why)); SUPPORT in the cell below, unless that is a Gate the flood has opened; a living Monster in the cell below (not one the flood has pushed to its death, [Moves](#moves)) or a movable there, a Gem, Promesst_Light, Rover, Friendly_Dragon or vertical Mirror, which hold up whatever stands above them as a Rock does, wherever the walk leaves them ([Support](MOVEMENT.md#support)); a flat Mirror holds up nothing; a bridged water cell ([Moves](#moves)), and in a pocket flood every rock bridge's water cell; a powered DOUBLE beam cell over water with z within 0.6 of the surface; else the implicit ground floor, ground layer only: z ≤ 0 on a dry column, z < 0 in water. The map rooms' implicit floor is left out: a fall that starts in a map room lands inside that room's layer or nowhere.
 - The walk does not model the column mask ([Support](MOVEMENT.md#support)). On the overworld the Annihilator makes every column count as inside, so the mask makes no cell solid, and the ground floor above is the game's implicit-floor rule.
 - Blocked: SOLID or GATE, unless the cell is a THROUGH beam's wall cell (THRU); a GATE without SOLID also passes when a switch press has opened it or a hero in an OPEN beam has bumped it open ([Moves](#moves)). An open notted Gate that a switch press has shut is blocked. A closed Freezer is always blocked.
 - Open = not blocked and supported.
@@ -134,9 +134,10 @@ cell holds the hero from the start, whichever side the push cell is on.
 Rocks that turn on the way to the water. Once the queue has drained and nothing else adds cells, a Rock (or spare Gem)
 the hero has reached a cell beside, which is no skipping stone and has not bridged yet, is pushed on, one cell at a time, over at
 most 2048 positions, nearest first, from cells the flood reached in layer 0 (the cells a pocket or lead flood stays out of
-do not count). A push moves the Rock one cell onto a cell that holds it, or off a ledge, and it falls through open air
+do not count). The hero steps into the cell the object leaves, so no push from an attacked cell is made, in this
+search or in the Switch, Gem, Mirror and Monster searches. A push moves the Rock one cell onto a cell that holds it, or off a ledge, and it falls through open air
 and water by the rules of the Switch search above (at most 8 cells, none through a wall, Gate, closed Freezer or
-pushable); in water level with its height it sinks, which makes the water cell above its resting cell hold the hero,
+pushable, and none past a cell the water cancels the step into); in water level with its height it sinks, which makes the water cell above its resting cell hold the hero,
 as a bridge does. A Rock bridges at the nearest such water cell that joins ground the flood has reached to a standable
 cell it has not; it bridges once, and not after its straight bridge did. The search is walked forward from the Rock,
 unlike the Switch search, since open sea has far more water cells than there are Rocks. The sunk Rock is not placed:
@@ -242,10 +243,11 @@ beside each, as for a bridge (above a shut one). Flavors go in the order of thei
   bridged, or the dry implicit ground floor). SUPPORT below counts even where the flood has opened that Gate: a Gate shut at any point in the flood holds an object, though an
   opened one holds up no hero ([Support and open cells](#support-and-open-cells)).
 - The ways onto a cell: a push onto it; a push off a ledge above it, with a fall of at most 8 cells through open air
-  (no wall, Gate, closed Freezer, pushable, water or cell that holds it on the way). Water stops the fall, but for a
-  cell one below the surface of the water over it: a Rock sinks to the surface − 1 of water it falls into ([Objects
-  in water](MOVEMENT.md#objects-in-water)), so a push into that water, at its surface or above it, sinks the object onto
-  the cell; a skip, for a skipping stone
+  (no wall, Gate, closed Freezer, pushable or cell that holds it on the way). Water stops the fall at a cell 2 below
+  its surface, which cancels the step into it ([Falling](MOVEMENT.md#falling)); above the surface a fall passes, also in
+  a column with water, so an object pushed off a ledge lands on what stands below the dry air over the water. A Rock
+  sinks to the surface − 1 of water it falls into ([Objects in water](MOVEMENT.md#objects-in-water)), so a push into
+  that water, at its surface or above it, sinks the object onto the cell; a skip, for a skipping stone
   only: it is pushed into level water and its landings ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap))
   hold the cell. A stone on a drifting Lily can be pushed off it into a skip too. A MIRRORABLE stone is also launched
   by a hero with CHARM (the paragraph above on stones launched with CHARM), from any cell he reached in layer 0 beside it.
@@ -401,6 +403,86 @@ these out as lanes once per walker.
 - Left out: pushes are single ([Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)). A swap
   onto the stone puts it in the hero's line cell, from where the walk does not push it on to another launch.
 
+### Room answers
+
+The walk's searches for Rocks, Switch objects, Gems and Monsters push one object at a time and take the hero's push
+cells from the cells the flood reached ([Moves](#moves)), with caps on the cells they visit. The build searches every
+screen room of the level data exhaustively instead, with all its objects moving, and `data/walk.json` `rooms` stores what
+it finds (`searchRooms()`, `src/walk/room-search.ts`; [data/walk.json](DATAFILES.md#datawalkjson)). A walker uses the
+answer of a room whose save leaves it as the level data has it, and runs the same search on its own grid for every other
+room that holds an object (`searchTouchedRooms()`); only the inputs differ.
+
+- A room is a 4-connected set of cells in one z and one screen (19 × 13 squares) where the hero stands or an object
+  rests, cut at Fences, Gates (shut or not, so the room does not depend on a Gate's state) and closed Freezers,
+  water-level cells nothing holds up, Lily, drifting-Lily and bridge cells, the map rooms, and, below the ground, cells
+  only the implicit floor holds up. What holds up a cell is the ground, so a room is cut with the objects out of the
+  grid. Only rooms with an object are searched.
+- Freezers: the build searches each room with every Freezer closed. A room with up to three Freezers around it (in its
+  cells or beside them, above or below) is searched again for every other combination of those Freezers open. An open
+  Freezer's square is ground like any other cell: the hero and the objects use it if something holds it up, and it holds
+  up nothing above it ([Support and open cells](#support-and-open-cells)). The rooms on the far side of an open Freezer
+  join the room on that screen, so the search is of the merged room, and the cells that lose their support, if any, leave
+  it. An answer is stored for the merged room and the state of the Freezers around it (their open and closed states),
+  and rooms with the same cells and the same answer are stored once, for each state they hold in. A room with more
+  Freezers around it than the search allows keeps its all-closed answer only. A walker picks the answer whose state
+  matches the Freezers of its save. The attacked cells are worked out again with the Freezers open: a dragon's fire runs
+  through an open Freezer and stops at a closed one ([Goblins, dragons and PROTECTION](MOVEMENT.md#goblins-dragons-and-protection)),
+  and a goblin's six cells do not depend on Freezers.
+- The objects are the room's Rocks, skipping stones, Gems, Promesst_Lights, Mirrors, Rovers, Friendly_Dragons and
+  Monsters, in the cells the grid has them: the level data's for the stored answers, the save's latest cells for a room
+  the walker searches. The grid holds the rest as it does for the walk (the other rooms' objects stand still).
+- A room with no start, nothing to tell or too many positions is stored with no entries, so that a walker which finds it
+  as the level data has it knows it was searched and does not search it again.
+- The hero walks over the room's cells and the cells beside it (its halo) that he stands in: not an attacked cell, a
+  cell under the water, or a cell only an object holds up while the object is away. A cell holding an object blocks
+  him. His start is the pieces of ground that reach into the halo (up to six, the largest; all pieces for a room the halo
+  does not touch). Each start has its own search, and a room with several has one for all of them together as well,
+  which keeps only what the single starts do not find. A start is used once the walk has reached its cell in layer 0.
+- A push is the walk's own ([Moves](#moves)): the hero stands in the cell behind the object, no Fence is on either edge,
+  the object stands on a floor, and it lands as a Rock does (one cell on, falling through open air and water at most 8
+  cells, none through a wall, Gate, closed Freezer or pushable). The hero then stands in the cell it left, so an object
+  in an attacked cell is not pushed. Positions are told apart by where each object is and by the lowest cell of each piece of ground the hero walks over; an object that
+  ends where the hero has no cell behind it is not pushed on, wherever it lands, so an object that leaves the room is
+  not followed once he cannot reach it.
+- Where an object sinks: a Rock or spare Gem bridges the water cell, a skipping stone is gone (its skips stay with the
+  skip lanes, [Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)), a Monster drowns, and a Gem
+  that a room's light needs, a Promesst_Light, a Mirror, a Rover or a Friendly_Dragon is not pushed into water. A Monster
+  pushed to a cell dies in the fire of another dragon (one off the cell the level data puts it in burns nothing there) or
+  beside a living goblin, and a dragon pushed to a cell kills the first Monster of the room its fire hits, as in
+  [Moves](#moves).
+- An answer holds, per start: for each Rock (by the cell its grid puts it in) the water cells it sinks in; for
+  each Switch the objects that stand on it; for each Gem_Slot the Gems that stand on it; and the Monsters that die. Each
+  fact is reachable alone. Facts about different objects may not be reachable together, as with the walk's
+  one-object searches (a flavor takes each Switch's object once, [Moves](#moves)).
+- A room that needs more than 200 000 positions has no stored answer and keeps the walk's searches (`rooms.capped`); so
+  does one state of the Freezers around a room whose merged room needs more, while the other states keep theirs. A room
+  the walker searches on its grid has a cap of 20 000 positions and keeps the walk's searches above it.
+
+A walker uses a room's answer when the save leaves the room as the level data has it: every entity in the room or
+beside it (a cell beside it, above or below) is where the level data puts it and in its state (its position, existence,
+facing, properties, pressed, open, `dead_t`, a Gem's holder, a Gem_Slot's flags), the Monsters whose attacks cross the room
+are as well, no Rock or Tree the save created stands in it, none of its Groups or Wall_Sets or the Ocean_Maps over it
+differs from the level data, and the Freezers around it are in a state the answer holds for. A walker searches every
+other room that holds an object on its own grid, from the objects, Freezers, Gates, water and attacks the save leaves
+(the rooms are cut as above, on that grid), and uses the answer in the same way as a stored one; a room that needs more
+than the cap keeps the walk's searches alone.
+
+The answers are asked before the walk's own searches and add to them: a Rock that turns takes the first water cell of
+the answer that joins new ground; a Switch search takes the first object of the answer that no flavor has taken; a Gem
+for a Gem_Slot with turns and a Monster that dies are taken from the answer too. What the answer does not hold is still
+searched as before, which keeps the searches the answer does not model (TELEPORT swaps, skips, CHARM, objects that leave
+a room, Gates and Freezers the flood opens). A room's objects count as due once the walk has reached the answer's start
+cells, and a search that found nothing is asked again when one of them is reached.
+
+The walk's searches never push from an attacked cell: the hero steps into the cell the object leaves, and a hero without
+PROTECTION dies there in that turn's attack ([Goblins, dragons and PROTECTION](MOVEMENT.md#goblins-dragons-and-protection)).
+The answer leaves such pushes out the same way. The walk's searches still read the hero's push cells more loosely than
+the answer does: they take every cell reached when the search starts as a push cell, whatever the earlier pushes of the
+same search have done to the way there (a Rock pushed out of a one-cell passage shuts the cell behind it). So they can
+find a bridge the answer lacks, and `tests/room-answers.test.js` checks that what they find from a room's start is
+held by the answer, stored or searched on the walker's grid, but for the few such Rocks it lists. The searched answers
+have the same few: it is the same search.
+
 ### Pads revealed through the map rooms
 
 - `reveals(T)`: discovering pad i discovers its `target_id`, then its `also_discover`, each with its own chain (a pad already in the set ends it), then its `also_discover2` alone. Of those, the world-layer pads (layers 0-2) other than i are its reveals.
@@ -445,9 +527,10 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 - Mirrors: no reflections of fire, beams or the TELEPORT line (each ends at the Mirror; the TELEPORT line only swaps with a Mirror met on its back or a closed side, [Moves](#moves)), so no lift by a beam turned up. Magic-mirror teleports only as the hops of a flat magic Mirror alone in its room below the map rooms ([Magic-mirror hops](#magic-mirror-hops)): no vertical magic Mirrors, no rooms with several, none in the map rooms, no swaps of other targets, no reflected rays, no check that the hero's cell is in the Mirror's room. A hop's ray stops at every Gate cell the save left shut, also one the flood opens later, where the game stops only at a Gate shut at the time (inferred); only a hop off a Switch the hero holds sees that Switch's flavor as pressed. A Mirror riding a Lily hops as if the Lily stayed where the save last left it.
 - Magic Mirrors pushed with turns ([Moves](#moves)): the walk searches each Mirror alone and from the cells the flood reached in layer 0, so a push cell that only the push itself opens is not used. Pushing a Mirror out of a room does not make the Mirror left in it alone there, and a hop's landing is not checked against Wardrobe door edges. Hops off a Switch the hero holds are laid only for a Mirror where the save left it, and a pushed Mirror's cell is not a Switch press. A pushed Mirror is not placed, so nothing else sees it in its new cell (rays, lanes, swaps).
 - One-way edges in pocket floods: they count every rock bridge from either side and walk skip lanes backwards, from the landing to the push side; they keep falls inside the layer they start in, and walk no fall backwards but the sky entrances and no step onto a closed Freezer's top from the side, so a drop into a ground pocket from the z 1 wall tops beside it is no way in ([Pockets, leads and why](#pockets-leads-and-why)).
-- Rocks sunk with turns ([Moves](#moves)): one bridge per Rock, at the nearest water cell that joins reached ground to unreached ground, so a Rock that could bridge either of two gaps bridges one. A gap of two or three water cells in a row closes only with that many Rocks, each found by its own search from the cells the flood reached; a gap of four or more water cells never closes, and neither does one that needs a Rock to be pushed in a row with another or pulled. A spare Gem sinks like a Rock, but how many Gems of a room may sink is not counted: with one Gem more than the open slots, two Gems of the room can both sink, and a Gem that sank can still be pushed onto a slot. A Mirror sinking is no bridge (a flat one holds nothing, [Objects in water](MOVEMENT.md#objects-in-water)); a Promesst_Light or a Rover that sinks would hold the hero up, and the walk does not push them into water. Every Rock of a chain stays in its old cell too, so a Rock pushed later does not pass that cell. A pocket flood counts a turned bridge only from its own side.
+- Rocks sunk with turns ([Moves](#moves)): one bridge per Rock, at the nearest water cell that joins reached ground to unreached ground (a Rock in a room with a [room answer](#room-answers) tries the answer's water cells first, with the room's other objects moving too), so a Rock that could bridge either of two gaps bridges one. A gap of two or three water cells in a row closes only with that many Rocks, each found by its own search from the cells the flood reached; a gap of four or more water cells never closes, and neither does one that needs a Rock to be pushed in a row with another or pulled. A spare Gem sinks like a Rock, but how many Gems of a room may sink is not counted: with one Gem more than the open slots, two Gems of the room can both sink, and a Gem that sank can still be pushed onto a slot. A Mirror sinking is no bridge (a flat one holds nothing, [Objects in water](MOVEMENT.md#objects-in-water)); a Promesst_Light or a Rover that sinks would hold the hero up, and the walk does not push them into water. Every Rock of a chain stays in its old cell too, so a Rock pushed later does not pass that cell. A pocket flood counts a turned bridge only from its own side.
 - CHARM ([Moves](#moves)): only the launch of a MIRRORABLE skipping stone into water. A charm move takes everything within 2 cells along, so the hero's other steps near a stone move it too, and a charmed Guy, Monster, Mirror or other stone takes each step with him; the walk moves none of them, and takes the cells the hero reached in layer 0 as cells he stands in with CHARM, though a hero with CHARM pushes nothing (his press is a charm move), so the cells include ones only a pushing hero reaches. A stone moved by a charm step over dry cells, kicks of the Lilies a charmed stone passes, and a TELEPORT swap onto a charmed stone (the skills stack only through two Wardrobes) are not laid. A stone skipping from an earlier launch is left out of a charm move; the walk lets the next launch follow at once. The CHARM Wardrobes' door-ins are not tracked: a Wardrobe entered by its door resets the skills, which the walk applies to PROTECTION, TELEPORT and TRANSMUTE only.
 - Skills: one push of one cell; no MULTIPUSH rows, PULL, SWAP_WITH_DRAGON. Layer 0 can't tell MULTIPUSH from PULL, CHARM or another skill, so every hero outside layers 1, 2 and 3 pushes. MULTIPUSH rows and PULL would each need a walk layer of their own, with the door-out gains and door-in resets of [Wardrobes](SKILLS.md#wardrobes). Skills don't stack on PROTECTION or TELEPORT: a PROTECTION + MULTIPUSH hero is treated as unable to push, a PROTECTION door taken in layer 2 drops TELEPORT, and a TELEPORT door taken in layer 1 drops PROTECTION. In the game that holds only when the hero enters that Wardrobe through its door, which resets him to QUEEN | SINGLE_PUSH; entered through its back or a side, he leaves it with both skills ([Wardrobes](SKILLS.md#wardrobes)).
+- TAKE_GEMS and Guys as supporters: no overworld Wardrobe or Guy holds TAKE_GEMS, so every Gem is a pushable that holds up what stands above it, and a hero who walks into a Gem's cell is not modelled. The overworld has the one Guy, the hero, so no other Guy holds anything up. The flood does not move what the hero pushes, so a pushed Gem or Monster keeps holding up the cells above its old cell, as a pushed Rock does; a room answer moves its objects and holds up the cells above each one where it stands.
 - TELEPORT ([Moves](#moves)): the line runs at his own z only (no wait on a FALLING hit at z + 1 or z + 2), does not step by the powered move vector, so it is not scaled by DOUBLE beams (the game scales it 2ⁿ, 3ⁿ with ALTER) and does not jump in an ENDPOINT beam (the game makes the line jump there, [TELEPORT and PULL](SKILLS.md#teleport-and-pull)), and doesn't turn at a Mirror's open side; a swapped target stays in its cell in the grid, but for where Swapped targets in [Moves](#moves) read it; no swap with another Guy or in an ENDPOINT jump; the flood takes both the step and the swap where the game swaps whenever the line finds a target.
 - Swapped targets ([Moves](#moves)): only a swap onto the Switch or the slot cell itself brings an object there (a swapped object pushed on from another cell is searched for a Rock that turns and not for a Switch or a slot), and only from the first swap with each object: a target that a swap moved is met where the save left it by every later swap and line. A Mirror swapped to the hero's cell hops from nothing there, a light casts no beam from it, a Gem fills a slot only in the slot's cell, and no swapped Rock is placed: it stops no beam in the cell it lands in (a swap that would is not taken) and blocks no step. A Rock swapped into water sinks there only by the pushes of the Rocks that turn. A swap from a cell a lead flood stays out of, or in a pocket flood, is not noted.
 - Beams: SMASH, STRONG; OPEN only for the Gate next to a hero standing in the beam (no pushed, falling or skipping movers, and ALTER only keeps the Gate shut: an open Gate is never shut); vertical THROUGH and vertical ENDPOINT beams; beams of lights that moved before being powered; a room losing power when a Group makes an unfilled slot exist (in the game its lights go off, [Promesst beams and powers](MOVEMENT.md#promesst-beams-and-powers)); colours other than THROUGH inside `withGroups`.
@@ -457,7 +540,26 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 - Switches: an object brought onto a Switch by CHARM (but for a launched skipping stone), PULL or MULTIPUSH, or a Monster that walks onto it (no Monster is known to walk by itself); a closed Freezer on the object's way counted as a way in. A pressed flavor keeps its gates changed for the rest of the flood, as if its objects stayed on their Switches and the hero never took one off: they are not placed, and no other flavor uses them. Flavors take their objects in latch order, the nearest first, so a later flavor may find none where another order would give it one. An object counts as held by a Gate below it that was shut at any point in the flood, even once the flood has opened it; in the game an open Gate holds nothing. Magic-mirror rays, skip lanes and lily drifts are laid out before any press, so they see each Gate as the save left it, and an OPEN beam never bumps open a notted Gate a press has shut.
 - Lilies: a river Lily counts at every cell of its drift at once ([Cells](#cells)): the hero may board it anywhere along the drift and walk up it against the current, and a stone may land on it there. On a loop that matches the game; on a drift that ends, the walk does not check that the hero reaches a cell before the Lily has passed it. A Lily off a river counts only at its data and latest cells, plus the drift of a kick ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)); a kick needs only the launch's last push cell reached, not the pushes that bring the stone there, and a Lily on a river is never kicked off it. Rover rides, river redirects, ocean resets, Activator respawns other than those of Lilies on a river ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)), elevator cargo changes at run time (the rock on the map-room copy of the hub elevator, which `SmashFastTravelRock` destroys).
 - Attacks ([Attacks](#attacks)): the walk's goblin attacks the cells beside it across a Fence, which the game spares unless the goblin stands in a SQUEEZE beam ([Goblins, dragons and PROTECTION](MOVEMENT.md#goblins-dragons-and-protection)).
-- Monster Gates ([Moves](#moves)): the walk opens a monster Gate only by pushing every Monster of its room to its death, each Monster alone, from cells the flood reached in layer 0, so a push cell that another death opens is not used. A Monster that dies leaves its cell and its attacks in the grid, so the cells a drowned dragon's fire or a dead goblin's attack leaves free are not opened, and the Monster is not placed where it dies. The fire of a pushed dragon runs over the cells of the save (a Rock the flood pushes does not stop it), the first Monster it meets dies, and a dragon at a cell where another dragon burns it is taken to burn that dragon in turn. Left out: a goblin in a SQUEEZE beam, whose attack on a Monster pushed beside it crosses Fences ([Goblins, dragons and PROTECTION](MOVEMENT.md#goblins-dragons-and-protection)), a Rock that falls on a Monster, the weight crush, a closing Gate that kills, a Monster that only a Group makes exist, a notted monster Gate, a Gate that shuts again when a living Monster is in its room again, and a Monster that walks by itself or is charmed (no Monster is known to move by itself, and the walk's CHARM launches only skipping stones).
+- Monster Gates ([Moves](#moves)): the walk opens a monster Gate only by pushing every Monster of its room to its death, each Monster alone, from cells the flood reached in layer 0, so a push cell that another death opens is not used. A Monster that dies leaves its cell and its attacks in the grid but holds nothing up, so the cells a drowned dragon's fire or a dead goblin's attack leaves free are not opened, and the Monster is not placed where it dies. The fire of a pushed dragon runs over the cells of the save (a Rock the flood pushes does not stop it), the first Monster it meets dies, and a dragon at a cell where another dragon burns it is taken to burn that dragon in turn. Left out: a goblin in a SQUEEZE beam, whose attack on a Monster pushed beside it crosses Fences ([Goblins, dragons and PROTECTION](MOVEMENT.md#goblins-dragons-and-protection)), a Rock that falls on a Monster, the weight crush, a closing Gate that kills, a Monster that only a Group makes exist, a notted monster Gate, a Gate that shuts again when a living Monster is in its room again, and a Monster that walks by itself or is charmed (no Monster is known to move by itself, and the walk's CHARM launches only skipping stones).
+- Room answers ([Room answers](#room-answers)): each room is searched alone, from the level data for the stored answers
+  and from the save's grid for the rooms the save changed, with the Freezers around it closed or open in the
+  combinations the search allows (up to three Freezers around a room for the stored answers; a room with more has its
+  all-closed answer only, and an open state whose merged room needs too many positions has none; a searched room has the
+  Freezers as the save has them). An object that leaves its room is not followed (a Rock pushed through a border is not
+  pushed on to water across it, a Monster that leaves is not counted dead), and the hero walks only over the room and the
+  cells beside it, never around by another room. His walk does not model Wardrobe door edges (skill changes), pads,
+  elevators or Lilies, and takes the attacked cells and a dragon's fire as the grid puts them, also after the dragon is
+  pushed. Beams, skip lanes, CHARM and the TELEPORT swap are not in the answers; a Freezer that stopped a beam still
+  does in an answer with it open. A Gate or a Freezer that the flood opens does not join two rooms in an answer, nor does
+  a Freezer open in the save when the state of the Freezers around the room has no stored answer (the walker then
+  searches the room itself). A Freezer farther down a column that a pushed object falls through, or farther along a
+  dragon's fire line than the room, is not among the Freezers around the room, so a stored answer does not read its
+  state. The few rooms and states over the position cap have no answer. Across several objects the answer holds facts
+  that are each reachable but not always together. The answers are asked before the walk's searches and add to them, so
+  the push cells those searches read loosely ([Room answers](#room-answers)), from cells the earlier pushes of a search
+  have cut off, stay in the walk. The searches are kept for the rooms that have an answer too: leaving them out of a room
+  with an answer loses ways in that the answer lacks (TELEPORT swaps, skips, CHARM, objects that leave a room, Gates and
+  Freezers the flood opens).
 - Pads as ways into a pocket ([Pockets, leads and why](#pockets-leads-and-why)): a MINOR pad that the save leaves disabled counts only when it is a ground Tower's pad; the level data does not link the Low towers' pad pairs to their Towers, so they lead in through nothing. A Tower pad outside the reached cells adds its Tower and its pocket's gates as alternatives, where the game needs both. A pad leads in through its own pocket only: a way that takes several pads is not followed. The pads that another pad reveals are found by looking for their cells in the pocket floods, which take pads forward, so a revealed pad's cell can lie in a pocket whose levels it does not lead back to.
 - `FastTravelEnableGroup` Markers ([Teleporter pads and fast travel](MOVEMENT.md#teleporter-pads-and-fast-travel)): a Marker the hero touches makes its Group exist, which the walk does not do; a save already holds the Groups touched so far. The lift's Marker enables the map-room copy of the ruby lift, whose pieces are a vertical ENDPOINT beam and a vertical Mirror (left out under Beams), so it would change nothing in the walk; what `FTEnd1`, which the hub Markers enable, holds is not documented. The page does not read these Markers' positions (they are not in `world.json`).
 - The map rooms' implicit floor; walls the hero can't see over. In the game every map-room layer has a dry floor at its base, z 78, 89 and 104 ([Ground layers](WORLD.md#ground-layers)), above the layer's bottom, so a dry fall there ends inside the layer, never nowhere.
