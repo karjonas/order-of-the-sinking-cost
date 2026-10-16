@@ -210,7 +210,7 @@ leaves at stage 5.
      (−9, 134), a Rock in its exit gate (−9, 132) and a goblin at (−9, 130). A has no floor at (−14, 141), and
      (−13, 141) is fenced west and north.
    - B1: (−7, 142..145), row 145 at x −7..−1, and (−1, 146). A fence on the north side of (−7, 145) closes it.
-   - B2: (−7, 146..152), row 149 at x −7..−4, and row 152 east with the flavor-999993 Gates: the Switch
+   - B2: (−7, 149..152), row 149 at x −7..−4, and row 152 east with the flavor-999993 Gates: the Switch
      (−6, 151, 44) opens (−7, 150) and (−9, 152) and shuts the notted (−7, 152). Row 152 runs east to (−13, 153),
      then across the seam to a PROTECTION Wardrobe (−13, −1, 47).
    - The corner cup: (−7, 141, 46) is a floor Fence fenced on all four sides at z 46. The air cell above it,
