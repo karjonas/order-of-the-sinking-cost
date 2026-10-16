@@ -1,4 +1,4 @@
-// The totals the page shows: treasures, Freezers, fast-travel pads, voice logs and map scrolls, each over the things not
+// The totals the page shows: treasures, Freezers, signs, fast-travel pads, voice logs and map scrolls, each over the things not
 // under fog or already found; and the gold rooms the map rings, with spoilers hidden only once visited
 // (PROGRESSION.md "Treasures and gold rooms", "In-game progress displays")
 import { PROG } from '../data.ts';
@@ -27,6 +27,7 @@ export interface TotalsByLayer {
     treasures: string;
     pods: string;
     doorways: string;
+    signs: string;
     tps: string;
     logs: string;
 }
@@ -35,6 +36,7 @@ export interface TotalsStats {
     treasures: FoundOfTotal;
     pods: FoundOfTotal;
     doorways: FoundOfTotal;
+    signs: FoundOfTotal;
     tps: FoundOfTotal;
     by: TotalsByLayer;
     logs: FoundOfTotal;
@@ -58,7 +60,7 @@ export interface Totals {
     maps: number[];
     heard: (log: VoiceLog) => boolean;
     taken: (giver: ViewGiver) => boolean;
-    finds: { tps: Finds; logs: Finds };
+    finds: { signs: Finds; tps: Finds; logs: Finds };
 }
 
 function popcount(value: number): number {
@@ -163,6 +165,11 @@ export function totalsOf({
     const pods = gates.filter((freezerIndex) => !isDoorway(freezerIndex));
     const doorways = gates.filter((freezerIndex) => isDoorway(freezerIndex));
 
+    // the signs that open Freezers, under the same fog rule as the Freezers; the tower status signs open none
+    const allSigns = PROG.signs || [];
+    const openers = indicesWhere(allSigns, (sign) => !sign.status);
+    const signs = openers.filter((i) => shownAt(layerKey(allSigns[i]), allSigns[i].p));
+
     // voice logs and map scrolls: shown when not under fog or already found
     const voiceLogs = PROG.voice_logs || [];
     const viewGivers = PROG.view_givers || [];
@@ -190,10 +197,12 @@ export function totalsOf({
                 progress.gateOpen[freezerIndex],
             ]),
         );
+    const signMet = (signIndex: number): boolean => progress.signOk(allSigns[signIndex]);
     const stats: TotalsStats = {
         treasures: [treasures.got, treasures.total],
         pods: [pods.filter((freezerIndex) => progress.gateOpen[freezerIndex]).length, pods.length],
         doorways: [doorways.filter((freezerIndex) => progress.gateOpen[freezerIndex]).length, doorways.length],
+        signs: [signs.filter(signMet).length, signs.length],
         tps: [pads.filter(padDisc).length, pads.length],
         by: {
             treasures: split(
@@ -204,6 +213,7 @@ export function totalsOf({
             ),
             pods: freezerSplit(pods),
             doorways: freezerSplit(doorways),
+            signs: split(signs.map((i): [string | undefined, boolean] => [layerKey(allSigns[i]), signMet(i)])),
             tps: split(pads.map((i): [string | undefined, boolean] => [layerKey(teleporters[i]), padDisc(i)])),
             logs: split(
                 logs.map((i): [string | undefined, boolean] => [FOG_LAYER_KEYS[voiceLogs[i].l], heard(voiceLogs[i])]),
@@ -213,6 +223,10 @@ export function totalsOf({
     };
 
     const finds = {
+        signs: findsOf(
+            openers.map((i): FindItem => ({ p: allSigns[i].p, key: layerKey(allSigns[i]), found: signMet(i) })),
+            shownAt,
+        ),
         tps: findsOf(
             teleporters
                 .map((teleporter, i): FindItem => ({

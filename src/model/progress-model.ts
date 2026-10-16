@@ -58,7 +58,7 @@ export interface ProgressModel {
     rooms: GoldRoom[];
     treasures: TreasureTotals;
     stats: TotalsStats;
-    finds: { tps: Finds; logs: Finds };
+    finds: { signs: Finds; tps: Finds; logs: Finds };
     hero: { x: number; y: number; z: number } | null;
     /** The level the save is in; null for none. */
     inLevel: number | null;
@@ -156,8 +156,8 @@ export function progressModel(camp: string): ProgressModel {
 
     const gateShown = (freezer: number) => shownAt(FOG_LAYER_KEYS[PROG.freezers[freezer].l], PROG.freezers[freezer].p);
 
-    // a plan step as the player sees it: levels, gates and towers under fog are left out; a gold room shows where the
-    // totals show it, the way onto a layer once that layer has cleared fog, a rank marker while its achievement shows
+    // a plan step as the player sees it: levels, gates, towers and signs under fog are left out; a gold room shows where
+    // the totals show it, the way onto a layer once that layer has cleared fog, a rank marker while its achievement shows
     const stepShown = (step: PlanStep) => {
         if (step.t === 'l') return !shownProgress.hidden[step.id];
         if (step.t === 'g') return gateShown(step.id);
@@ -165,6 +165,9 @@ export function progressModel(camp: string): ProgressModel {
         if (step.t === 'p') return totals.rooms.includes(PROG.gold_rooms[step.id]);
         if (step.t === 'a') return !hide || known!.includes(step.id);
         if (step.t === 'e') return !achievementHidden(step.id);
+
+        // a sign rule that is no Sign in the data has no position, so nothing to be under fog
+        if (step.t === 's' && step.id !== undefined) return signSet.has(step.id);
         return true;
     };
 

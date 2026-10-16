@@ -21,8 +21,10 @@ const PANEL_CHIPS: Array<[attribute: string, kind: PanelKind]> = [
     ['pick', 'level'],
 ];
 
-// a totals row's marker class and the overlay that shows its kind
+// a totals row's marker class (a selector for the marks to pulse) and the overlay that shows its kind; the tower
+// status signs share the signs' marks but are no part of the Signs row
 const FIND_MARKS: Record<FindKind, [markerClass: string, overlay: OverlayKind]> = {
+    signs: ['sg:not(.status)', 'gates'],
     tps: ['tp', 'tps'],
     logs: ['vl', 'logs'],
 };

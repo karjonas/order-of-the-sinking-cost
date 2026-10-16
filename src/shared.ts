@@ -44,14 +44,15 @@ export interface PageState {
 export const state: PageState = { files: new Map(), camp: null, rendered: null, pickerHelp: false };
 
 /** The totals rows of the sidebar that frame the things not found yet on the map. */
-export type FindKind = 'tps' | 'logs';
+export type FindKind = 'signs' | 'tps' | 'logs';
 
-export const isFindKind = (value: string): value is FindKind => value === 'tps' || value === 'logs';
+export const isFindKind = (value: string): value is FindKind =>
+    value === 'signs' || value === 'tps' || value === 'logs';
 
 /**
  * The narrowing of the list and the map of one campaign. goal: the key of the goal the list and the map show, '' for the
  * active one; states: the state chips that narrow the list; tower and area: the chips of a tower and an area; find: the
- * totals row (tps, logs) whose missing things the map is framed on.
+ * totals row (signs, tps, logs) whose missing things the map is framed on.
  */
 export interface ProgressFilters {
     q: string;

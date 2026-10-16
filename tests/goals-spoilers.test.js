@@ -115,6 +115,41 @@ describe('goals with spoilers hidden', () => {
         checkHidden(model);
         expect(model.goals.filter((goal) => goal.active).length).toBeLessThanOrEqual(1);
     });
+    test('a sign step follows its sign on the map; a rule that is no Sign in the data is always shown', () => {
+        const signIndex = PROG.signs.findIndex((sign) => !sign.status);
+        const step = { t: 's', id: signIndex, g: PROG.signs[signIndex] };
+        const unlisted = { t: 's', id: undefined, g: { pid: 0, rank: 1 } };
+
+        setSpoilersHidden(true);
+        const hidden = progressModel(DEMO);
+        expect(hidden.signSet.has(signIndex)).toBe(false);
+        expect(hidden.stepShown(step)).toBe(false);
+        expect(hidden.stepShown(unlisted)).toBe(true);
+
+        setSpoilersHidden(false);
+        const shown = progressModel(DEMO);
+        expect(shown.signSet.has(signIndex)).toBe(true);
+        expect(shown.stepShown(step)).toBe(true);
+        setSpoilersHidden(true);
+    });
+    test.skipIf(!hasSave(LIVE))('no ending counts a sign step whose sign is under fog', () => {
+        setSpoilersHidden(true);
+        const model = progressModel(LIVE);
+        const { plans } = model.progress;
+        let signSteps = 0;
+        for (const goal of model.goals) {
+            for (const target of goal.targets) {
+                for (const stepId of plans.steps[target] || []) {
+                    const node = plans.G.node[stepId];
+                    if (node?.t !== 's' || node.id === undefined) continue;
+
+                    signSteps++;
+                    expect(model.stepShown(node), plans.G.keys[stepId]).toBe(model.signSet.has(node.id));
+                }
+            }
+        }
+        expect(signSteps).toBeGreaterThan(0);
+    });
     test('with spoilers shown every ending is listed, and its achievement goes by its Steam name', () => {
         setSpoilersHidden(false);
         const model = progressModel(DEMO);

@@ -342,11 +342,15 @@ leaves at stage 5.
 - The exit is the Stairs (57, 0, 2) → (57, 0, 10) → the INTRO_FINAL_EXIT Door. At rank 3 the bottom pocket is small
   and drops one way to z 0. At rank 5 it joins the credits rooms (z 2, x 50–92, y 0–7) through the rank-5 Freezers
   (59, 0, 2) and (63, 6, 2). From any arrival, with every gate open and Rocks passable, a walk on foot never reaches
-  the credits rooms or the exit. The way out is the Door (45, 47, 0) to `overworld:start`. It sits in a Freezer whose Sign has
+  the credits rooms or the exit, but a teleport does: a magic Mirror pushed east of the cross hub and a light's
+  beam take the hero into the credits rooms at rank 1, and from there the Stairs (57, 0) lead up to the exit with
+  every rank-3 and rank-5 Freezer closed (seen in a save). The credits rooms drop one way to the z 0 hallway, south of
+  (49, 7, 2). The way out is the Door (45, 47, 0) to `overworld:start`. It sits in a Freezer whose Sign has
   `unlock_freezers_with_rank` 255, so it is open from the start; the opening run walks through its cell (seen in the
   default save).
-- Every arrival leaves by that Door; INTRO_FINAL_EXIT is not needed (inferred: the rules are checked, the walks are
-  not seen in a save, [Progression and the viewer's model](UNCONFIRMED.md#progression-and-the-viewers-model)):
+- Every arrival can leave by that Door; INTRO_FINAL_EXIT is not needed. After `end1` a hero was seen leaving by the
+  credits rooms' drop and the z 0 hallway. The walks below are inferred: the rules are checked, the walks are not
+  seen in a save ([Progression and the viewer's model](UNCONFIRMED.md#progression-and-the-viewers-model)):
   - from `~end1` (45, 50, 2), inside the thaw box: (44, 49, 2), down the Stairs (44, 48) to z 0, then (44, 47, 0),
     (44, 46, 0), (45, 46, 0) and north into the Door, the way the opening run entered it. The Stairs (46, 48) work
     the same way. (45, 48, 0) is solid, so the stair bottoms reach the Door only round its side;
@@ -359,7 +363,8 @@ leaves at stage 5.
 - The INTRO_FINAL_EXIT Door (45, −21, 10), Group `exit`. A hero on it in an INTRO level starts the long fade. After
   5.0 s the main loop's quit flag is set, the same flag the main menu's Quit and closing the window set, and the game
   closes. That branch writes nothing to Status. The shutdown save writes what earlier frames queued and nothing new
-  ([Files and versions](SAVES.md#files-and-versions)).
+  ([Files and versions](SAVES.md#files-and-versions)), so the history's last record is the cell before the Door, and
+  Status still names `intro`: the next start loads `intro` at that cell.
 - A "The End" menu exists (`menu_the_end`, `menu_the_end_console_continue` "Return to Lobby"), but no caller of the
   menu-mode setter passes it: it never opens on PC (console only, inferred).
 
@@ -368,7 +373,8 @@ leaves at stage 5.
 - Status keeps no game-finished flag. The record is the ENDGAME1/2/3 bits and the rank: 5 (Sokoban) means all three
   endings.
 - The rank only rises, so the Door gates stay open and an ending can be replayed.
-- The next start loads the campaign into the overworld.
+- The next start loads the saved current level: the overworld after leaving `intro` by its Door, `intro` after
+  quitting there, by the exit Door too ([Campaigns and level sets](#campaigns-and-level-sets)).
 - 100 % is still COMPLETIONIST.
 
 ## Campaigns and level sets
@@ -378,7 +384,9 @@ leaves at stage 5.
 - At startup the most recent campaign is loaded. "Start a New Campaign" names the folder from random localized words `campaign_name_h_*` + `m_*` + `s_*` + `p_*`, concatenated, retried on collision. The `menu_campaign_limit_reached` dialog ("You already have % saved campaigns...") would say 4, but nothing ever opens it: campaigns are unlimited.
 - A level set (`.level_set`, "campaign" in code strings) is an ordered level list. `*choice` after level i: after a win at i return to the overworld (`OVERWORLD_DUE_TO_CHOICE`). `*worlds_collide` = mode 2. Otherwise the game advances to the next level of the set.
 - The active set is chosen by level name: the set holding the level, preferring sets that are not `drafts*`/`tests*`/`render_tests*`/`gyms*`/`unplaced_levels`, and skipping `design_illustrations` once the overworld is reached. `Door.switch_to_level_set` switches by set name. Level sets don't split completion.
-- On campaign load the game goes to the `overworld` set (if allowed), else to the saved current level.
+- On campaign load the game goes to the `overworld` set (if allowed), else to the saved current level. A campaign
+  saved in `intro` after the overworld was reached loads into `intro` (seen in a save); which check refuses the
+  overworld there is not known.
 - Status `current level` keeps naming a level after the player leaves it, until Status is saved again. File times can't tell leaving from playing: the order and delay of history and Status writes vary.
 - Teleporting the hero to a link Marker (a Door's `target_link`, a level-set switch with a link, the start-link arrival) in the INTRO level runs every Wardrobe's door-in reset on the hero ([Wardrobes](SKILLS.md#wardrobes)). Overworld pads don't.
 

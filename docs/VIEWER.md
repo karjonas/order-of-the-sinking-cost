@@ -896,10 +896,16 @@ switch covers both models and the signs that open them.
 
 The sidebar, top to bottom: the save (campaign, rank, play time, last saved), No spoilers and the search box, Goals,
 Find on the map (an Ice cages row and an Ice gates row, each with its own counts and left out when its total is 0,
-then teleporters, voice logs, and a Treasures count with no map action, since treasures are picked up inside a
+then Signs, teleporters, voice logs, and a Treasures count with no map action, since treasures are picked up inside a
 level), Areas (collapsed by default, its open state remembered; a layer subhead only when more than one layer has
 areas shown) and the save's Stats (with spoilers hidden, only the counters above 0). The sidebar fits the window: the open area list, then Goals, give up height and
 scroll inside under their headers.
+
+The Signs row counts the signs that open Freezers (the rank, tower and gold-room signs; not the tower status signs,
+which open none) that are not under fog, with the per-layer split the other rows have. A sign counts when its rule
+holds ([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)); the viewer re-evaluates the rule from the rank, the
+towers and the gold rooms found, as it does for the Freezers. Its action frames the signs whose rule does not hold yet,
+the way the teleporter and voice log rows frame theirs, and turns the Ice overlay on to show them.
 
 - Goals: one row per goal ([Goals (viewer)](#goals-viewer)) with a check when done, a ◆ on the active goal, and a
   count. An ending reads "23 left", or "under fog" when nothing is left to show; Endgame reads "1 / 4", the Antipode
@@ -983,6 +989,8 @@ names. Fog is the game's own ([Fog of war](STATE.md#fog-of-war)), read from the 
 - A tower is hidden while not activated and its position is under fog. A tower status sign of a hidden tower is hidden.
 - An area is named only while its pin is activated (the game names an area only then). A level shows its area only while that area is shown. A Freezer is named by the area it stands in (by the box rule over activated pins), else by its position.
 - Totals (Freezers, MAJOR pads, gold rooms, treasures, voice logs, map scrolls, signs) list only things not under fog, or already found (gold rooms only once visited). "Ground 70 / 90 · Sky 17 / 35" style splits cover only the layers the fog has uncovered.
+- A sign in a plan follows the same fog rule as the sign on the map: its step is left out of the plan's steps and counts
+  while the sign is under fog.
 - The map paints fogged squares in the fog colour in the base image and leaves them out of the Reachable overlay, so the images hold nothing the fog hides.
 - An unearned achievement is hidden when what earns it is hidden: all its levels are hidden, its tower is hidden, or its layer has no cleared fog (ASCEND: the sky; DESCEND: the underworld). The sidebar and the plans share this rule.
 - Endings go by their achievements' names ("Endgame", "Endgame High", "Endgame Low"). An ending's achievement is hidden by the endings' order alone: it is shown (in the ladder and the achievements) only once every ending before it is earned, so the ladder never counts the endings ahead.

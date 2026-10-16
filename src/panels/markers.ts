@@ -312,6 +312,7 @@ function signOverlay(context: PanelContext, signIndex: number): MapOverlay {
     }
 
     let className = 'sg';
+    if (sign.status) className += ' status';
     if (satisfied) className += ' ok';
     return {
         id: 's' + signIndex,

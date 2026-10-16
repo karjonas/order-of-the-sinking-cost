@@ -18,7 +18,7 @@ import { finderTip, pickGoal, sideGoalsHtml } from './sidebar/goals.ts';
 import { areaListOpen, sideAreasHtml, toggleAreaList, toggleFinished, toggleLayerGroup } from './sidebar/areas.ts';
 
 /** The totals the sidebar counts: found and total per kind. */
-type TotalKind = 'pods' | 'doorways' | 'tps' | 'logs';
+type TotalKind = 'pods' | 'doorways' | 'signs' | 'tps' | 'logs';
 
 /**
  * A fogged level the viewer clicked open stays shown for the rest of the visit; everything naming it is drawn again.
@@ -147,6 +147,7 @@ function totalsRowHtml(
 const FINDERS: Array<[kind: TotalKind, label: string]> = [
     ['pods', capitalized(modelNoun(false))],
     ['doorways', capitalized(modelNoun(true))],
+    ['signs', 'Signs'],
     ['tps', 'Teleporters'],
     ['logs', 'Voice logs'],
 ];

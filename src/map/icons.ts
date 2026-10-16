@@ -119,6 +119,7 @@ export const OVERLAY_PATHS = {
 
 export const OVERLAY_ICONS = {
     gates: svgIcon('M-4.5 -4.5h9v9h-9Z', 'var(--ov-gate)', ICON_STROKE),
+    signs: svgIcon(OVERLAY_PATHS.sign, '#9aa3ad', ICON_STROKE),
     tps: svgIcon(OVERLAY_PATHS.tp, 'none', 'var(--ov-tp)', 2.5),
     treasures: svgIcon('M0 -7L5.5 0L0 7L-5.5 0Z', 'var(--ov-plinth)', ICON_STROKE),
     logs: svgIcon('M-3.5 -5L5 0L-3.5 5Z', 'var(--ov-log)', ICON_STROKE),
@@ -131,6 +132,7 @@ export const STATE_ICONS = {
     treasures: OVERLAY_ICONS.treasures,
     pods: OVERLAY_ICONS.gates,
     doorways: OVERLAY_ICONS.gates,
+    signs: OVERLAY_ICONS.signs,
     tps: OVERLAY_ICONS.tps,
     gold: svgIcon(SHAPES.circle.path(5.5), 'none', 'var(--gold)', 2.5),
     logs: OVERLAY_ICONS.logs,
