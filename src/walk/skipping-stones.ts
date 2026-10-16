@@ -3,6 +3,7 @@
 import { rawU16 } from '../save.ts';
 import { cellOnSide, DIRS, KICK_MARK, neighbourOf, PUSH, SOLID, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
+import { freeze, thaw } from './freezers.ts';
 import { exists } from './groups.ts';
 import { kickRide, lilyRide } from './lilies-and-rivers.ts';
 import { deep, levelWater, waterAt } from './ocean.ts';
@@ -28,7 +29,7 @@ const MAX_PUSH_POSITIONS = 200;
 /**
  * A skip lane: the stone's cell, the launch push cell, the landing cell, the ride (the landing cell, then the cells a
  * Lily there drifts through), the line cells from the ride the hero can stand in and those of them past a gap in the
- * line, and the cells next to the stone.
+ * line, the cells next to the stone, and the Freezers on the ride's Lily cells that the lane was found with open.
  */
 export interface SkipLane {
     stone: number;
@@ -38,6 +39,13 @@ export interface SkipLane {
     from: number[];
     cross: number[];
     near: number[];
+    freezers: LaneFreezer[];
+}
+
+/** A Freezer in the cell of a Lily's home or the cell above it: its cell and its index. */
+interface LaneFreezer {
+    cell: number;
+    freezerIndex: number;
 }
 
 /**
@@ -149,10 +157,13 @@ function addLanes(
     pushCell: number,
     landing: number,
     z: number,
+    lilyFreezers: LaneFreezer[],
 ): void {
     const { lilyCells, driftCells, liliesAt, noFlood } = walkGrid;
     let ride = [landing];
     if (lilyCells.has(landing) || driftCells.has(landing)) ride = lilyRide(walkGrid, landing, side, z);
+
+    const freezers = freezersOnRide(walkGrid, lilyFreezers, landing, ride);
 
     // the Lily the stone rides carries no hero, so a cell that only it holds up is no line cell
     const riding = liliesAt.get(landing);
@@ -191,7 +202,16 @@ function addLanes(
         }
 
         for (const [end, { from, cross }] of byEnd) {
-            lanes.push({ stone: stoneCell, pushCell, landing, ride: ride.slice(rideIndex, end), from, cross, near });
+            lanes.push({
+                stone: stoneCell,
+                pushCell,
+                landing,
+                ride: ride.slice(rideIndex, end),
+                from,
+                cross,
+                near,
+                freezers,
+            });
         }
     });
 }
@@ -203,21 +223,61 @@ function addLanes(
  * a Fence. A hero with TELEPORT standing on a line from that landing cell (it runs in each direction until a wall, a
  * shut Gate, a frozen cell, a target or a Wardrobe door edge) swaps onto the stone. A stone that lands on a Lily rides
  * it, and so does a hero who swaps onto it, who can step off anywhere along the ride.
+ *
+ * The lanes are found with the Freezers in a Lily's cell open, since a closed one would hide the Lily; a lane whose ride
+ * passes such a Freezer lists it, and a flood takes the lane only once it is open (takeLane). A pocket flood, which
+ * cannot stand on water, holds the hero on the cells of the rides that have more than the landing cell.
  */
 export function skipLanes(walkGrid: WalkGrid): SkipLane[] {
     const lanes: SkipLane[] = [];
+
+    const lilyFreezers: LaneFreezer[] = [];
+    for (const [cell, freezerIndex] of walkGrid.frozen) {
+        const lilyHere = walkGrid.lilyCells.has(cell);
+        const lilyAbove = walkGrid.lilyCells.has(cell + walkGrid.layerCells);
+        if (lilyHere || lilyAbove) lilyFreezers.push({ cell, freezerIndex });
+    }
+
+    for (const { cell } of lilyFreezers) thaw(walkGrid, cell);
 
     for (const [stoneCell, z] of skippingStones(walkGrid)) {
         walkGrid.stoneCells.add(stoneCell);
 
         for (const [side, pushCell, firstWater] of launchesOf(walkGrid, stoneCell, z)) {
             for (const landing of landingsOf(walkGrid, walkGrid.noFlood, side, firstWater, z)) {
-                addLanes(walkGrid, lanes, stoneCell, side, pushCell, landing, z);
+                addLanes(walkGrid, lanes, stoneCell, side, pushCell, landing, z, lilyFreezers);
             }
         }
     }
 
+    for (const { cell, freezerIndex } of lilyFreezers) freeze(walkGrid, cell, freezerIndex);
+
+    for (const lane of lanes) {
+        if (lane.ride.length < 2) continue;
+
+        for (const cell of lane.ride) {
+            walkGrid.laneRides.add(cell);
+            walkGrid.marks[cell] |= KICK_MARK;
+        }
+    }
+
     return lanes;
+}
+
+/**
+ * The Freezers among `candidates` that stand in a column the ride passes through or in the column of the home of a
+ * Lily the stone rides on, wherever along its drift the stone landed.
+ */
+function freezersOnRide(walkGrid: WalkGrid, candidates: LaneFreezer[], landing: number, ride: number[]): LaneFreezer[] {
+    const layerCells = walkGrid.layerCells;
+    const columns = new Set(ride.map((cell) => cell % layerCells));
+
+    for (const pid of walkGrid.liliesAt.get(landing) ?? []) {
+        const home = walkGrid.lilyHomes.get(pid);
+        if (home !== undefined) columns.add(home % layerCells);
+    }
+
+    return candidates.filter(({ cell }) => columns.has(cell % layerCells));
 }
 
 /**
@@ -513,8 +573,25 @@ function nextLaneDue(floodState: FloodState, after: number): number {
     return laneIndex;
 }
 
-/** Takes a lane that came due; false when its stone is frozen in a Freezer. */
+/**
+ * Takes a lane that came due; false when its stone is frozen in a Freezer or a Freezer on its ride is closed. The
+ * flood's front lists each of those Freezers, in a pocket flood (which takes the lane anyway unless a ride Freezer is
+ * closed) as well.
+ */
 function takeLane(walkGrid: WalkGrid, floodState: FloodState, lane: SkipLane): boolean {
+    let shut = false;
+    for (const { cell, freezerIndex } of lane.freezers) {
+        if (!walkGrid.frozen.has(cell)) continue;
+
+        shut = true;
+        floodState.front?.add(freezerIndex);
+    }
+
+    const stoneFreezer = walkGrid.frozen.get(lane.stone);
+    if (stoneFreezer !== undefined && lane.freezers.length > 0) floodState.front?.add(stoneFreezer);
+
+    if (shut) return false;
+
     if (floodState.pocket) {
         for (const cell of [lane.pushCell, ...lane.cross]) {
             if (!blocked(walkGrid, floodState, cell) && standable(walkGrid, floodState, cell)) {
@@ -525,7 +602,7 @@ function takeLane(walkGrid: WalkGrid, floodState: FloodState, lane: SkipLane): b
         return true;
     }
 
-    if (walkGrid.frozen.has(lane.stone)) return false;
+    if (stoneFreezer !== undefined) return false;
 
     for (const cell of lane.ride) push(walkGrid, floodState, cell, WIZARD);
     return true;

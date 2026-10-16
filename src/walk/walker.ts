@@ -178,6 +178,8 @@ export interface WalkGrid extends GridShape {
     ferryCells: Set<number>;
     // the cells of the skipping stones skipLanes() launches, and its lanes
     stoneCells: Set<number>;
+    // the cells of the skip lane rides of more than one cell
+    laneRides: Set<number>;
     lanes: SkipLane[];
     // the Lilies a launched stone may kick
     kicks: Kick[];
@@ -347,6 +349,7 @@ function newWalkGrid(
         rideCells: new Set(),
         ferryCells: new Set(),
         stoneCells: new Set(),
+        laneRides: new Set(),
         lanes: [],
         kicks: [],
         teleportDoors: new Set(),

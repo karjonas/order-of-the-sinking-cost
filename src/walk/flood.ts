@@ -156,6 +156,7 @@ export interface FloodState {
     topDrops: boolean;
     charming: boolean;
     stoneFront: Set<number> | null;
+    front: Set<number> | null;
     reached: number[][];
     triggerHits: number[];
     queue: number[];
@@ -273,6 +274,7 @@ export function newFloodState(
         topDrops,
         charming: false,
         stoneFront: null,
+        front: null,
         reached: Array.from({ length: LAYER_COUNT }, () => []),
         triggerHits: [],
         queue: [],
@@ -893,6 +895,7 @@ export function flood(
     const floodState = newFloodState(walkGrid.triggers, laneCount, outside, reveal, pocket, frozenHolds, topDrops);
     floodState.charming = startsWithCharm(walkGrid, outside);
     floodState.stoneFront = stoneFront ?? null;
+    floodState.front = front;
     walkGrid.activeFlood = floodState;
 
     const queue = floodState.queue;

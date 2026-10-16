@@ -34,3 +34,12 @@ test('levels whose gates wait on each other in one pocket keep no way in', () =>
         expect(progress.wayIn[index]).toEqual([]);
     }
 });
+
+test('a level a swap onto a stone on a frozen Lily leads to has the Lily Freezers and the stone Freezer as its way in', () => {
+    const lilyFreezerPids = [135519641, 90187135, 90187141];
+    const level = levelIndex('wizard_with_a_capital_w_2_v2');
+    const wayInPids = progress.wayIn[level].map((freezerIndex) => PROG.freezers[freezerIndex].pid);
+
+    expect(progress.state[level]).toBe('blocked');
+    expect(wayInPids.toSorted()).toEqual(lilyFreezerPids.toSorted());
+});

@@ -198,7 +198,7 @@ describe('a stone riding a Lily', () => {
     // two rows of 14 at z 0. Row 0: the hero's side 0..2 with a SKIPPABLE Rock at 2, water 3..10 (surface 0) with a
     // Lily at 6 on a river flowing east over 6..9, dry land 11..13 with a TELEPORT Wardrobe at 13 (door west). Row 1:
     // wall but the dry cell (8, 1).
-    const setup = (lilies, more = {}) => {
+    const setup = (lilies, more = {}, { freezers = [], closed = [] } = {}) => {
         const water = {},
             walls = {};
         for (let i = 3; i <= 10; i++) water[i] = [0];
@@ -219,7 +219,8 @@ describe('a stone riding a Lily', () => {
                 ...more,
             },
         });
-        return walker(NONE, [], []);
+        PROG.freezers = freezers;
+        return walker(NONE, [], closed);
     };
     const column = (walkGrid, cell) => cell % walkGrid.width;
     // per landing cell, the ride of a hero who swaps in at the landing and rides to the end
@@ -261,6 +262,55 @@ describe('a stone riding a Lily', () => {
         expect(cells(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 0, 0)]))).toContain('8,1');
         const noLily = setup([]);
         expect(cells(noLily, noLily.flood([noLily.cellOf(0, 0, 0)]))).not.toContain('8,1');
+    });
+    describe('with a Freezer on the Lily', () => {
+        // the Lily rests at 6, off the river, which flows east over 7..9: only a stone kicks it along
+        const freezers = [{ pid: 1, p: [6, 0, 0], req: [] }];
+        const river = { rivers: [7, 8, 9].map((i) => [i, 0, 0, 1]) };
+        const build = (closed) => setup([[50, 6, 0, 0]], river, { freezers, closed });
+        const swapped = (closed) => {
+            const walkGrid = build(closed);
+            const front = new Set();
+            const reached = walkGrid.flood([walkGrid.cellOf(0, 0, 0)], null, front);
+            return { lanes: walkGrid.lanes, reached: cells(walkGrid, reached), front: [...front] };
+        };
+        test('the lanes are found with the Freezer open, and name it', () => {
+            const rideLanes = swapped([true]).lanes.filter((lane) => lane.ride.length > 1);
+            expect(rideLanes.length).toBeGreaterThan(0);
+            expect(rideLanes.every((lane) => lane.freezers.length === 1 && lane.freezers[0].freezerIndex === 0)).toBe(
+                true,
+            );
+        });
+        test('no lane is taken while the Freezer is closed, and the flood bumps into it', () => {
+            const { reached, front } = swapped([true]);
+            expect(reached).not.toContain('8,1');
+            expect(front).toEqual([0]);
+        });
+        test('the hero swaps onto the stone and steps off once it is open', () => {
+            const { reached, front } = swapped([false]);
+            expect(reached).toContain('8,1');
+            expect(front).toEqual([]);
+        });
+        test('a pocket flood from the island walks back along the ride to the push side', () => {
+            const walkGrid = build([false]);
+            const front = new Set();
+            const pocket = walkGrid.flood([walkGrid.cellOf(8, 1, 0)], null, front, { pocket: true });
+            expect(cells(walkGrid, pocket)).toContain('0,0');
+            expect([...front]).toEqual([]);
+        });
+        test('a pocket flood from the island bumps into the closed Freezer', () => {
+            const walkGrid = build([true]);
+            const front = new Set();
+            walkGrid.flood([walkGrid.cellOf(8, 1, 0)], null, front, { pocket: true });
+            expect([...front]).toEqual([0]);
+        });
+        test('a pocket flood also bumps into the Freezer of the stone', () => {
+            const both = [...freezers, { pid: 2, p: [2, 0, 0], req: [] }];
+            const walkGrid = setup([[50, 6, 0, 0]], river, { freezers: both, closed: [true, true] });
+            const front = new Set();
+            walkGrid.flood([walkGrid.cellOf(8, 1, 0)], null, front, { pocket: true });
+            expect([...front].toSorted()).toEqual([0, 1]);
+        });
     });
 });
 

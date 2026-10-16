@@ -103,6 +103,8 @@ function supported(walkGrid: WalkGrid, floodState: FloodState, cell: number): bo
     if (marks & BRIDGE_MARK && (floodState.pocket || floodState.bridged.has(cell))) return true;
     if (marks & KICK_MARK && floodState.kicked.has(cell)) return true;
     if (marks & RIDE_MARK) return true;
+    // a pocket flood holds the hero on a skip lane's ride, where a swapped hero rides
+    if (marks & KICK_MARK && floodState.pocket && walkGrid.laneRides.has(cell)) return true;
 
     const layerCells = walkGrid.layerCells;
     const z = Math.floor(cell / layerCells) - Z_BIAS;
