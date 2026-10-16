@@ -62,7 +62,7 @@ latest change at or before its record key holds PROTECTION (else the level-data 
 
 - Dragon state in the save: position, `theta_target`, `dead_t`, `status_flags` DEAD, existence, CREATION records (TRANSMUTE). Every DEAD Monster in the saves also has `dead_t` = 1.
 - Rocks: position CHANGEs (pushes, falls), CREATION_OR_DESTRUCTION (TRANSMUTE crystals with runtime Pids in namespace 1023, Activator resets), `properties` (SKIPPING, FLIPPING_TARGET after a sink, MIRRORABLE on crystals).
-- Lilies: position, `moving_direction`, `kick_direction` CHANGEs.
+- Lilies: position, `moving_direction`, `kick_direction` CHANGEs. `moving_direction` is NONE in the level data and never returns to it, so a Lily's first recorded `moving_direction` (EAST 1, NORTH 2, WEST 3, SOUTH 4) is the way its first move went.
 - Promesst_Light `powered` (1-byte bool), Gate `open`, Switch `pressed`, Group `exists`, member `entity_flags`, Voice_Log `played`, View_Giver `activation_order`, Area_Pin `activated`, Guy `skill_flags`.
 
 ## Fog of war

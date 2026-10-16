@@ -24,6 +24,7 @@ export interface LatestValues {
     ocean: OceanChange[];
     created: Map<number, Creation>;
     skills: Map<number, Array<[key: number, skillFlags: number]>>;
+    firstHeadings: Map<number, number>;
 }
 
 interface Keyed<Value> {
@@ -111,7 +112,8 @@ const LATEST_FIELD_SLOTS = 32;
  * in one record).
  * `created`: per pid with CREATION_OR_DESTRUCTION records, the latest one's { type, destroyed }; a created entity's blob
  * holds the whole entity, a position axis missing from it is 0. `skills`: per Guy pid, [record key, skill_flags] of its
- * CHANGE actions, in history order.
+ * CHANGE actions, in history order. `firstHeadings`: per Lily pid, the side (0 east, 1 north, 2 west, 3 south) of the
+ * first `moving_direction` the history records for it: the way its first move went.
  */
 export function latestOf(history: History): LatestValues {
     const cached = latestCache.get(history);
@@ -121,6 +123,7 @@ export function latestOf(history: History): LatestValues {
     const ocean = new Map<string, Keyed<OceanChange>>();
     const creations = new Map<number, Keyed<Creation>>();
     const skills = new Map<number, Array<[number, number]>>();
+    const headings = new Map<number, Keyed<number>>();
     const put = <Entry, Value>(
         map: Map<Entry, Keyed<Value>>,
         entry: Entry,
@@ -158,6 +161,13 @@ export function latestOf(history: History): LatestValues {
                 put(values, action.pid * LATEST_FIELD_SLOTS + slot, action.key, field.new.raw, isCreation);
             }
             if (isCreation && slot >= 1 && slot <= 3) positionAxes |= 1 << slot;
+            if (typeName === 'Lily' && !isCreation && field.f.n === 'moving_direction' && field.new.raw) {
+                const direction = field.new.raw[0];
+                const first = headings.get(action.pid);
+                if (direction >= 1 && direction <= 4 && (!first || action.key < first.key)) {
+                    headings.set(action.pid, { key: action.key, value: direction - 1 });
+                }
+            }
             if (typeName === 'Guy' && !isCreation && field.f.n === 'skill_flags' && field.new.raw) {
                 if (!skills.has(action.pid)) skills.set(action.pid, []);
                 skills.get(action.pid)!.push([action.key, rawU32(field.new.raw)]);
@@ -181,6 +191,7 @@ export function latestOf(history: History): LatestValues {
         ocean: [...ocean.values()].map((change) => change.value),
         created: new Map([...creations].map(([pid, creation]) => [pid, creation.value])),
         skills,
+        firstHeadings: new Map([...headings].map(([pid, heading]) => [pid, heading.value])),
     };
 
     latestCache.set(history, latest);

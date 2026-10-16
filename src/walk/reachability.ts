@@ -143,6 +143,7 @@ export const NO_HISTORY: LatestValues = {
     ocean: [],
     created: new Map(),
     skills: new Map(),
+    firstHeadings: new Map(),
 };
 
 /**

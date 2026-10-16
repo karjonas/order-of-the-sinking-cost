@@ -1,5 +1,5 @@
 // Lilies and the rivers they drift on (MOVEMENT.md "Lilies", "Rivers")
-import { cellOnSide, BEAMSTOP, FLOOR, KICK_MARK, PUSH, SIDES, Z_BIAS } from './cells.ts';
+import { cellOf, cellOnSide, BEAMSTOP, FLOOR, KICK_MARK, PUSH, SIDES, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { exists, place, put } from './groups.ts';
 import { waterAt } from './ocean.ts';
@@ -93,6 +93,36 @@ export function placeDrift(walkGrid: WalkGrid): void {
         if (!exists(walkGrid, pid, existence)) continue;
 
         for (const cell of driftOf(walkGrid, latestCell(walkGrid, pid, i, j, z))) {
+            driftCells.add(cell);
+            addLily(walkGrid, cell, pid);
+        }
+    }
+}
+
+/**
+ * A Lily the save left adrift on a river that its level data places on still water was kicked off its start, and the
+ * history says which way: the way of its first recorded move. Its ride from the start (lilyRide) holds the hero when it
+ * comes to the Lily's latest cell, since the hero may have boarded it on the way. A Lily that rests off the river
+ * stays where it is.
+ */
+export function placeKickedRides(walkGrid: WalkGrid): void {
+    const { world, driftCells, flowSide, latest, cornerX, cornerY, layerCells } = walkGrid;
+
+    for (const [pid, i, j, z, existence] of world.lilies) {
+        if (!exists(walkGrid, pid, existence)) continue;
+
+        const side = latest.firstHeadings.get(pid);
+        if (side === undefined) continue;
+
+        const start = cellOf(walkGrid, i + cornerX, j + cornerY, z);
+        const resting = latestCell(walkGrid, pid, i, j, z);
+        if (start < 0 || resting < 0 || flowSide.has(start) || !flowSide.has(resting)) continue;
+
+        const lilyZ = Math.floor(start / layerCells) - Z_BIAS;
+        const ride = lilyRide(walkGrid, start, side, lilyZ);
+        if (!ride.includes(resting)) continue;
+
+        for (const cell of ride) {
             driftCells.add(cell);
             addLily(walkGrid, cell, pid);
         }

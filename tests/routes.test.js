@@ -66,7 +66,7 @@ function world({ width, height = 1, walls = {}, water = {}, extra = {} }) {
         },
     });
 }
-const NONE = { get: () => undefined, ocean: [], created: new Map() };
+const NONE = { get: () => undefined, ocean: [], created: new Map(), firstHeadings: new Map() };
 // a BEAM_POWERED Gem_Slot at (0, 0, 0): it powers every light in that room
 const POWERED_ROOM = [[90, 0, 0, 0, 1]];
 // the reached cells at z as "i,j", sorted by row then column
@@ -306,6 +306,49 @@ describe('the Lilies a skipping stone kicks', () => {
     });
     test('a stone supported where it is kicks nothing', () => {
         expect(setup({ ahead: 'wall', landing: true })).toEqual([]);
+    });
+});
+
+describe('the ride of a Lily kicked off its start', () => {
+    // a row of 8 at z 0 with a wall at 0 and water at 1..7; the Lily belongs at 1 and the save left it at 5, on a river
+    // that flows east over 4..7. `heading` is the side of its first recorded move.
+    const f32 = (value) => new Uint8Array(new Float32Array([value]).buffer);
+    const heldColumns = ({ heading, restingAt = 5 }) => {
+        const water = {};
+        for (let i = 1; i < 8; i++) water[i] = [0];
+        world({
+            width: 8,
+            walls: { 0: [0] },
+            water,
+            extra: {
+                oceans: [[1, 0, 0, 0, 0, 8, 1]],
+                lilies: [[50, 1, 0, 0]],
+                rivers: [4, 5, 6, 7].map((i) => [i, 0, 0, 1]),
+            },
+        });
+        const latest = {
+            get: (pid, field) => (pid === 50 && field === 'base.position.x' ? f32(restingAt) : undefined),
+            ocean: [],
+            created: new Map(),
+            firstHeadings: new Map(heading === undefined ? [] : [[50, heading]]),
+        };
+        const walkGrid = walker(latest, [], []);
+        const held = [];
+        for (let column = 0; column < 8; column++) {
+            const cell = walkGrid.cellOf(column, 0, 0);
+            if (walkGrid.land(cell, false) === cell) held.push(column);
+        }
+        return held;
+    };
+    test('the cells it crossed on the way hold the hero when its first move went toward the river', () => {
+        expect(heldColumns({ heading: 0 })).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    });
+    test('the first move away from the river, or none recorded, leaves the Lily at its drift alone', () => {
+        expect(heldColumns({ heading: 2 })).toEqual([5, 6, 7]);
+        expect(heldColumns({})).toEqual([5, 6, 7]);
+    });
+    test('a Lily that rests off the river stays where it is', () => {
+        expect(heldColumns({ heading: 0, restingAt: 3 })).toEqual([3]);
     });
 });
 

@@ -67,7 +67,7 @@ function world({ width, height = 1, walls = {}, water = {}, layers = [], grid = 
         },
     });
 }
-const NONE = { get: () => undefined, ocean: [], created: new Map() };
+const NONE = { get: () => undefined, ocean: [], created: new Map(), firstHeadings: new Map() };
 // the reached cells at z as "i,j", sorted by row then column
 const cells = (walkGrid, cellSet, z = 0) =>
     [...cellSet]

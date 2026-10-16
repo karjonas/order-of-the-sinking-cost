@@ -23,7 +23,7 @@ import { withGroups } from './groups.ts';
 import type { CellWrite } from './groups.ts';
 import { levelGeometry } from './geometry.ts';
 import type { LevelGeometry } from './geometry.ts';
-import { placeDrift, placeLilies, respawnKicks, transitCells } from './lilies-and-rivers.ts';
+import { placeDrift, placeKickedRides, placeLilies, respawnKicks, transitCells } from './lilies-and-rivers.ts';
 import { mechAt, placeMechanics } from './mechanics.ts';
 import { magicMirrorHops } from './mirror-isles.ts';
 import type { SwitchHop } from './mirror-isles.ts';
@@ -448,6 +448,7 @@ export function buildWalkGrid(
     walkGrid.driftHops = driftHops;
     walkGrid.switchHops = switchHops;
     placeDrift(walkGrid);
+    placeKickedRides(walkGrid);
     placeRovers(walkGrid);
     markLookups(walkGrid);
 
