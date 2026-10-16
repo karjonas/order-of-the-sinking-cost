@@ -4,7 +4,7 @@ import { PROG, WORLD } from '../data.ts';
 import { heroesWithSkill, latestFlag, PROTECTION_FLAG, TELEPORT_FLAG, TRANSMUTE_FLAG } from '../save.ts';
 import type { History, LatestValues } from '../save.ts';
 import { addTo, gridCol, Z_BIAS } from './cells.ts';
-import type { Seed } from './flood.ts';
+import type { FloodOptions, Seed } from './flood.ts';
 import { ICE } from './freezers.ts';
 import { PROTECTED, TRANSMUTING, WIZARD } from './skills.ts';
 import type { TeleporterState } from './teleporters.ts';
@@ -369,6 +369,8 @@ interface PocketFloods {
     enteredFromSky: (cells: Iterable<number>) => boolean;
     pads: PadRevealers;
     padPockets: Map<number, PadPocket>;
+    roverFreezers: Set<number>;
+    roverFlooded: Set<number>;
 }
 
 /**
@@ -447,6 +449,56 @@ function floodPocketOfLevel(state: PocketFloods, position: number): void {
 
         for (const pocketLevel of pocketLevels) {
             if (frozenIn[pocketLevel] === undefined) behind.add(pocketLevel);
+        }
+    }
+
+    addRoverGateLevels(state, bumped, pocketOptions);
+}
+
+// the world.json movables kind of a Rover
+const ROVER_KIND = 3;
+
+/** The Freezers of `PROG.freezers` that hold a Rover: those whose cell is the position of a Rover. */
+function roverFreezersOf(): Set<number> {
+    const [cornerX, cornerY] = PROG.world.grid.corner;
+    const roverKeys = new Set<string>();
+
+    for (const [, column, row, z, kind] of PROG.world.movables || []) {
+        if (kind === ROVER_KIND) roverKeys.add(`${column + cornerX},${row + cornerY},${z}`);
+    }
+
+    const roverFreezers = new Set<number>();
+
+    PROG.freezers.forEach((freezer, freezerIndex) => {
+        if (roverKeys.has(freezer.p.join(','))) roverFreezers.add(freezerIndex);
+    });
+
+    return roverFreezers;
+}
+
+/**
+ * A pocket that bumps into a closed Freezer holding a Rover may get past it: the Rover rides where the pocket's walk
+ * does not go. The first pocket to bump such a Freezer floods from the Freezer's cell with it open, and the levels of
+ * that flood that are not frozen in (`frozenIn`) sit behind the Freezer, whichever pocket bumps it.
+ */
+function addRoverGateLevels(state: PocketFloods, bumped: Set<number>, pocketOptions: FloodOptions): void {
+    const { context, byGate, roverFreezers, roverFlooded } = state;
+    const { walk, reached, frozenIn } = context;
+
+    for (const freezerIndex of bumped) {
+        if (!roverFreezers.has(freezerIndex) || roverFlooded.has(freezerIndex)) continue;
+
+        roverFlooded.add(freezerIndex);
+
+        const gateCell = walk.cellOf(...PROG.freezers[freezerIndex].p);
+        walk.thaw(gateCell);
+        const thawedCells = walk.flood([gateCell], reached, new Set(), pocketOptions);
+        walk.freeze(gateCell, freezerIndex);
+
+        const behind = levelsBehind(byGate, freezerIndex);
+
+        for (const levelIndex of restLevelsIn(context, thawedCells)) {
+            if (frozenIn[levelIndex] === undefined) behind.add(levelIndex);
         }
     }
 }
@@ -595,6 +647,8 @@ function floodPockets(context: ReachContext, byGate: Map<number, Set<number>>, m
         enteredFromSky: sky.into,
         pads: padRevealersOf(context),
         padPockets: new Map(),
+        roverFreezers: roverFreezersOf(),
+        roverFlooded: new Set(),
     };
 
     context.rest.forEach((_, position) => floodPocketOfLevel(state, position));
