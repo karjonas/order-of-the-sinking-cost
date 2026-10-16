@@ -26,7 +26,7 @@ import type { LevelGeometry } from './geometry.ts';
 import { placeDrift, placeKickedRides, placeLilies, respawnKicks, transitCells } from './lilies-and-rivers.ts';
 import { mechAt, placeMechanics } from './mechanics.ts';
 import { magicMirrorHops } from './mirror-isles.ts';
-import type { SwitchHop } from './mirror-isles.ts';
+import type { PairHop, SwitchHop } from './mirror-isles.ts';
 import type { RoomMonster } from './monster-gates.ts';
 import { deep, placeWater } from './ocean.ts';
 import { NO_ROOMS, roomIndexOf } from './room-answers.ts';
@@ -161,10 +161,13 @@ export interface WalkGrid extends GridShape {
     slotsByRoom: Map<string, GemSlot[]>;
     gemsAt: Map<number, Gem[]>;
     // the magic-mirror hops: per arm cell the landing cells, the arm cells of a Mirror riding a lily, and the hops off
-    // a Switch the hero holds down
+    // a Switch the hero holds down; per arm cell between two facing magic Mirrors its pairs of landings, and per
+    // landing the arm cells it leaves
     mirrorHops: Map<number, number[]>;
     driftHops: Set<number>;
     switchHops: SwitchHop[];
+    pairHops: Map<number, PairHop[]>;
+    pairArms: Map<number, number[]>;
     // per river cell, the side its current flows to (the geometry's); the cells the drifting Lilies pass
     flowSide: Map<number, number>;
     driftCells: Set<number>;
@@ -336,6 +339,8 @@ function newWalkGrid(
         mirrorHops: new Map(),
         driftHops: new Set(),
         switchHops: [],
+        pairHops: new Map(),
+        pairArms: new Map(),
         flowSide: geometry.flowSide,
         driftCells: new Set(),
         rovers: [],
@@ -379,6 +384,8 @@ function markCells(walkGrid: WalkGrid, cells: Iterable<number>, mark: number): v
 function markLookups(walkGrid: WalkGrid): void {
     markCells(walkGrid, walkGrid.wardrobes.keys(), WARDROBE_MARK);
     markCells(walkGrid, walkGrid.mirrorHops.keys(), TRAVEL_MARK);
+    markCells(walkGrid, walkGrid.pairHops.keys(), TRAVEL_MARK);
+    markCells(walkGrid, walkGrid.pairArms.keys(), TRAVEL_MARK);
     markCells(walkGrid, walkGrid.elevatorsAt.keys(), TRAVEL_MARK);
 
     for (const padCellKey of walkGrid.padsAt.keys()) {
@@ -444,10 +451,12 @@ export function buildWalkGrid(
     placeBeamMoves(walkGrid);
     placeGemBridges(walkGrid);
 
-    const { hops, driftHops, switchHops } = magicMirrorHops(walkGrid);
+    const { hops, driftHops, switchHops, pairHops, pairArms } = magicMirrorHops(walkGrid);
     walkGrid.mirrorHops = hops;
     walkGrid.driftHops = driftHops;
     walkGrid.switchHops = switchHops;
+    walkGrid.pairHops = pairHops;
+    walkGrid.pairArms = pairArms;
     placeDrift(walkGrid);
     placeKickedRides(walkGrid);
     placeRovers(walkGrid);

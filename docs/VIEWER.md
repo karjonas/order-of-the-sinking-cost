@@ -112,7 +112,7 @@ tries the four sides:
 After the four sides:
 
 9. TELEPORT swaps from k, layer 2 only. Along each side, at k's z, the line wraps (inside the fast-travel box at map-room z) and crosses water and air. It steps by the hero's powered move from k, as step 2 gives it: the jump to the endpoint (to the midpoint in an ALTER beam) in an ENDPOINT beam parallel to the press, else 2ⁿ cells (3ⁿ with ALTER) in n DOUBLE beams, else one cell; it tests only the cells at multiples of that distance and skips the ones between, and a move with no landing has no line. With the powers a flood's pushes laid down, he swaps with those too. It ends at the first target, an existing Rock, a living Monster, a movable other than a Mirror, or a Mirror the line meets on its back or a closed side: the hero lands in its cell, then falls as in step 8, in layer 2. A Mirror's open sides come from its latest `theta_target`, else the level data's (`world.mirror_facings`): a flat one has two, a vertical one a single horizontal side ([Mirrors turning fire and beams](MOVEMENT.md#mirrors-turning-fire-and-beams)). It ends with no swap at a blocked cell (a solid voxel outside a THROUGH beam, a Tree, Sign, Treasure_Display or Judge, a shut Gate, a closed Freezer), a Mirror met on an open side (the line turns there; its turn is not modelled), a Wardrobe door edge, or back at k. The target lands in k (Swapped targets, below).
-10. Magic-mirror hops from k, also in walks on foot: each landing cell of k ([Magic-mirror hops](#magic-mirror-hops)) that is not blocked, reached by the fall of step 8, in layer p.
+10. Magic-mirror hops from k, also in walks on foot: each landing cell of k ([Magic-mirror hops](#magic-mirror-hops)) that is not blocked, reached by the fall of step 8, in layer p; for a cell between two facing Mirrors, both landings of a pair when neither is blocked.
 11. Travel from k (skipped by walks "on foot"):
    - an elevator frame cell reaches the far frame cell if it is not blocked (per `world.elevators` mask: bit 1 bottom → top, bit 2 top → bottom);
    - a pad in k or the cell below, enabled: a MINOR pad reaches its target pad's landing cell, or for a Marker target (`to`) a search down from the Marker's cell inside its ground layer (no fall cap): a blocked cell or water deeper than 0.1 ends it with no landing; an attacked cell ends it, with the hero standing there in layer 1 (support not needed) and nowhere in layer 0; else the first open cell. A trip enables the target pad for the rest of the flood, as discovering the sending pad does in the game ([Teleporter pads and fast travel](MOVEMENT.md#teleporter-pads-and-fast-travel)): a MINOR pad that the save leaves disabled sends the hero on once a trip has brought him to it, and a hero already standing on it from earlier in the flood takes it then. A target held by a closed Freezer stays disabled, since the hero stays on his pad;
@@ -340,8 +340,10 @@ uncast is tried again only once more Gems are on slots.
 ### Magic-mirror hops
 
 ACTIVATE swaps every target of a room's magic Mirrors with its mirage, all or nothing
-([Magic mirrors](MOVEMENT.md#magic-mirrors)). The walk models the one case that needs no other target: a hero on one
-open arm of a flat magic Mirror alone in its room lands on the cell as far down the other arm.
+([Magic mirrors](MOVEMENT.md#magic-mirrors)). The walk models two cases that need no other target: a hero on one
+open arm of a flat magic Mirror alone in its room lands on the cell as far down the other arm, and a hero between the
+only two magic Mirrors of a room that face each other is cloned onto both ([Hops between two facing
+Mirrors](#hops-between-two-facing-mirrors), below).
 
 - Mirrors: `world.magic_mirrors`, at their latest cells, existing, not in the cell of a closed Freezer. Every listed
   Mirror counts towards its room (a 19 × 13 screen in its ground layer), vertical ones too. A Mirror is used when it
@@ -367,6 +369,25 @@ open arm of a flat magic Mirror alone in its room lands on the cell as far down 
   them before he pushes it.
 - The game processes a mirage only while the Mirror's room holds a Guy of the active hero. The walk does not check
   that the arm cell lies in the Mirror's room, but for a Mirror it pushed; an arm can run out of it.
+
+#### Hops between two facing Mirrors
+
+When two magic Mirrors reflect the hero to different mirages, he is cloned: a copy appears at each landing, the copies
+share one turn group and move together, and a copy that dies is survivable while another lives
+([Magic mirrors](MOVEMENT.md#magic-mirrors)). The walk models the case of a room with exactly two magic Mirrors, both
+flat, riding no Lily, below the map rooms, whose arms face each other along one grid line:
+
+- The gap between them holds no target, stop or Fence (a ray along it from the first Mirror ends at the second). Every
+  Fence on it counts, since the hero's path to either Mirror crosses part of it.
+- A hero d cells from the first Mirror stands e = gap − d cells from the second. Both Mirrors reflect him, so he lands
+  d cells down the first Mirror's other arm and e cells down the second's. Each other arm must be clear (no target,
+  stop or Fence) nearer than the cell he reflects to, as for a single Mirror.
+- All or nothing: both landings must be free, else the activation does nothing. Nothing else in the room moves, since
+  no other magic Mirror exists there.
+- The walk goes on from each landing in the layer the flood reached the arm cell in. The copies are not kept together:
+  the walk treats them as independent heroes after the hop, so a cell is reached when either copy could walk there.
+- A pocket flood also steps from a landing back to the arm cell it came from, since the hero reaches a landing only
+  by this hop. Single hops stay one-way.
 
 ### Skip lanes and the TELEPORT swap
 
@@ -531,7 +552,7 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 ### Pockets, leads and why
 
 - Leads: each closed Freezer the walk bumped into (`front`) is opened alone; the levels not entered that a walk from it (outside R) reaches are its leads. A level frozen in another Freezer is left out. A Freezer that holds a stone launched with CHARM ([Moves](#moves)) is a lead too: the walk from the seeds is run with it open, and the levels not entered that it reaches are its leads.
-- A level not reached sits in its own pocket: a walk from it that never enters R (no reveals). The closed gates that walk bumps into are the gates it sits behind. This pocket flood walks the one-way edges backwards, since it looks for the ways in: every rock bridge holds the hero from either side ([Moves](#moves)), and skip lanes run from the landing back to the push side ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)). Magic-mirror hops stay one-way.
+- A level not reached sits in its own pocket: a walk from it that never enters R (no reveals). The closed gates that walk bumps into are the gates it sits behind. This pocket flood walks the one-way edges backwards, since it looks for the ways in: every rock bridge holds the hero from either side ([Moves](#moves)), and skip lanes run from the landing back to the push side ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)). Magic-mirror hops stay one-way, but for the landings of two facing Mirrors, which lead back to their arm cell ([Hops between two facing Mirrors](#hops-between-two-facing-mirrors)).
 - A walk from one level can reach another level not reached across a one-way edge (a fall, a hop), so that level lies in more than one pocket. A way into any of them leads on to it: it sits behind the gates of every pocket that holds it and takes the mechanics, the sky entrance and the pad ways (`viaPads`, less the gates and levels any of those pockets holds itself) of each. A level that an earlier pocket holds starts no walk of its own.
 - A level frozen in a closed Freezer starts its pocket walk in the Freezer's own cell, where the hero stands once the Freezer opens. The pocket's gates and levels go to the other levels in it; the frozen level itself sits behind its own Freezer alone.
 - A pocket holding a pad that another pad reveals is also entered from the revealing pad's pocket: its gates and levels join (`viaPads`).
@@ -551,7 +572,7 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 
 ### What the walk leaves out
 
-- Mirrors: no reflections of fire, beams or the TELEPORT line (each ends at the Mirror; the TELEPORT line only swaps with a Mirror met on its back or a closed side, [Moves](#moves)), so no lift by a beam turned up. Magic-mirror teleports only as the hops of a flat magic Mirror alone in its room below the map rooms ([Magic-mirror hops](#magic-mirror-hops)): no vertical magic Mirrors, no rooms with several, none in the map rooms, no swaps of other targets, no reflected rays, no check that the hero's cell is in the Mirror's room. A hop's ray stops at every Gate cell the save left shut, also one the flood opens later, where the game stops only at a Gate shut at the time (inferred); only a hop off a Switch the hero holds sees that Switch's flavor as pressed. A Mirror riding a Lily hops as if the Lily stayed where the save last left it.
+- Mirrors: no reflections of fire, beams or the TELEPORT line (each ends at the Mirror; the TELEPORT line only swaps with a Mirror met on its back or a closed side, [Moves](#moves)), so no lift by a beam turned up. Magic-mirror teleports only as the hops of a flat magic Mirror alone in its room below the map rooms, or of the two flat magic Mirrors of a room that face each other ([Magic-mirror hops](#magic-mirror-hops)): no vertical magic Mirrors, no other rooms with several, none in the map rooms, no other clones, no lockstep of a pair's copies, no swaps of other targets, no reflected rays, no check that the hero's cell is in the Mirror's room. A hop's ray stops at every Gate cell the save left shut, also one the flood opens later, where the game stops only at a Gate shut at the time (inferred); only a hop off a Switch the hero holds sees that Switch's flavor as pressed. A Mirror riding a Lily hops as if the Lily stayed where the save last left it.
 - Magic Mirrors pushed with turns ([Moves](#moves)): the walk searches each Mirror alone and from the cells the flood reached in layer 0, so a push cell that only the push itself opens is not used. Pushing a Mirror out of a room does not make the Mirror left in it alone there, and a hop's landing is not checked against Wardrobe door edges. Hops off a Switch the hero holds are laid only for a Mirror where the save left it, and a pushed Mirror's cell is not a Switch press. A pushed Mirror is not placed, so nothing else sees it in its new cell (rays, lanes, swaps).
 - One-way edges in pocket floods: they count every rock bridge from either side and walk skip lanes backwards, from the landing to the push side; they keep falls inside the layer they start in, and walk no fall backwards but the sky entrances and no step onto a closed Freezer's top from the side, so a drop into a ground pocket from the z 1 wall tops beside it is no way in ([Pockets, leads and why](#pockets-leads-and-why)).
 - Rocks sunk with turns ([Moves](#moves)): one bridge per Rock, at the nearest water cell that joins reached ground to unreached ground (a Rock in a room with a [room answer](#room-answers) tries the answer's water cells first, with the room's other objects moving too), so a Rock that could bridge either of two gaps bridges one. A gap of two or three water cells in a row closes only with that many Rocks, each found by its own search from the cells the flood reached; a gap of four or more water cells never closes, and neither does one that needs a Rock to be pushed in a row with another or pulled. A spare Gem sinks like a Rock, but how many Gems of a room may sink is not counted: with one Gem more than the open slots, two Gems of the room can both sink, and a Gem that sank can still be pushed onto a slot. A Mirror sinking is no bridge (a flat one holds nothing, [Objects in water](MOVEMENT.md#objects-in-water)); a Promesst_Light or a Rover that sinks would hold the hero up, and the walk does not push them into water. Every Rock of a chain stays in its old cell too, so a Rock pushed later does not pass that cell. A pocket flood counts a turned bridge only from its own side.

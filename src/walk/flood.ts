@@ -827,6 +827,24 @@ function walkFrom(
         }
     }
 
+    // ACTIVATE between two facing magic Mirrors: both landings or none
+    const pairs = walkGrid.pairHops.get(cell);
+    if (pairs) {
+        for (const [firstLanding, secondLanding] of pairs) {
+            if (blocked(walkGrid, floodState, firstLanding) || blocked(walkGrid, floodState, secondLanding)) continue;
+
+            settle(walkGrid, floodState, firstLanding, z, layer);
+            settle(walkGrid, floodState, secondLanding, z, layer);
+        }
+    }
+
+    // a pocket flood walks a pair's landing back to the arm cell it came from
+    if (floodState.pocket) {
+        for (const armCell of walkGrid.pairArms.get(cell) ?? []) {
+            if (!blocked(walkGrid, floodState, armCell)) settle(walkGrid, floodState, armCell, z, layer);
+        }
+    }
+
     // ACTIVATE on the arm of a magic Mirror the flood pushed to another cell
     const turnedLandings = floodState.hopsAt.get(cell);
     if (turnedLandings) {

@@ -148,6 +148,59 @@ describe('magic-mirror hops', () => {
     });
 });
 
+describe('magic-mirror hops between two facing Mirrors', () => {
+    // a 12 x 8 grid, all wall at z 0 but a corridor (3..7, 4) between two magic Mirrors at (2, 4) and (8, 4) that face
+    // each other, and the north arm of each Mirror ((2, 1..3) and (8, 1..3))
+    const FIRST = [5, 2, 4, 0, 1, 0, 0, -1, 0, 0];
+    const SECOND = [6, 8, 4, 0, -1, 0, 0, -1, 0, 0];
+    const setup = ({ closed = [], extra = {} } = {}) => {
+        const open = ['3,4', '4,4', '5,4', '6,4', '7,4', '2,1', '2,2', '2,3', '8,1', '8,2', '8,3'];
+        const walls = {};
+        for (let column = 0; column < 96; column++) {
+            const point = `${column % 12},${Math.floor(column / 12)}`;
+            if (!open.includes(point) || closed.includes(point)) walls[column] = [0];
+        }
+        world({ width: 12, height: 8, walls, extra: { magic_mirrors: [FIRST, SECOND], ...extra } });
+        return walker(NONE, [], []);
+    };
+    const CORRIDOR = ['3,4', '4,4', '5,4', '6,4', '7,4'];
+    test('a hero where both Mirrors reflect him lands on both islands', () => {
+        const walkGrid = setup();
+        expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual([
+            '2,1',
+            '8,1',
+            '2,2',
+            '8,2',
+            '2,3',
+            '8,3',
+            ...CORRIDOR,
+        ]);
+    });
+    test('a hero nearer to one Mirror than both arms allow hops nowhere', () => {
+        // the wall at (8, 3) ends the second arm at two cells, so no cell is within reach of both arms
+        const walkGrid = setup({ closed: ['8,3'] });
+        expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual(CORRIDOR);
+    });
+    test('a target between the Mirrors ends the pair', () => {
+        // a Monster at (7, 4), which the Mirror behind it keeps from being pushed
+        const walkGrid = setup({ extra: { monsters: [[7, 7, 4, 0, -2]] } });
+        expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual(['3,4', '4,4', '5,4', '6,4']);
+    });
+    test('a third magic Mirror in the room ends the pair', () => {
+        const walkGrid = setup({ extra: { magic_mirrors: [FIRST, SECOND, [7, 10, 7, 0, 0, 0, 0, 0, 1, 0]] } });
+        expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual(CORRIDOR);
+    });
+    test('a landing in a wall stops both hops', () => {
+        const walkGrid = setup({ closed: ['2,1'] });
+        expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual(CORRIDOR);
+    });
+    test('a pocket flood walks a landing back to the corridor, a walk does not', () => {
+        const walkGrid = setup();
+        expect(cells(walkGrid, fill(walkGrid, 8, 1, 0))).toEqual(['8,1', '8,2', '8,3']);
+        expect(cells(walkGrid, fill(walkGrid, 8, 1, 0, { pocket: true }))).toHaveLength(11);
+    });
+});
+
 describe('magic-mirror hops off a Switch', () => {
     // the 8 x 8 grid of the hops above: a magic Mirror at (4, 4) with its west arm (1..3, 4) and its south arm
     // (4, 1..3); `north` opens the cells (1..3, 5) beside the west arm too. Flavor 7 has its Switch at `switchAt`

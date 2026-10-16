@@ -25,7 +25,12 @@ export interface MirrorHops {
     hops: Map<number, number[]>;
     driftHops: Set<number>;
     switchHops: SwitchHop[];
+    pairHops: Map<number, PairHop[]>;
+    pairArms: Map<number, number[]>;
 }
+
+/** The two landings of a hero between two magic Mirrors that face each other: one per Mirror, both or neither. */
+export type PairHop = [first: number, second: number];
 
 /** A flat or vertical magic Mirror and the sides its two open arms point to (-1 for none). */
 export interface MagicMirror {
@@ -194,10 +199,79 @@ export function mirrorsPerRoom(walkGrid: WalkGrid, mirrors: MagicMirror[]): Map<
     return perRoom;
 }
 
+/** Whether a ray along an arm passes `distance` cells out without a target, a stop or a Fence. */
+function armClearTo(scan: ArmScan, distance: number): boolean {
+    return distance < scan.target && distance < scan.stop && distance < scan.fence;
+}
+
+/** Whether a magic Mirror is flat, rides no Lily, stands below the map rooms and has both arms on grid axes. */
+function usablePairMirror(walkGrid: WalkGrid, mirror: MagicMirror): boolean {
+    const { mirrorCell, vertical, arms } = mirror;
+    const mirrorZ = Math.floor(mirrorCell / walkGrid.layerCells) - Z_BIAS;
+    if (vertical || mirrorZ >= walkGrid.boxZ || arms[0] < 0 || arms[1] < 0) return false;
+    return !walkGrid.lilyCells.has(mirrorCell);
+}
+
+/**
+ * The hops of a hero between the only two magic Mirrors of a room that face each other along one line, with nothing
+ * else between them. Both Mirrors reflect him, so he lands on the cell as far down each one's other arm, both landings
+ * or neither. Per arm cell between them (`pairHops`), and per landing the arm cells it leaves (`pairArms`).
+ */
+function facingPairHops(
+    walkGrid: WalkGrid,
+    mirrors: MagicMirror[],
+    perRoom: Map<string, number>,
+    pairHops: Map<number, PairHop[]>,
+    pairArms: Map<number, number[]>,
+): void {
+    const rayLength = Math.max(100, walkGrid.width, walkGrid.height);
+
+    for (let firstIndex = 0; firstIndex < mirrors.length; firstIndex++) {
+        for (let secondIndex = firstIndex + 1; secondIndex < mirrors.length; secondIndex++) {
+            const first = mirrors[firstIndex];
+            const second = mirrors[secondIndex];
+            const room = roomOf(walkGrid, first.mirrorCell);
+            if (room !== roomOf(walkGrid, second.mirrorCell) || perRoom.get(room) !== 2) continue;
+            if (!usablePairMirror(walkGrid, first) || !usablePairMirror(walkGrid, second)) continue;
+
+            for (let armIndex = 0; armIndex < 2; armIndex++) {
+                const towardSide = first.arms[armIndex];
+                const firstOtherSide = first.arms[1 - armIndex];
+                const backSide = (towardSide + 2) % 4;
+                const secondTowardIndex = second.arms.indexOf(backSide);
+                if (secondTowardIndex < 0) continue;
+
+                const secondOtherSide = second.arms[1 - secondTowardIndex];
+                const between = scanArm(walkGrid, first.mirrorCell, towardSide, rayLength, null, -1);
+                if (between.stop === Infinity || between.fence !== Infinity) continue;
+                if (cellAlong(walkGrid, first.mirrorCell, towardSide, between.stop) !== second.mirrorCell) continue;
+
+                const firstOther = scanArm(walkGrid, first.mirrorCell, firstOtherSide, rayLength, null, -1);
+                const secondOther = scanArm(walkGrid, second.mirrorCell, secondOtherSide, rayLength, null, -1);
+                const gap = between.stop;
+
+                for (let fromFirst = 1; fromFirst < gap; fromFirst++) {
+                    const fromSecond = gap - fromFirst;
+                    if (!armClearTo(firstOther, fromFirst) || !armClearTo(secondOther, fromSecond)) continue;
+
+                    const armCell = cellAlong(walkGrid, first.mirrorCell, towardSide, fromFirst);
+                    const firstLanding = cellAlong(walkGrid, first.mirrorCell, firstOtherSide, fromFirst);
+                    const secondLanding = cellAlong(walkGrid, second.mirrorCell, secondOtherSide, fromSecond);
+
+                    addTo(pairHops, armCell, [firstLanding, secondLanding]);
+                    addTo(pairArms, firstLanding, armCell);
+                    addTo(pairArms, secondLanding, armCell);
+                }
+            }
+        }
+    }
+}
+
 /**
  * The magic-mirror hops. ACTIVATE swaps every target of a room's magic Mirrors with its mirage, all or none; a hero
  * on one open arm of a flat magic Mirror lands on the cell as far down the other arm. Modelled for a magic Mirror
- * alone in its room (19 x 13 cells per layer), not in a closed Freezer and below the map rooms. A ray along an arm
+ * alone in its room (19 x 13 cells per layer), not in a closed Freezer and below the map rooms, and for the pair of
+ * magic Mirrors that are alone in their room and face each other (`facingPairHops`). A ray along an arm
  * ends at a solid voxel, a shut Gate, a frozen cell or a Rock or movable a beam does not pass, and at a target (a
  * Monster, a MIRRORABLE Rock, a mirrorable movable); the hero must stand nearer than the other arm's first stop or
  * target, with no Fence on either path. The hops of a Mirror riding a lily hold only while the lily stays where the
@@ -260,5 +334,9 @@ export function magicMirrorHops(walkGrid: WalkGrid): MirrorHops {
         addHops(mirrorCell, secondArm, firstArm, onLily);
     }
 
-    return { hops: hopsByCell, driftHops: drifting, switchHops };
+    const pairHops = new Map<number, PairHop[]>();
+    const pairArms = new Map<number, number[]>();
+    facingPairHops(walkGrid, mirrors, perRoom, pairHops, pairArms);
+
+    return { hops: hopsByCell, driftHops: drifting, switchHops, pairHops, pairArms };
 }
