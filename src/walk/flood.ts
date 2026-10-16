@@ -39,7 +39,7 @@ import type { ChainMiss } from './rock-chains.ts';
 import { respawnedRocksOf, rockTurnsOf, sinkTurned } from './rock-turns.ts';
 import type { RockTurn } from './rock-turns.ts';
 import { ferry, roverTurnsOf } from './rovers.ts';
-import type { RoverCell } from './rovers.ts';
+import type { RoverCell, SunkRover } from './rovers.ts';
 import { LAYER_COUNT, layerAfterStep, leavesByCharmDoor, startsWithCharm, swapCell, WIZARD } from './skills.ts';
 import type { LayeredCell } from './skills.ts';
 import { skipAndSwap, takeKicks } from './skipping-stones.ts';
@@ -136,8 +136,8 @@ export interface Triggers {
  * cell that starts one (`beamOutsideSeen`: the cells `outside` it have been looked at for that). The Rocks that turn
  * into water: `rocksDue` the ones a reached cell is beside (`rockSeen` notes them), `rockSpent` the ones that sank,
  * `rockMisses` their last failed searches; `turnMarked`: the water cells it marked as bridges, which it unmarks at the
- * end. The magic Mirrors that turn: `mirrorsDue` the ones a reached cell is beside (`mirrorSeen` notes them),
- * `mirrorMisses` their last searches, `hopsAt` per arm cell the landings of the hops it laid, and `hopMarked` the arm
+ * end. `ferried`: the Rovers it sank. The magic Mirrors that turn: `mirrorsDue` the ones a reached cell is beside
+ * (`mirrorSeen` notes them), `mirrorMisses` their last searches, `hopsAt` per arm cell the landings of the hops it laid, and `hopMarked` the arm
  * cells it marked as travel cells, which it unmarks at the end. The Monsters of the monster Gates: `monstersDue` the
  * ones a reached cell is beside (`monsterSeen` notes them), `monsterGone` the ones the walk got rid of, `monsterMisses`
  * the last failed search that tried to. The targets a TRANSMUTE hero turned into crystals: `transmuted` their indices,
@@ -184,6 +184,7 @@ export interface FloodState {
     roversDue: number[];
     roverSpent: Uint8Array;
     roverMisses: Array<PressMiss | undefined>;
+    ferried: SunkRover[];
     rideMarked: number[];
     mirrorCursor: Cursor;
     mirrorSeen: Uint8Array;
@@ -302,6 +303,7 @@ export function newFloodState(
         roversDue: [],
         roverSpent: new Uint8Array(triggers.rovers.length),
         roverMisses: [],
+        ferried: [],
         rideMarked: [],
         mirrorCursor: { at: 0 },
         mirrorSeen: new Uint8Array(triggers.mirrorTurns.length),

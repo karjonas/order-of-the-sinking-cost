@@ -187,11 +187,20 @@ holds it. A Rover whose search found no such cell is searched again only once wh
 Magic Mirrors that turn. Once the queue has drained and nothing else adds cells, a flat magic Mirror the hero has
 reached a cell beside, that is pushable, below the map rooms and rides no Lily, is pushed on like a Rock above: one cell
 at a time over at most 2048 positions, nearest first, from cells the flood reached in layer 0, by the same landing rules
-(a push that sinks it in water ends it there). Every position other than its own cell is a place it hops from
+(a push that sinks it in water ends it there, but for a push onto the track of a sunk Rover, below). Every position other
+than its own cell is a place it hops from
 ([Magic-mirror hops](#magic-mirror-hops)), and its hops hold for the rest of the flood. Unlike a Rock, which bridges once,
 a Mirror's search is walked again whenever a push cell it turned down is reached or the flood has opened or shut a Gate
-or moved an object for the beams, since each new position can hop somewhere new. The walk goes on from a hop's landing
-in every walk layer the flood reached its arm cell in, and from every arm cell it reaches later.
+or moved an object for the beams or sunk a Rover, since each new position can hop somewhere new. The walk goes on from a
+hop's landing in every walk layer the flood reached its arm cell in, and from every arm cell it reaches later.
+
+A Mirror on a Rover. A Mirror pushed onto a cell of the track of a Rover that sank (above, as the flood has the water
+cells) rides the Rover, which may be under any cell of the track: the Mirror stands in every cell of the track, and so
+does a Mirror the save left on a track. Each of those cells is a place it hops from. The hero cannot stand on the
+Rover the Mirror rides, so no hop is taken off a cell of that track, but off a cell a Rock fills: an end of the track
+where some Rock that stands (a respawned Rock needs its Activator reached) can be pushed to sink, searched like the
+Rocks above. The Rock counts wherever else it bridges. It holds the hero in the end cell, and the Rover stops short of
+it, so the Mirror is not taken to stand in that cell.
 
 Stones launched with CHARM. A hero who has left a CHARM Wardrobe by its door holds CHARM ([CHARM](SKILLS.md#charm)): a
 flood notes it when it steps out of one in layer 0, and starts with it when the current hero holds CHARM in the save
@@ -341,13 +350,16 @@ uncast is tried again only once more Gems are on slots.
 
 ACTIVATE swaps every target of a room's magic Mirrors with its mirage, all or nothing
 ([Magic mirrors](MOVEMENT.md#magic-mirrors)). The walk models two cases that need no other target: a hero on one
-open arm of a flat magic Mirror alone in its room lands on the cell as far down the other arm, and a hero between the
-only two magic Mirrors of a room that face each other is cloned onto both ([Hops between two facing
-Mirrors](#hops-between-two-facing-mirrors), below).
+open arm of a flat magic Mirror that no other magic Mirror of its room spoils lands on the cell as far down the other
+arm, and a hero between two magic Mirrors of such a room that face each other is cloned onto both ([Hops between two
+facing Mirrors](#hops-between-two-facing-mirrors), below).
 
-- Mirrors: `world.magic_mirrors`, at their latest cells, existing, not in the cell of a closed Freezer. Every listed
-  Mirror counts towards its room (a 19 × 13 screen in its ground layer), vertical ones too. A Mirror is used when it
-  is flat, the only one in its room, below the map rooms (z < 75) and both arms lie on grid axes.
+- Mirrors: `world.magic_mirrors`, at their latest cells, existing, not in the cell of a closed Freezer. A Mirror is
+  used when it is flat, below the map rooms (z < 75) and both arms lie on grid axes. Another magic Mirror of its room
+  (a 19 × 13 screen in its ground layer) spoils a hop off an arm cell when it is vertical or has an arm off the grid
+  axes (it is not read), when a ray along one of its arms finds a target, or when a ray along one of its arms passes
+  the arm cell, since the hero there is its target too. A Mirror whose rays find no target and pass no cell the hero
+  hops from swaps nothing, so it leaves the others alone.
 - A ray along an arm runs at most max(100, W, H) cells. It stops at SOLID, a shut Gate, a closed Freezer's cell, or
   a Rock or movable that a beam does not pass. It finds a target at a Monster, a MIRRORABLE Rock or a `mirrorable`
   Rover. The walk's hops stop at every Gate the save left shut. The game reads a Gate as shut when the ray is cast, so the two differ only for a Gate the flood opens later, which the game still reads as shut at that moment.
@@ -363,10 +375,13 @@ Mirrors](#hops-between-two-facing-mirrors), below).
   it presses any flavor, since a press changes the flavor's gates for the rest of the flood.
 - A Mirror standing on a Lily's cell hops too. Those hops hold only while the Lily stays where the save last left it
   (`driftHops`). The page does not yet show which plans depend on them.
-- A Mirror the walk pushes to another cell ([Moves](#moves)) hops from there when no other magic Mirror stands in the
-  room of that cell, laid like the hops above with the cell it left ending no ray, and Gates as the save left them.
-  The hero hops only from an arm cell in the Mirror's room. The hops of the cell it left stay, since the hero may use
-  them before he pushes it.
+- A Mirror the walk pushes to another cell ([Moves](#moves)) hops from there off the arm cells no other magic Mirror
+  of the room of that cell spoils, laid like the hops above with the cell it left ending no ray, and Gates as the save
+  left them. The hero hops only from an arm cell in the Mirror's room. The hops of the cell it left stay, since the
+  hero may use them before he pushes it.
+- A Mirror on a Rover that sank ([Moves](#moves)) is in every cell of the Rover's track, and the hero does not hop off
+  a cell of that track, where he would ride the Rover as well, but off a track end a Rock fills. The hops a Mirror
+  takes from its own cell on a track leave out the track cells likewise.
 - The game processes a mirage only while the Mirror's room holds a Guy of the active hero. The walk does not check
   that the arm cell lies in the Mirror's room, but for a Mirror it pushed; an arm can run out of it.
 
@@ -374,8 +389,9 @@ Mirrors](#hops-between-two-facing-mirrors), below).
 
 When two magic Mirrors reflect the hero to different mirages, he is cloned: a copy appears at each landing, the copies
 share one turn group and move together, and a copy that dies is survivable while another lives
-([Magic mirrors](MOVEMENT.md#magic-mirrors)). The walk models the case of a room with exactly two magic Mirrors, both
-flat, riding no Lily, below the map rooms, whose arms face each other along one grid line:
+([Magic mirrors](MOVEMENT.md#magic-mirrors)). The walk models the case of two magic Mirrors of a room, both flat,
+riding no Lily, below the map rooms, whose arms face each other along one grid line, with no other magic Mirror of the
+room spoiling the hop off the cell ([Magic-mirror hops](#magic-mirror-hops)):
 
 - The gap between them holds no target, stop or Fence (a ray along it from the first Mirror ends at the second). Every
   Fence on it counts, since the hero's path to either Mirror crosses part of it.
@@ -383,7 +399,7 @@ flat, riding no Lily, below the map rooms, whose arms face each other along one 
   d cells down the first Mirror's other arm and e cells down the second's. Each other arm must be clear (no target,
   stop or Fence) nearer than the cell he reflects to, as for a single Mirror.
 - All or nothing: both landings must be free, else the activation does nothing. Nothing else in the room moves, since
-  no other magic Mirror exists there.
+  no other magic Mirror there finds a target.
 - The walk goes on from each landing in the layer the flood reached the arm cell in. The copies are not kept together:
   the walk treats them as independent heroes after the hop, so a cell is reached when either copy could walk there.
 - A pocket flood also steps from a landing back to the arm cell it came from, since the hero reaches a landing only
@@ -578,11 +594,11 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 
 ### What the walk leaves out
 
-- Mirrors: no reflections of fire, beams or the TELEPORT line (each ends at the Mirror; the TELEPORT line only swaps with a Mirror met on its back or a closed side, [Moves](#moves)), so no lift by a beam turned up. Magic-mirror teleports only as the hops of a flat magic Mirror alone in its room below the map rooms, or of the two flat magic Mirrors of a room that face each other ([Magic-mirror hops](#magic-mirror-hops)): no vertical magic Mirrors, no other rooms with several, none in the map rooms, no other clones, no lockstep of a pair's copies, no swaps of other targets, no reflected rays, no check that the hero's cell is in the Mirror's room. A hop's ray stops at every Gate cell the save left shut, also one the flood opens later, where the game stops only at a Gate shut at the time (inferred); only a hop off a Switch the hero holds sees that Switch's flavor as pressed. A Mirror riding a Lily hops as if the Lily stayed where the save last left it.
+- Mirrors: no reflections of fire, beams or the TELEPORT line (each ends at the Mirror; the TELEPORT line only swaps with a Mirror met on its back or a closed side, [Moves](#moves)), so no lift by a beam turned up. Magic-mirror teleports only as the hops of a flat magic Mirror below the map rooms that no other magic Mirror of its room spoils, or of the two flat magic Mirrors of such a room that face each other ([Magic-mirror hops](#magic-mirror-hops)): no vertical magic Mirrors, no rooms where one Mirror's targets or rays meet another's hop, none in the map rooms, no other clones, no lockstep of a pair's copies, no swaps of other targets, no reflected rays, no check that the hero's cell is in the Mirror's room. The targets are those at the start (a Rock or Monster pushed onto a ray later is not seen), and a Mirror on a sunk Rover hops as if the Rover could be under any cell of its track, with the Rock that fills a track end counted wherever else it bridges. A hop's ray stops at every Gate cell the save left shut, also one the flood opens later, where the game stops only at a Gate shut at the time (inferred); only a hop off a Switch the hero holds sees that Switch's flavor as pressed. A Mirror riding a Lily hops as if the Lily stayed where the save last left it.
 - Magic Mirrors pushed with turns ([Moves](#moves)): the walk searches each Mirror alone and from the cells the flood reached in layer 0, so a push cell that only the push itself opens is not used. Pushing a Mirror out of a room does not make the Mirror left in it alone there, and a hop's landing is not checked against Wardrobe door edges. Hops off a Switch the hero holds are laid only for a Mirror where the save left it, and a pushed Mirror's cell is not a Switch press. A pushed Mirror is not placed, so nothing else sees it in its new cell (rays, lanes, swaps).
 - One-way edges in pocket floods: they count every rock bridge from either side and walk skip lanes backwards, from the landing to the push side; they keep falls inside the layer they start in, and walk no fall backwards but the sky entrances and no step onto a closed Freezer's top from the side, so a drop into a ground pocket from the z 1 wall tops beside it is no way in ([Pockets, leads and why](#pockets-leads-and-why)).
 - Rocks sunk with turns ([Moves](#moves)): one bridge per Rock, at the nearest water cell that joins reached ground to unreached ground (a Rock in a room with a [room answer](#room-answers) tries the answer's water cells first, with the room's other objects moving too), so a Rock that could bridge either of two gaps bridges one. A gap of two or three water cells in a row closes only with that many Rocks, each found by its own search from the cells the flood reached; a gap of four or more water cells never closes, and neither does one that needs a Rock to be pushed in a row with another or pulled. A spare Gem sinks like a Rock, but how many Gems of a room may sink is not counted: with one Gem more than the open slots, two Gems of the room can both sink, and a Gem that sank can still be pushed onto a slot. A Mirror sinking is no bridge (a flat one holds nothing, [Objects in water](MOVEMENT.md#objects-in-water)); a Promesst_Light or a Rover that sinks would hold the hero up, and the walk does not push them into water. Every Rock of a chain stays in its old cell too, so a Rock pushed later does not pass that cell. A pocket flood counts a turned bridge only from its own side.
-- Rovers that sink ([Moves](#moves)): only a Rover under water carries the hero; a Rover on land (many shuttle on their tracks) carries nobody. The whole track holds the hero at once: the walk does not check that he reaches a cell before the Rover has passed it, the timer (the Rover steps about every 7 hero moves) or a stall. A track ends where the water does and at a solid cell, a Fence, a Rock or a movable: the game's Rover pushes what is in its way, which the walk does not model. A Rover sinks once, at the nearest water cell where its track joins reached ground to unreached ground, as a Rock does, so a track that joins nothing new is not made. A pocket walk that bumps into a Freezer holding a Rover opens it once more to find the levels the Rover ferries it to; the Rover's ride past that is the one described here ([Pockets, leads and why](#pockets-leads-and-why)). The track of a Rover the flood sinks is not left out of the map's reached cells when the hero only rides through, as a Lily's drift is ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)).
+- Rovers that sink ([Moves](#moves)): only a Rover under water carries the hero; a Rover on land (many shuttle on their tracks) carries nobody. The whole track holds the hero at once: the walk does not check that he reaches a cell before the Rover has passed it, the timer (the Rover steps about every 7 hero moves) or a stall. A track ends where the water does and at a solid cell, a Fence, a Rock or a movable: the game's Rover pushes what is in its way, which the walk does not model. A Rover sinks once, at the nearest water cell where its track joins reached ground to unreached ground, as a Rock does, so a track that joins nothing new is not made. It is pushed only from the cell the level data rests it in, not from the cells it shuttles to on dry land, so a Rover whose resting cell has no cell behind it to push from is never sunk by the walk. A pocket walk that bumps into a Freezer holding a Rover opens it once more to find the levels the Rover ferries it to; the Rover's ride past that is the one described here ([Pockets, leads and why](#pockets-leads-and-why)). The track of a Rover the flood sinks is not left out of the map's reached cells when the hero only rides through, as a Lily's drift is ([Skip lanes and the TELEPORT swap](#skip-lanes-and-the-teleport-swap)).
 - Rocks a Spawner puts back ([Moves](#moves)): the reset destroys the Rock the save left and the walk keeps it, and a reset again after the Rock has sunk is not walked (it would take the bridge away). A respawned Rock sinks, like any Rock that turns, only where it joins reached ground to unreached ground, so a bridge to a water cell with no new ground beside it is not made, and a Rock the Spawner puts back in a cell other than its level-data cell has no straight bridges. A Spawner whose cell is blocked skips its respawn in the game; the walk does not check that.
 - CHARM ([Moves](#moves)): only the launch of a MIRRORABLE skipping stone into water. A charm move takes everything within 2 cells along, so the hero's other steps near a stone move it too, and a charmed Guy, Monster, Mirror or other stone takes each step with him; the walk moves none of them, and takes the cells the hero reached in layer 0 as cells he stands in with CHARM, though a hero with CHARM pushes nothing (his press is a charm move), so the cells include ones only a pushing hero reaches. A stone moved by a charm step over dry cells, kicks of the Lilies a charmed stone passes, and a TELEPORT swap onto a charmed stone (the skills stack only through two Wardrobes) are not laid. A stone skipping from an earlier launch is left out of a charm move; the walk lets the next launch follow at once. The CHARM Wardrobes' door-ins are not tracked: a Wardrobe entered by its door resets the skills, which the walk applies to PROTECTION, TELEPORT and TRANSMUTE only.
 - Skills: one push of one cell; no MULTIPUSH rows, PULL, SWAP_WITH_DRAGON. Layer 0 can't tell MULTIPUSH from PULL, CHARM or another skill, so every hero outside layers 1, 2 and 3 pushes. MULTIPUSH rows and PULL would each need a walk layer of their own, with the door-out gains and door-in resets of [Wardrobes](SKILLS.md#wardrobes). Skills don't stack on PROTECTION or TELEPORT: a PROTECTION + MULTIPUSH hero is treated as unable to push, a PROTECTION door taken in layer 2 drops TELEPORT, and a TELEPORT door taken in layer 1 drops PROTECTION. In the game that holds only when the hero enters that Wardrobe through its door, which resets him to QUEEN | SINGLE_PUSH; entered through its back or a side, he leaves it with both skills ([Wardrobes](SKILLS.md#wardrobes)).

@@ -113,10 +113,12 @@ describe('magic-mirror hops', () => {
     // an 8 x 8 grid, all wall at z 0 but the west arm (1..3, 4) and the south arm (4, 1..3) of a magic Mirror at (4, 4)
     // whose open arms face west and south
     const open = ['1,4', '2,4', '3,4', '4,1', '4,2', '4,3'];
-    const setup = (extra = {}) => {
+    const setup = (extra = {}, moreOpen = []) => {
         const walls = {};
-        for (let column = 0; column < 64; column++)
-            if (!open.includes(`${column % 8},${Math.floor(column / 8)}`)) walls[column] = [0];
+        for (let column = 0; column < 64; column++) {
+            const point = `${column % 8},${Math.floor(column / 8)}`;
+            if (!open.includes(point) && !moreOpen.includes(point)) walls[column] = [0];
+        }
         world({ width: 8, height: 8, walls, extra: { magic_mirrors: [[5, 4, 4, 0, -1, 0, 0, -1, 0, 0]], ...extra } });
         return walker(NONE, [], []);
     };
@@ -132,6 +134,44 @@ describe('magic-mirror hops', () => {
             ],
         });
         expect(cells(walkGrid, fill(walkGrid, 1, 4, 0))).toEqual(['1,4', '2,4', '3,4']);
+    });
+    test('a second flat magic Mirror with no target on its arms stops no hop', () => {
+        // the second Mirror at (7, 7) stands in wall: both its arms end at once
+        const walkGrid = setup({
+            magic_mirrors: [
+                [5, 4, 4, 0, -1, 0, 0, -1, 0, 0],
+                [6, 7, 7, 0, -1, 0, 0, -1, 0, 0],
+            ],
+        });
+        expect(cells(walkGrid, fill(walkGrid, 1, 4, 0))).toEqual(['4,1', '4,2', '4,3', '1,4', '2,4', '3,4']);
+    });
+    test('a second magic Mirror with a target on an arm stops every hop', () => {
+        // the second Mirror at (7, 4) looks west over (6, 4) at a Monster in (5, 4)
+        const walkGrid = setup(
+            {
+                magic_mirrors: [
+                    [5, 4, 4, 0, -1, 0, 0, -1, 0, 0],
+                    [6, 7, 4, 0, -1, 0, 0, -1, 0, 0],
+                ],
+                monsters: [[8, 5, 4, 0, -2]],
+            },
+            ['5,4', '6,4'],
+        );
+        expect(cells(walkGrid, fill(walkGrid, 1, 4, 0))).toEqual(['1,4', '2,4', '3,4']);
+    });
+    test('a hero in the rays of a second magic Mirror hops from the cells outside them', () => {
+        // the second Mirror at (2, 6) looks south over (2, 5) to (2, 4), a cell of the first Mirror's west arm
+        const walkGrid = setup(
+            {
+                magic_mirrors: [
+                    [5, 4, 4, 0, -1, 0, 0, -1, 0, 0],
+                    [6, 2, 6, 0, 0, -1, 1, 0, 0, 0],
+                ],
+            },
+            ['2,5'],
+        );
+        const hopsFrom = (i) => walkGrid.hops.has(walkGrid.cellOf(i, 4, 0));
+        expect([hopsFrom(1), hopsFrom(2), hopsFrom(3)]).toEqual([true, false, true]);
     });
     test('the hero must stand nearer than the first target on the other arm', () => {
         // a Monster at (4, 1), the third cell of the south arm, which the wall at (4, 0) keeps from being pushed
@@ -190,14 +230,20 @@ describe('magic-mirror hops between two facing Mirrors', () => {
         const walkGrid = setup({ extra: { magic_mirrors: [FIRST, SECOND, [7, 10, 7, 0, 0, 0, 0, 0, 1, 0]] } });
         expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual(CORRIDOR);
     });
+    test('a third flat magic Mirror with no target does not end the pair', () => {
+        const walkGrid = setup({
+            extra: { magic_mirrors: [FIRST, SECOND, [7, 10, 7, 0, -1, 0, 0, -1, 0, 0]] },
+        });
+        expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toHaveLength(11);
+    });
     test('a landing in a wall stops both hops', () => {
         const walkGrid = setup({ closed: ['2,1'] });
         expect(cells(walkGrid, fill(walkGrid, 3, 4, 0))).toEqual(CORRIDOR);
     });
-    test('a pocket flood walks a landing back to the corridor, a walk does not', () => {
+    test('a hero on the north arm of one Mirror hops onto the corridor on his own', () => {
+        // no target or ray of the other Mirror touches the arm, so the Mirror reflects him alone
         const walkGrid = setup();
-        expect(cells(walkGrid, fill(walkGrid, 8, 1, 0))).toEqual(['8,1', '8,2', '8,3']);
-        expect(cells(walkGrid, fill(walkGrid, 8, 1, 0, { pocket: true }))).toHaveLength(11);
+        expect(cells(walkGrid, fill(walkGrid, 8, 1, 0))).toHaveLength(11);
     });
 });
 
@@ -783,6 +829,73 @@ describe('a magic Mirror pushed with turns', () => {
     });
     test('hops nowhere when the push cell behind the last push is wall', () => {
         expect(hops(setup([[7, 4]]))).toBe(false);
+    });
+});
+
+describe('a magic Mirror on a Rover that sank', () => {
+    const [WIDTH, HEIGHT, MIRROR, ROVER, ROCK] = [12, 7, 5, 6, 7];
+
+    // A 12 x 7 grid with ground at z 0 (the hero stands at z 1) and wall elsewhere. Water (surface 1) fills x 3..8 of
+    // rows 2 and 3. A Rover rests under the water at (6, 3), running east-west, so its track is (3..8, 3), and carries
+    // a magic Mirror above it whose arms face east and south. The hero walks the ground west of the water (1..2, 3),
+    // up column 1 and along row 5. The Mirror's south arm runs over the water (6, 2) to the island (6, 1, and 0), which
+    // only a hop reaches. `shore`: ground at (9, 3..5) east of the water, where the hero hops from (9, 3). `rock`: a
+    // Rock at (8, 4) for the hero to push south from (8, 5) onto (8, 3), the end of the track, where he hops from.
+    // `walls`: cells to close.
+    const setup = ({ shore = false, rock = false, walls = [] } = {}) => {
+        const open = new Set(['1,3', '2,3', '6,1', '6,0']);
+        for (let j = 3; j <= 5; j++) open.add(`1,${j}`);
+        for (let i = 1; i <= 8; i++) open.add(`${i},5`);
+        if (shore) for (let j = 3; j <= 5; j++) open.add(`9,${j}`);
+        if (rock) open.add('8,4');
+        for (const point of walls) open.delete(point);
+
+        const wallColumns = {};
+        const waterColumns = {};
+        for (let column = 0; column < WIDTH * HEIGHT; column++) {
+            const i = column % WIDTH;
+            const j = Math.floor(column / WIDTH);
+            if (i >= 3 && i <= 8 && (j === 2 || j === 3)) {
+                waterColumns[column] = [0];
+            } else if (open.has(`${i},${j}`)) {
+                wallColumns[column] = [0];
+            } else {
+                wallColumns[column] = [0, 1, 2];
+            }
+        }
+
+        world({
+            width: WIDTH,
+            height: HEIGHT,
+            walls: wallColumns,
+            water: waterColumns,
+            extra: {
+                oceans: [[1, 1, 0, 3, 2, 6, 2]],
+                movables: [
+                    [ROVER, 6, 3, 0, 3],
+                    [MIRROR, 6, 3, 1, 2],
+                ],
+                rover_facings: [[ROVER, 0]],
+                magic_mirrors: [[MIRROR, 6, 3, 1, 1, 0, 0, -1, 0, 0]],
+                rocks: rock ? [[ROCK, 8, 4, 1]] : [],
+            },
+        });
+
+        return walker(NONE, [], []);
+    };
+    const reachesIsland = (walkGrid) => walkGrid.flood([walkGrid.cellOf(1, 3, 1)]).has(walkGrid.cellOf(6, 1, 1));
+
+    test('hops the hero from a cell past the track to the island', () => {
+        expect(reachesIsland(setup({ shore: true }))).toBe(true);
+    });
+    test('takes no hop off a cell of the track, where the hero would ride the Rover', () => {
+        expect(reachesIsland(setup())).toBe(false);
+    });
+    test('takes the hop off the end of the track once a Rock can sink there', () => {
+        expect(reachesIsland(setup({ rock: true }))).toBe(true);
+    });
+    test('takes none when the Rock cannot be pushed onto the track', () => {
+        expect(reachesIsland(setup({ rock: true, walls: ['8,5'] }))).toBe(false);
     });
 });
 

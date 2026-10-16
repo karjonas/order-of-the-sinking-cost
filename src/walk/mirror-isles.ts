@@ -34,6 +34,7 @@ export type PairHop = [first: number, second: number];
 
 /** A flat or vertical magic Mirror and the sides its two open arms point to (-1 for none). */
 export interface MagicMirror {
+    pid: number;
     mirrorCell: number;
     vertical: number;
     arms: [first: number, second: number];
@@ -181,22 +182,77 @@ export function magicMirrorsOf(walkGrid: WalkGrid): MagicMirror[] {
         if (freezer && freezerIndex !== undefined && closedFreezers[freezerIndex]) continue;
 
         const arms: [number, number] = [sideOf(firstArmX, firstArmY), sideOf(secondArmX, secondArmY)];
-        mirrors.push({ mirrorCell, vertical, arms });
+        mirrors.push({ pid, mirrorCell, vertical, arms });
     }
 
     return mirrors;
 }
 
-/** Per room, how many of `mirrors` stand in it. */
-export function mirrorsPerRoom(walkGrid: WalkGrid, mirrors: MagicMirror[]): Map<string, number> {
-    const perRoom = new Map<string, number>();
+/**
+ * A magic Mirror as the others in its room see it. `blocksRoom`: one of its arms holds a target (or the Mirror is
+ * vertical, or has an arm off the grid axes), so every activation swaps something it owns. Otherwise `rayCells`: the
+ * cells its rays pass, where a hero standing is reflected by it too.
+ */
+export interface Rival {
+    pid: number;
+    blocksRoom: boolean;
+    rayCells: Set<number>;
+}
 
-    for (const { mirrorCell } of mirrors) {
-        const room = roomOf(walkGrid, mirrorCell);
-        perRoom.set(room, (perRoom.get(room) ?? 0) + 1);
+/** The rival record of `mirror`, from the rays along its two arms. */
+function rivalOf(walkGrid: WalkGrid, mirror: MagicMirror): Rival {
+    const { pid, mirrorCell, vertical, arms } = mirror;
+    const rival: Rival = { pid, blocksRoom: false, rayCells: new Set() };
+
+    if (vertical || arms[0] < 0 || arms[1] < 0) {
+        rival.blocksRoom = true;
+        return rival;
     }
 
-    return perRoom;
+    const rayLength = Math.max(100, walkGrid.width, walkGrid.height);
+
+    for (const side of arms) {
+        const scan = scanArm(walkGrid, mirrorCell, side, rayLength, null, -1);
+
+        if (scan.target !== Infinity) {
+            rival.blocksRoom = true;
+            return rival;
+        }
+
+        const rayEnd = Math.min(scan.stop, rayLength + 1);
+        let cell = mirrorCell;
+
+        for (let distance = 1; distance < rayEnd; distance++) {
+            cell = cellOnSide(walkGrid, cell, side);
+            rival.rayCells.add(cell);
+        }
+    }
+
+    return rival;
+}
+
+/** Per room, the rival records of the magic `mirrors` that stand in it. */
+export function rivalsByRoom(walkGrid: WalkGrid, mirrors: MagicMirror[]): Map<string, Rival[]> {
+    const byRoom = new Map<string, Rival[]>();
+
+    for (const mirror of mirrors) {
+        addTo(byRoom, roomOf(walkGrid, mirror.mirrorCell), rivalOf(walkGrid, mirror));
+    }
+
+    return byRoom;
+}
+
+/**
+ * Whether a hop off `armCell` is spoiled by another magic Mirror of the room, `rivals`: one that holds a target, or one
+ * whose rays reflect the hero on that cell as well. The Mirrors with a pid in `ownPids` take part in the hop.
+ */
+export function rivalBlocks(rivals: Rival[] | undefined, ownPids: number[], armCell: number): boolean {
+    for (const rival of rivals ?? []) {
+        if (ownPids.includes(rival.pid)) continue;
+        if (rival.blocksRoom || rival.rayCells.has(armCell)) return true;
+    }
+
+    return false;
 }
 
 /** Whether a ray along an arm passes `distance` cells out without a target, a stop or a Fence. */
@@ -213,14 +269,15 @@ function usablePairMirror(walkGrid: WalkGrid, mirror: MagicMirror): boolean {
 }
 
 /**
- * The hops of a hero between the only two magic Mirrors of a room that face each other along one line, with nothing
- * else between them. Both Mirrors reflect him, so he lands on the cell as far down each one's other arm, both landings
- * or neither. Per arm cell between them (`pairHops`), and per landing the arm cells it leaves (`pairArms`).
+ * The hops of a hero between two magic Mirrors of a room that face each other along one line, with nothing else
+ * between them and no other magic Mirror of the room spoiling the hop. Both Mirrors reflect him, so he lands on the
+ * cell as far down each one's other arm, both landings or neither. Per arm cell between them (`pairHops`), and per
+ * landing the arm cells it leaves (`pairArms`).
  */
 function facingPairHops(
     walkGrid: WalkGrid,
     mirrors: MagicMirror[],
-    perRoom: Map<string, number>,
+    rivals: Map<string, Rival[]>,
     pairHops: Map<number, PairHop[]>,
     pairArms: Map<number, number[]>,
 ): void {
@@ -231,7 +288,7 @@ function facingPairHops(
             const first = mirrors[firstIndex];
             const second = mirrors[secondIndex];
             const room = roomOf(walkGrid, first.mirrorCell);
-            if (room !== roomOf(walkGrid, second.mirrorCell) || perRoom.get(room) !== 2) continue;
+            if (room !== roomOf(walkGrid, second.mirrorCell)) continue;
             if (!usablePairMirror(walkGrid, first) || !usablePairMirror(walkGrid, second)) continue;
 
             for (let armIndex = 0; armIndex < 2; armIndex++) {
@@ -255,6 +312,8 @@ function facingPairHops(
                     if (!armClearTo(firstOther, fromFirst) || !armClearTo(secondOther, fromSecond)) continue;
 
                     const armCell = cellAlong(walkGrid, first.mirrorCell, towardSide, fromFirst);
+                    if (rivalBlocks(rivals.get(room), [first.pid, second.pid], armCell)) continue;
+
                     const firstLanding = cellAlong(walkGrid, first.mirrorCell, firstOtherSide, fromFirst);
                     const secondLanding = cellAlong(walkGrid, second.mirrorCell, secondOtherSide, fromSecond);
 
@@ -270,25 +329,35 @@ function facingPairHops(
 /**
  * The magic-mirror hops. ACTIVATE swaps every target of a room's magic Mirrors with its mirage, all or none; a hero
  * on one open arm of a flat magic Mirror lands on the cell as far down the other arm. Modelled for a magic Mirror
- * alone in its room (19 x 13 cells per layer), not in a closed Freezer and below the map rooms, and for the pair of
- * magic Mirrors that are alone in their room and face each other (`facingPairHops`). A ray along an arm
- * ends at a solid voxel, a shut Gate, a frozen cell or a Rock or movable a beam does not pass, and at a target (a
- * Monster, a MIRRORABLE Rock, a mirrorable movable); the hero must stand nearer than the other arm's first stop or
- * target, with no Fence on either path. The hops of a Mirror riding a lily hold only while the lily stays where the
+ * that no other magic Mirror of its room (19 x 13 cells per layer) spoils (`rivalBlocks`), not in a closed Freezer
+ * and below the map rooms, and for the pair of magic Mirrors that face each other in such a room
+ * (`facingPairHops`). A ray along an arm ends at a solid voxel, a shut Gate, a frozen cell or a Rock or movable a beam
+ * does not pass, and at a target (a Monster, a MIRRORABLE Rock, a mirrorable movable); the hero must stand nearer than
+ * the other arm's first stop or target, with no Fence on either path. The hops of a Mirror riding a lily hold only while the lily stays where the
  * save last left it. A hero on a Switch not pressed holds it down, so the hops off it are laid again with the Gates as
- * a press of its flavor leaves them (`switchHops`); those landings that differ are kept for the flood to check.
+ * a press of its flavor leaves them (`switchHops`); those landings that differ are kept for the flood to check. A
+ * Mirror over the track of a Rover that sank takes no hop off a cell of the track, where the hero would ride the Rover
+ * as well.
  */
 export function magicMirrorHops(walkGrid: WalkGrid): MirrorHops {
-    const { width, height, layerCells, boxZ, lilyCells } = walkGrid;
+    const { width, height, layerCells, boxZ, lilyCells, rideCells } = walkGrid;
     const hopsByCell = new Map<number, number[]>();
     const drifting = new Set<number>();
     const switchHops: SwitchHop[] = [];
     const rayLength = Math.max(100, width, height);
     const switchFlavorsAt = heldSwitches(walkGrid);
+    const mirrors = magicMirrorsOf(walkGrid);
+    const rivals = rivalsByRoom(walkGrid, mirrors);
 
     // the hops of a hero on the arm on `heroSide`, landing along the arm on `landSide`
-    const addHops = (mirrorCell: number, heroSide: number, landSide: number, onLily: boolean): void => {
+    const addHops = (mirror: MagicMirror, heroSide: number, landSide: number, onLily: boolean): void => {
+        const { pid, mirrorCell } = mirror;
+        const roomRivals = rivals.get(roomOf(walkGrid, mirrorCell));
+        const onRover = rideCells.has(mirrorCell);
+
         armHops(walkGrid, mirrorCell, heroSide, landSide, null, -1, (armCell, landing) => {
+            if (rivalBlocks(roomRivals, [pid], armCell) || (onRover && rideCells.has(armCell))) return;
+
             addTo(hopsByCell, armCell, landing);
             if (onLily) drifting.add(armCell);
         });
@@ -309,6 +378,7 @@ export function magicMirrorHops(walkGrid: WalkGrid): MirrorHops {
 
                 armHops(walkGrid, mirrorCell, heroSide, landSide, pressed, -1, (armCell, landing) => {
                     if (armCell !== switchCell || plainLandings.includes(landing)) return;
+                    if (rivalBlocks(roomRivals, [pid], armCell) || (onRover && rideCells.has(armCell))) return;
 
                     switchHops.push({ flavor, switchCell, landing });
                     if (onLily) drifting.add(armCell);
@@ -317,12 +387,9 @@ export function magicMirrorHops(walkGrid: WalkGrid): MirrorHops {
         }
     };
 
-    const mirrors = magicMirrorsOf(walkGrid);
-    const perRoom = mirrorsPerRoom(walkGrid, mirrors);
-
-    for (const { mirrorCell, vertical, arms } of mirrors) {
-        const sharesRoom = (perRoom.get(roomOf(walkGrid, mirrorCell)) ?? 0) > 1;
-        if (vertical || sharesRoom) continue;
+    for (const mirror of mirrors) {
+        const { mirrorCell, vertical, arms } = mirror;
+        if (vertical) continue;
 
         const [firstArm, secondArm] = arms;
         const mirrorZ = Math.floor(mirrorCell / layerCells) - Z_BIAS;
@@ -330,13 +397,13 @@ export function magicMirrorHops(walkGrid: WalkGrid): MirrorHops {
 
         const onLily = lilyCells.has(mirrorCell);
 
-        addHops(mirrorCell, firstArm, secondArm, onLily);
-        addHops(mirrorCell, secondArm, firstArm, onLily);
+        addHops(mirror, firstArm, secondArm, onLily);
+        addHops(mirror, secondArm, firstArm, onLily);
     }
 
     const pairHops = new Map<number, PairHop[]>();
     const pairArms = new Map<number, number[]>();
-    facingPairHops(walkGrid, mirrors, perRoom, pairHops, pairArms);
+    facingPairHops(walkGrid, mirrors, rivals, pairHops, pairArms);
 
     return { hops: hopsByCell, driftHops: drifting, switchHops, pairHops, pairArms };
 }

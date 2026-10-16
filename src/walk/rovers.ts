@@ -23,6 +23,12 @@ export interface RoverCell {
     side: number;
 }
 
+/** A Rover the flood sank: the cell over where it rests and the side it runs along. */
+export interface SunkRover {
+    start: number;
+    side: number;
+}
+
 /** The side a Rover runs along: its latest `theta_target`, else the level data's, as an even or odd quarter turn. */
 function runSideOf(walkGrid: WalkGrid, pid: number): number {
     let quarterTurns = walkGrid.geometry.roverFacings.get(pid) ?? 0;
@@ -91,6 +97,26 @@ export function placeRovers(walkGrid: WalkGrid): void {
 
         for (const trackCell of roverTrack(walkGrid, noFlood, over, rover.side)) rideCells.add(trackCell);
     }
+}
+
+/**
+ * The tracks of the Rovers sunk in water, as the flood has the water cells: those the save left sunk and those the
+ * flood sank. A cell a Rock sank in ends a track.
+ */
+export function sunkTracks(walkGrid: WalkGrid, floodState: FloodState): number[][] {
+    const { rovers, rideCells, layerCells } = walkGrid;
+    const tracks: number[][] = [];
+
+    for (const { cell, side } of rovers) {
+        const over = cell + layerCells;
+        if (rideCells.has(over)) tracks.push(roverTrack(walkGrid, floodState, over, side));
+    }
+
+    for (const { start, side } of floodState.ferried) {
+        tracks.push(roverTrack(walkGrid, floodState, start, side));
+    }
+
+    return tracks;
 }
 
 /** The Rovers a flood may push into water: those that rest on dry cells (not over the sunk ones, which ride). */
@@ -169,6 +195,7 @@ export function ferry(walkGrid: WalkGrid, floodState: FloodState): boolean {
         }
 
         roverSpent[roverIndex] = 1;
+        floodState.ferried.push({ start: waterCell, side });
 
         for (const trackCell of track) {
             walkGrid.ferryCells.add(trackCell);

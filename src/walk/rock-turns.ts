@@ -231,19 +231,23 @@ function storedBridgeOf(walkGrid: WalkGrid, floodState: FloodState, rockCell: nu
     return -1;
 }
 
+/** Whether the Rock stands: a crystal Rock needs its target turned, a respawned Rock one of its Activators reached. */
+export function rockStands(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
+    const { target, activators } = walkGrid.triggers.rocks[rockIndex];
+    if (target !== undefined && !floodState.transmuted.has(target)) return false;
+
+    return !activators || activators.some((activatorCell) => walkGrid.visited[activatorCell] !== 0);
+}
+
 /**
- * Whether the Rock can still sink: it exists (a crystal Rock needs its target turned, a respawned Rock one of its
- * Activators reached), it has not sunk, and its straight bridge has not sunk it either (`bridgeTaken`).
+ * Whether the Rock can still sink: it stands, it has not sunk, and its straight bridge has not sunk it either
+ * (`bridgeTaken`).
  */
 export function rockFree(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
-    if (floodState.rockSpent[rockIndex]) return false;
+    if (floodState.rockSpent[rockIndex] || !rockStands(walkGrid, floodState, rockIndex)) return false;
 
-    const { triggers, visited } = walkGrid;
-    const { pid, target, activators } = triggers.rocks[rockIndex];
-    if (target !== undefined && !floodState.transmuted.has(target)) return false;
-    if (activators && !activators.some((activatorCell) => visited[activatorCell] !== 0)) return false;
-
-    const bridgeIndex = triggers.bridgeIndexOf.get(pid);
+    const { triggers } = walkGrid;
+    const bridgeIndex = triggers.bridgeIndexOf.get(triggers.rocks[rockIndex].pid);
     return bridgeIndex === undefined || !floodState.bridgeTaken[bridgeIndex];
 }
 

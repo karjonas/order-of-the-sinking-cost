@@ -454,6 +454,8 @@ export function buildWalkGrid(
     placeBeamMoves(walkGrid);
     placeGemBridges(walkGrid);
 
+    placeRovers(walkGrid);
+
     const { hops, driftHops, switchHops, pairHops, pairArms } = magicMirrorHops(walkGrid);
     walkGrid.mirrorHops = hops;
     walkGrid.driftHops = driftHops;
@@ -462,7 +464,6 @@ export function buildWalkGrid(
     walkGrid.pairArms = pairArms;
     placeDrift(walkGrid);
     placeKickedRides(walkGrid);
-    placeRovers(walkGrid);
     markLookups(walkGrid);
 
     walkGrid.lanes = skipLanes(walkGrid);
