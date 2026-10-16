@@ -4405,7 +4405,7 @@
    ]
   },
   "Fog_Of_War_Clear": {
-   "version": 6,
+   "version": 7,
    "size": 840,
    "fields": [
     {
@@ -4445,17 +4445,28 @@
     },
     {
      "i": 3,
-     "n": "manual_clear_time",
+     "n": "manually_cleared",
+     "v": [
+      7,
+      -1
+     ],
+     "k": "p",
+     "sz": 1,
+     "t": "bool"
+    },
+    {
+     "i": 4,
+     "n": "xxx_deprecated_manual_clear_time",
      "v": [
       6,
-      -1
+      6
      ],
      "k": "p",
      "sz": 8,
      "t": "f64"
     },
     {
-     "i": 4,
+     "i": 5,
      "n": "manual_clear_duration",
      "v": [
       6,
