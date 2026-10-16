@@ -78,7 +78,7 @@ export const BEAM = 64;
 // powered beam's ENDPOINT, DOUBLE, ALTER, SQUEEZE or OPEN power; a Wardrobe; a magic-mirror hop, an elevator ride or a
 // pad (the pad's cell and the cell above it); a drifting Lily's way; a closed Freezer (`frozen`); a rock bridge's water
 // cell (`bridgeWater`); an ENDPOINT, DOUBLE or ALTER power a flood's pushes laid down (`optionalPowers`); a cell a
-// kicked Lily drifts through (`kicks`)
+// kicked Lily drifts through (`kicks`); a cell a sunk Rover a flood pushed into water rides through
 export const POWER_MARK = 1;
 export const WARDROBE_MARK = 2;
 export const TRAVEL_MARK = 4;
@@ -87,6 +87,7 @@ export const FROZEN_MARK = 16;
 export const BRIDGE_MARK = 32;
 export const KICK_MARK = 64;
 export const OPTION_MARK = 64;
+export const RIDE_MARK = 128;
 
 /** Appends `value` to the list of `key` in `map`. */
 export function addTo<Key, Value>(map: Map<Key, Value[]>, key: Key, value: Value): void {

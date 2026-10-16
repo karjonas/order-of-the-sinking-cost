@@ -15,6 +15,7 @@ import {
     OPTION_MARK,
     POWER_MARK,
     PUSH,
+    RIDE_MARK,
     SIDES,
     SOLID,
     THRU,
@@ -35,8 +36,10 @@ import { push, settle } from './queue.ts';
 import type { Cursor } from './queue.ts';
 import { sinkChained } from './rock-chains.ts';
 import type { ChainMiss } from './rock-chains.ts';
-import { rockTurnsOf, sinkTurned } from './rock-turns.ts';
+import { respawnedRocksOf, rockTurnsOf, sinkTurned } from './rock-turns.ts';
 import type { RockTurn } from './rock-turns.ts';
+import { ferry, roverTurnsOf } from './rovers.ts';
+import type { RoverCell } from './rovers.ts';
 import { LAYER_COUNT, layerAfterStep, leavesByCharmDoor, startsWithCharm, swapCell, WIZARD } from './skills.ts';
 import type { LayeredCell } from './skills.ts';
 import { skipAndSwap, takeKicks } from './skipping-stones.ts';
@@ -83,7 +86,8 @@ export interface FlavorLatch {
  * some trigger is indexed by. `lifts`: the lifts of the closing Gates, and `hops`: the magic-mirror hops off a Switch
  * the hero holds down; their Switch cells are among the flavors'. `rocks`: the Rocks and the spare Gems whose pushes
  * into water may turn, indexed by the cells beside them (`rocksAt`); `bridgeIndexOf`: per Rock or Gem pid, its straight
- * bridge. `mirrorTurns`: the magic Mirrors whose pushes may turn, indexed by the cells beside them
+ * bridge; `bridgeAfter`: per bridge of a respawned Rock, the cells of the Activators it waits for, and `bridgesAfterAt`
+ * the bridges per Activator cell. `mirrorTurns`: the magic Mirrors whose pushes may turn, indexed by the cells beside them
  * (`mirrorTurnsAt`). `monsterGates`: the shut monster Gates the walk can open, with their rooms' Monsters indexed by
  * the cells beside them. The TELEPORT swaps worth noting (noteSwap): `swapOnto` the cells a swapped object may matter
  * in (the unpressed Switches and the open Gem_Slots a Gem turns onto), `swapObjects` the cells of the objects whose
@@ -93,9 +97,13 @@ export interface Triggers {
     cells: Uint8Array;
     bridges: Array<[pid: number, ways: BridgeWay[]]>;
     bridgesAt: Map<number, number[]>;
+    bridgeAfter: Map<number, number[]>;
+    bridgesAfterAt: Map<number, number[]>;
     bridgeIndexOf: Map<number, number>;
     rocks: RockTurn[];
     rocksAt: Map<number, number[]>;
+    rovers: RoverCell[];
+    roversAt: Map<number, number[]>;
     mirrorTurns: MirrorTurn[];
     mirrorTurnsAt: Map<number, number[]>;
     monsterGates: MonsterGates;
@@ -170,6 +178,12 @@ export interface FloodState {
     rockMisses: Array<PressMiss | undefined>;
     chainMisses: Array<ChainMiss | undefined>;
     turnMarked: number[];
+    roverCursor: Cursor;
+    roverSeen: Uint8Array;
+    roversDue: number[];
+    roverSpent: Uint8Array;
+    roverMisses: Array<PressMiss | undefined>;
+    rideMarked: number[];
     mirrorCursor: Cursor;
     mirrorSeen: Uint8Array;
     mirrorsDue: number[];
@@ -214,9 +228,13 @@ export const NO_TRIGGERS: Triggers = {
     cells: new Uint8Array(0),
     bridges: [],
     bridgesAt: new Map(),
+    bridgeAfter: new Map(),
+    bridgesAfterAt: new Map(),
     bridgeIndexOf: new Map(),
     rocks: [],
     rocksAt: new Map(),
+    rovers: [],
+    roversAt: new Map(),
     mirrorTurns: [],
     mirrorTurnsAt: new Map(),
     monsterGates: NO_MONSTER_GATES,
@@ -277,6 +295,12 @@ export function newFloodState(
         rockMisses: [],
         chainMisses: [],
         turnMarked: [],
+        roverCursor: { at: 0 },
+        roverSeen: new Uint8Array(triggers.rovers.length),
+        roversDue: [],
+        roverSpent: new Uint8Array(triggers.rovers.length),
+        roverMisses: [],
+        rideMarked: [],
         mirrorCursor: { at: 0 },
         mirrorSeen: new Uint8Array(triggers.mirrorTurns.length),
         mirrorsDue: [],
@@ -336,14 +360,23 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
     const bridgesAt = new Map<number, number[]>();
 
     const bridgeIndexOf = new Map<number, number>();
+    const bridgeAfter = new Map<number, number[]>();
+    const bridgesAfterAt = new Map<number, number[]>();
 
     bridges.forEach(([pid, ways], bridgeIndex) => {
         bridgeIndexOf.set(pid, bridgeIndex);
         for (const [pushCell] of ways) addTo(bridgesAt, pushCell, bridgeIndex);
+
+        const activators = walkGrid.respawnActivators.get(pid);
+        if (!activators) return;
+
+        bridgeAfter.set(bridgeIndex, activators);
+        for (const activatorCell of activators) addTo(bridgesAfterAt, activatorCell, bridgeIndex);
     });
 
     const transmutes = transmuteTargetsOf(walkGrid);
-    const rocks = [...rockTurnsOf(walkGrid), ...crystalTurnsOf(walkGrid, transmutes)];
+    const standingRocks = [...rockTurnsOf(walkGrid), ...crystalTurnsOf(walkGrid, transmutes)];
+    const rocks = [...standingRocks, ...respawnedRocksOf(walkGrid)];
     const rocksAt = new Map<number, number[]>();
 
     // a Rock whose room has a stored answer is due once the walk reaches a start of that answer
@@ -352,6 +385,13 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
         for (const entry of walkGrid.rooms.byCell.get(cell) ?? []) {
             for (const rep of entry.reps) addTo(rocksAt, rep, rockIndex);
         }
+    });
+
+    const rovers = roverTurnsOf(walkGrid);
+    const roversAt = new Map<number, number[]>();
+
+    rovers.forEach(({ cell }, roverIndex) => {
+        for (const side of SIDES) addTo(roversAt, cellOnSide(walkGrid, cell, side), roverIndex);
     });
 
     const mirrorTurns = mirrorTurnsOf(walkGrid);
@@ -408,13 +448,15 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
     const kicksAt = new Map<number, number[]>();
     walkGrid.kicks.forEach((kick, kickIndex) => addTo(kicksAt, kick.pushCell, kickIndex));
 
-    const { swapOnto, swapObjects, rockAt } = swapIndex(walkGrid, rocks, switchesAt.keys());
+    const { swapOnto, swapObjects, rockAt } = swapIndex(walkGrid, standingRocks, switchesAt.keys());
 
     const cells = new Uint8Array(walkGrid.grid.length);
 
     const indexes = [
         bridgesAt,
+        bridgesAfterAt,
         rocksAt,
+        roversAt,
         mirrorTurnsAt,
         monsterGates.monstersAt,
         transmutes.bumpsFrom,
@@ -440,9 +482,13 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
         cells,
         bridges,
         bridgesAt,
+        bridgeAfter,
+        bridgesAfterAt,
         bridgeIndexOf,
         rocks,
         rocksAt,
+        rovers,
+        roversAt,
         mirrorTurns,
         mirrorTurnsAt,
         monsterGates,
@@ -571,6 +617,7 @@ function moreToWalk(walkGrid: WalkGrid, floodState: FloodState): boolean {
     if (walkGrid.lanes.length && skipAndSwap(walkGrid, floodState) && queue.length) return true;
     if (walkGrid.triggers.rocks.length && sinkTurned(walkGrid, floodState) && queue.length) return true;
     if (walkGrid.triggers.rocks.length && sinkChained(walkGrid, floodState) && queue.length) return true;
+    if (walkGrid.triggers.rovers.length && ferry(walkGrid, floodState) && queue.length) return true;
     if (walkGrid.triggers.mirrorTurns.length && hopTurned(walkGrid, floodState) && queue.length) return true;
     if (walkGrid.triggers.monsterGates.gates.length && openMonsterGates(walkGrid, floodState) && queue.length) {
         return true;
@@ -858,6 +905,7 @@ export function flood(
         if (floodState.beamFlood) undoBeamMoves(floodState.beamFlood);
         undoTransmutes(floodState);
         for (const cell of floodState.turnMarked) walkGrid.marks[cell] &= ~BRIDGE_MARK;
+        for (const cell of floodState.rideMarked) walkGrid.marks[cell] &= ~RIDE_MARK;
         for (const cell of floodState.hopMarked) walkGrid.marks[cell] &= ~TRAVEL_MARK;
         walkGrid.activeFlood = null;
     }

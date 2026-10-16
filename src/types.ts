@@ -224,13 +224,13 @@ export type ExistenceGroup = [
 /** An entity in one cell: world.floors, rocks, lilies, trees and blockers. */
 export type CellRow = [pid: number, i: number, j: number, z: number, exists?: number];
 
-/** world.lily_spawns: a Spawner's cell, the pid of the Lily it respawns and the Activators that run it. */
-export type LilySpawnRow = [
+/** world.lily_spawns, world.rock_spawns: a Spawner's cell, the pid of the Lily or Rock it respawns and the Activators that run it. */
+export type SpawnRow = [
     spawnerPid: number,
     i: number,
     j: number,
     z: number,
-    lilyPid: number,
+    spawnedPid: number,
     activators: CellRow[],
     exists?: number,
 ];
@@ -325,6 +325,9 @@ export type MagicMirrorRow = [
 /** world.mirror_facings: theta_target in quarter turns, shape 0 flat, 1 vertical, 2 vertical_downward. */
 export type MirrorFacingRow = [pid: number, quarterTurns: number, shape: number];
 
+/** world.rover_facings: theta_target in quarter turns; even runs the Rover east-west, odd north-south. */
+export type RoverFacingRow = [pid: number, quarterTurns: number];
+
 /** world.area_pins: world positions. */
 export type AreaPinRow = [pid: number, x: number, y: number, z: number];
 
@@ -385,6 +388,7 @@ export interface World {
     mirrorable: number[];
     magic_mirrors: MagicMirrorRow[];
     mirror_facings: MirrorFacingRow[];
+    rover_facings?: RoverFacingRow[];
     /** The pids of the SKIPPABLE Rocks. */
     skippable: number[];
     /** The pids of the TELEPORT Wardrobes. */
@@ -395,7 +399,8 @@ export interface World {
     transmute?: number[];
     trees: CellRow[];
     lilies: CellRow[];
-    lily_spawns?: LilySpawnRow[];
+    lily_spawns?: SpawnRow[];
+    rock_spawns?: SpawnRow[];
     area_pins: AreaPinRow[];
     mechs: MechRow[];
     monsters: MonsterRow[];

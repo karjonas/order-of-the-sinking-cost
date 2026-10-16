@@ -12,6 +12,7 @@ import {
     MOVABLE,
     OPTION_MARK,
     POWER_MARK,
+    RIDE_MARK,
     SOLID,
     SUPPORT,
     THRU,
@@ -90,7 +91,8 @@ export function heldFromBelow(walkGrid: WalkGrid, floodState: FloodState, cell: 
  * game holds an entity inside a wall), a lily or floor in the cell (a Lily on a river at every cell of its drift: the
  * hero boards it as it passes and rides it), solid, a rock, a living Monster or a movable below, a DOUBLE beam over
  * water (the hero stands on the surface), a rock bridge's water cell once its Rock sank (in a pocket flood always), a
- * cell a kicked Lily drifts through once the flood has reached the launch of the stone that kicks it, else the
+ * cell a kicked Lily drifts through once the flood has reached the launch of the stone that kicks it, a cell over the
+ * track of a Rover under water (always for one the save left there, else once the flood has sunk it), else the
  * implicit ground floor (z <= 0, z < 0 in water). The walker sets the cells' `marks` once the beams and the drift are
  * placed, before the first call.
  */
@@ -100,6 +102,7 @@ function supported(walkGrid: WalkGrid, floodState: FloodState, cell: number): bo
     if (marks & DRIFT_MARK) return true;
     if (marks & BRIDGE_MARK && (floodState.pocket || floodState.bridged.has(cell))) return true;
     if (marks & KICK_MARK && floodState.kicked.has(cell)) return true;
+    if (marks & RIDE_MARK) return true;
 
     const layerCells = walkGrid.layerCells;
     const z = Math.floor(cell / layerCells) - Z_BIAS;

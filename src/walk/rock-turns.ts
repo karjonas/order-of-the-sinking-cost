@@ -5,6 +5,7 @@ import { BRIDGE_MARK, cellOnSide, PUSH, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { missChanged, PRESS_CELLS, PRESS_FALL, pressInputs, walled } from './gates.ts';
 import type { PressMiss } from './gates.ts';
+import { exists } from './groups.ts';
 import { levelWater, waterStopsFall } from './ocean.ts';
 import { requeue, visitReached } from './queue.ts';
 import { reachedEntries } from './room-answers.ts';
@@ -15,12 +16,14 @@ import { fenced } from './walls.ts';
 
 /**
  * An existing Rock that is no skipping stone: its pid and the cell the save last left it in. A Tree a TRANSMUTE hero
- * turns into a crystal is one once its transmute target `target` is turned.
+ * turns into a crystal is one once its transmute target `target` is turned. A Rock a Spawner respawns stands in the
+ * Spawner's cell once the flood has reached one of the Activators in `activators` (their cells).
  */
 export interface RockTurn {
     pid: number;
     cell: number;
     target?: number;
+    activators?: number[];
 }
 
 /** Where a push ends: the cell the object lands in, and whether it sinks in water level with that cell. */
@@ -33,6 +36,35 @@ export interface Landing {
 export function rockTurnsOf(walkGrid: WalkGrid): RockTurn[] {
     const skippable = new Set(walkGrid.world.skippable || []);
     return walkGrid.rocks.filter(({ pid }) => !skippable.has(pid));
+}
+
+/**
+ * The Rocks an Activator puts back at their Spawner's cell, for the Rocks that stand elsewhere (or nowhere) in the
+ * save: the Spawner and one of its Activators exist. Skipping stones are left out.
+ */
+export function respawnedRocksOf(walkGrid: WalkGrid): RockTurn[] {
+    const skippable = new Set(walkGrid.world.skippable || []);
+    const standingAt = new Map<number, number>();
+    for (const { pid, cell } of walkGrid.rocks) standingAt.set(pid, cell);
+
+    const respawned: RockTurn[] = [];
+
+    for (const spawn of walkGrid.geometry.rockSpawns) {
+        const { spawnedPid, spawnerCell } = spawn;
+        if (spawnerCell < 0 || skippable.has(spawnedPid) || standingAt.get(spawnedPid) === spawnerCell) continue;
+        if (!exists(walkGrid, spawn.spawnerPid, spawn.spawnerExistence)) continue;
+
+        const activators: number[] = [];
+        for (const activator of spawn.activators) {
+            if (activator.cell >= 0 && exists(walkGrid, activator.pid, activator.existence)) {
+                activators.push(activator.cell);
+            }
+        }
+
+        if (activators.length > 0) respawned.push({ pid: spawnedPid, cell: spawnerCell, activators });
+    }
+
+    return respawned;
 }
 
 /**
@@ -200,15 +232,16 @@ function storedBridgeOf(walkGrid: WalkGrid, floodState: FloodState, rockCell: nu
 }
 
 /**
- * Whether the Rock can still sink: it exists (a crystal Rock needs its target turned), it has not sunk, and its straight
- * bridge has not sunk it either (`bridgeTaken`).
+ * Whether the Rock can still sink: it exists (a crystal Rock needs its target turned, a respawned Rock one of its
+ * Activators reached), it has not sunk, and its straight bridge has not sunk it either (`bridgeTaken`).
  */
 export function rockFree(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
     if (floodState.rockSpent[rockIndex]) return false;
 
-    const { triggers } = walkGrid;
-    const { pid, target } = triggers.rocks[rockIndex];
+    const { triggers, visited } = walkGrid;
+    const { pid, target, activators } = triggers.rocks[rockIndex];
     if (target !== undefined && !floodState.transmuted.has(target)) return false;
+    if (activators && !activators.some((activatorCell) => visited[activatorCell] !== 0)) return false;
 
     const bridgeIndex = triggers.bridgeIndexOf.get(pid);
     return bridgeIndex === undefined || !floodState.bridgeTaken[bridgeIndex];

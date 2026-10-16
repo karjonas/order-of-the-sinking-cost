@@ -2,7 +2,7 @@
 // which no save changes (VIEWER.md "The walk model (viewer)")
 import { PROG, WORLD } from '../data.ts';
 import type { WorldCells } from '../data.ts';
-import type { ExistenceGroup, Freezer, Teleporter, World } from '../types.ts';
+import type { ExistenceGroup, Freezer, SpawnRow, Teleporter, World } from '../types.ts';
 import { roomOf } from './beams.ts';
 import { BEAMSTOP, cellOf, keyOf, mod, SOLID, SUPPORT, Z_BIAS } from './cells.ts';
 import type { GridShape } from './cells.ts';
@@ -31,9 +31,9 @@ export interface BridgeCells {
     waterCell: number;
 }
 
-/** A Spawner that respawns a Lily, in the level data: the Lily's pid and the cells of the Spawner and its Activators. */
-export interface LilySpawnCells {
-    lilyPid: number;
+/** A Spawner in the level data: the pid of the Lily or Rock it respawns and the cells of the Spawner and its Activators. */
+export interface SpawnCells {
+    spawnedPid: number;
     spawnerPid: number;
     spawnerCell: number;
     spawnerExistence: number | undefined;
@@ -78,6 +78,8 @@ export interface LevelGeometry extends GridShape, LayerSource {
     knownRocks: Set<number>;
     mirrorable: Set<number>;
     mirrorFacings: Map<number, MirrorFacing>;
+    // per Rover its level-data theta_target in quarter turns
+    roverFacings: Map<number, number>;
     rockCells: Int32Array;
     floorCells: Int32Array;
     treeCells: Int32Array;
@@ -86,7 +88,8 @@ export interface LevelGeometry extends GridShape, LayerSource {
     fenceCells: Int32Array;
     switchCells: Int32Array;
     gateCells: Int32Array;
-    lilySpawns: LilySpawnCells[];
+    lilySpawns: SpawnCells[];
+    rockSpawns: SpawnCells[];
     bridges: BridgeCells[];
     elevators: ElevatorFrames[];
     wardrobes: WardrobeCell[];
@@ -200,13 +203,13 @@ function wallSetsOf(shape: GridShape, world: World, worldCells: WorldCells): Wal
     return wallSets;
 }
 
-/** The Spawners that respawn a Lily, with their cells and those of the Activators that run them. */
-function lilySpawnsOf(shape: GridShape, world: World): LilySpawnCells[] {
-    const spawns: LilySpawnCells[] = [];
+/** The Spawners of `rows`, with their cells and those of the Activators that run them. */
+function spawnsOf(shape: GridShape, rows: SpawnRow[]): SpawnCells[] {
+    const spawns: SpawnCells[] = [];
 
-    for (const [spawnerPid, i, j, z, lilyPid, activators, spawnerExistence] of world.lily_spawns || []) {
+    for (const [spawnerPid, i, j, z, spawnedPid, activators, spawnerExistence] of rows) {
         spawns.push({
-            lilyPid,
+            spawnedPid,
             spawnerPid,
             spawnerCell: keyOf(shape, i, j, z),
             spawnerExistence,
@@ -307,6 +310,8 @@ export function buildLevelGeometry(source: LevelSource, worldCells: WorldCells):
         mirrorFacings.set(pid, [quarterTurns, mirrorShape]);
     }
 
+    const roverFacings = new Map<number, number>(world.rover_facings || []);
+
     const switchCells = new Int32Array(world.switches.length);
 
     world.switches.forEach(([, , , column, row, z], index) => {
@@ -334,6 +339,7 @@ export function buildLevelGeometry(source: LevelSource, worldCells: WorldCells):
         knownRocks: new Set(world.rocks.map(([pid]) => pid)),
         mirrorable: new Set(world.mirrorable || []),
         mirrorFacings,
+        roverFacings,
         rockCells: cellsOfRows(shape, world.rocks),
         floorCells: cellsOfRows(shape, world.floors),
         treeCells: cellsOfRows(shape, world.trees || []),
@@ -342,7 +348,8 @@ export function buildLevelGeometry(source: LevelSource, worldCells: WorldCells):
         fenceCells: cellsOfRows(shape, world.fences),
         switchCells,
         gateCells: cellsOfRows(shape, world.gates),
-        lilySpawns: lilySpawnsOf(shape, world),
+        lilySpawns: spawnsOf(shape, world.lily_spawns || []),
+        rockSpawns: spawnsOf(shape, world.rock_spawns || []),
         bridges: bridgesOf(shape, world),
         elevators: levelElevators(shape, world),
         wardrobes: levelWardrobes(shape, world),

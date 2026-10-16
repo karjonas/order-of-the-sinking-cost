@@ -282,7 +282,10 @@ The schema exporter is an IDAPython script run on the game binary. It writes `da
 - **Flattening.** A struct member flattens into its leaves (`position.x`). Each leaf takes its top-level member's
   version note. Each remaining leaf gets the next field index.
 - **Field versions.** `vN` = present from type version N; `vN-M` = present in N..M. The field list for a file version
-  keeps every member whose first version is `<=` it. `NoUndo`, `NoEditorUndo` and `NoEditorSave` mark fields that undo
+  keeps every member whose first version is `<=` it. The end version is not applied: a retired field (`vN-M`, usually
+  renamed `xxx_deprecated_*`) stays in the list of every later version and takes an index there, though only blobs of
+  versions N..M carry it. A field index is a position in the list for the blob's version, so a field added in the
+  middle moves the indices of the fields after it in newer blobs only. `NoUndo`, `NoEditorUndo` and `NoEditorSave` mark fields that undo
   or the editor leave alone.
 - **Value kinds.** Plain data has INTEGER, FLOAT, BOOL or ENUM leaves (or fixed arrays and structs of them). The other
   values are strings, pointers to `Triangle_Mesh` / `Material` / `Texture` (by name) and dynamic arrays.

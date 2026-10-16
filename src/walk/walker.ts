@@ -9,7 +9,7 @@ import { NO_BEAM_MOVES, placeBeamMoves } from './beam-moves.ts';
 import type { BeamMoves } from './beam-moves.ts';
 import { placeGems, placeLights } from './beams.ts';
 import type { CastBeam, EndpointBeam, Gem, GemSlot, MovePowers } from './beams.ts';
-import { placeBridges, placeGemBridges } from './bridges.ts';
+import { placeBridges, placeGemBridges, placeRespawnBridges } from './bridges.ts';
 import type { BridgeWay } from './bridges.ts';
 import { BRIDGE_MARK, cellOf, DRIFT_MARK, neighbourOf, TRAVEL_MARK, WARDROBE_MARK } from './cells.ts';
 import type { GridShape } from './cells.ts';
@@ -32,6 +32,8 @@ import { deep, placeWater } from './ocean.ts';
 import { NO_ROOMS, roomIndexOf } from './room-answers.ts';
 import type { RoomIndex } from './room-answers.ts';
 import { searchTouchedRooms } from './room-search.ts';
+import { placeRovers } from './rovers.ts';
+import type { RoverCell } from './rovers.ts';
 import {
     heroHoldsCharm,
     heroLayerOf,
@@ -94,6 +96,9 @@ export interface WalkGrid extends GridShape {
     // cell is on (flood option `pocket`)
     bridgesOf: Map<number, BridgeWay[]>;
     bridgeWater: Set<number>;
+    // per Rock a Spawner respawns at its level-data cell, whose bridges hold once the flood reaches one of the Activators
+    // that run the Spawner, those Activators' cells
+    respawnActivators: Map<number, number[]>;
     // the existing Rocks and spare Gems (pid and the cell the save last left it in), whose pushes into water may turn
     rocks: Array<{ pid: number; cell: number }>;
     // an existing lily at its level-data place and where the save last left it; liliesAt: per cell, the Lilies that
@@ -163,6 +168,11 @@ export interface WalkGrid extends GridShape {
     // per river cell, the side its current flows to (the geometry's); the cells the drifting Lilies pass
     flowSide: Map<number, number>;
     driftCells: Set<number>;
+    // the existing Rovers, and the cells over the tracks of those the save left sunk in water, which hold the hero
+    rovers: RoverCell[];
+    rideCells: Set<number>;
+    // the cells over the tracks of the Rovers a flood pushed into water
+    ferryCells: Set<number>;
     // the cells of the skipping stones skipLanes() launches, and its lanes
     stoneCells: Set<number>;
     lanes: SkipLane[];
@@ -285,6 +295,7 @@ function newWalkGrid(
         flatMirrors: new Set(),
         bridgesOf: new Map(),
         bridgeWater: new Set(),
+        respawnActivators: new Map(),
         rocks: [],
         lilyCells: new Set(),
         liliesAt: new Map(),
@@ -327,6 +338,9 @@ function newWalkGrid(
         switchHops: [],
         flowSide: geometry.flowSide,
         driftCells: new Set(),
+        rovers: [],
+        rideCells: new Set(),
+        ferryCells: new Set(),
         stoneCells: new Set(),
         lanes: [],
         kicks: [],
@@ -372,6 +386,7 @@ function markLookups(walkGrid: WalkGrid): void {
     }
 
     markCells(walkGrid, walkGrid.driftCells, DRIFT_MARK);
+    markCells(walkGrid, walkGrid.rideCells, DRIFT_MARK);
     markCells(walkGrid, walkGrid.bridgeWater, BRIDGE_MARK);
 }
 
@@ -411,6 +426,7 @@ export function buildWalkGrid(
     placeWallSets(walkGrid);
     const unmovedRocks = placeEntities(walkGrid);
     placeBridges(walkGrid, unmovedRocks);
+    placeRespawnBridges(walkGrid);
     placeLilies(walkGrid);
     placeGates(walkGrid);
     placeFences(walkGrid);
@@ -432,6 +448,7 @@ export function buildWalkGrid(
     walkGrid.driftHops = driftHops;
     walkGrid.switchHops = switchHops;
     placeDrift(walkGrid);
+    placeRovers(walkGrid);
     markLookups(walkGrid);
 
     walkGrid.lanes = skipLanes(walkGrid);

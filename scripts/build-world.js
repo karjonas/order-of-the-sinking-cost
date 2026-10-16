@@ -42,6 +42,8 @@
 //   lily_spawns: [[spawner pid, i, j, z, lily pid, [[activator pid, i, j, z(, exists)]](, exists)]]   the Spawners that
 //          respawn a Lily (`spawned_entity_id` is a Lily), at their own cell, with the Activators that run them. A Lily
 //          Spawner stands in the Lily's own cell, but seven stand along a river row of the underworld for one Lily
+//   rock_spawns: [[spawner pid, i, j, z, rock pid, [[activator pid, i, j, z(, exists)]](, exists)]]   the same for the
+//          Spawners that respawn a Rock (`spawned_entity_id` is a Rock)
 //   area_pins: [[pid, x, y, z]]   world positions; an `activated` Area_Pin (history CHANGE) is a flood-fill seed
 //   mechs: [[kind, pid, i, j, z(, exists)]]   mechanics the walk does not model (0 dragon, 1 beam blocker Rock, 2 mirror,
 //          3 skipping stone not sunk); they name why a level may still be reachable
@@ -56,6 +58,8 @@
 //   mirror_facings: [[pid, quarter turns, shape]]   every Mirror: its level-data `theta_target` in quarter turns (the
 //          save holds its changes), shape 0 flat, 1 vertical, 2 vertical_downward; they give the open sides a line meets
 //          (docs/MOVEMENT.md "Mirrors turning fire and beams")
+//   rover_facings: [[pid, quarter turns]]   every Rover: its level-data `theta_target` in quarter turns (the save holds
+//          its changes); even runs it east-west, odd north-south (docs/MOVEMENT.md "Rovers")
 //   skippable: [pid]   the SKIPPABLE Rocks (skipping stones)
 //   teleport: [pid]   the Wardrobes whose skill_flags hold TELEPORT
 //   charm: [pid]   the Wardrobes whose skill_flags hold CHARM
@@ -415,6 +419,14 @@ function collectMirrorFacings(world) {
     });
 }
 
+// [pid, quarter turns] per Rover: its level-data `theta_target`. Even is a Rover that runs east-west, odd north-south.
+function collectRoverFacings(world) {
+    return world.ofType('Rover').map((rover) => {
+        const quarterTurns = modulo(Math.round(get(rover.fields, 'base.theta_target', 0) / 90), 4);
+        return [rover.pid, quarterTurns];
+    });
+}
+
 // The pids of the Wardrobes whose skill_flags hold `skill`
 function wardrobesWithSkill(world, skill) {
     const wardrobes = world
@@ -564,20 +576,20 @@ function buildElevators(world, columns, groupSolid, fenceKeys, rockCounts) {
     return rows.toSorted((first, second) => compareNumberLists(order(first), order(second)));
 }
 
-// [spawner pid, i, j, z, lily pid, [activator rows](, exists)]: the Spawners whose spawned entity is a Lily. An
+// [spawner pid, i, j, z, spawned pid, [activator rows](, exists)]: the Spawners whose spawned entity is of `type`. An
 // Activator runs the Spawners named by its spawner_1 to spawner_16 fields.
-function buildLilySpawns(world) {
-    const lilyPids = new Set(world.ofType('Lily').map((lily) => lily.pid));
+function buildSpawns(world, type) {
+    const spawnedPids = new Set(world.ofType(type).map((entity) => entity.pid));
     const spawns = [];
     for (const spawner of world.ofType('Spawner')) {
-        const lilyPid = refOf(spawner.fields.spawned_entity_id);
-        if (!lilyPids.has(lilyPid)) continue;
+        const spawnedPid = refOf(spawner.fields.spawned_entity_id);
+        if (!spawnedPids.has(spawnedPid)) continue;
 
         const activators = world
             .ofType('Activator')
             .filter((activator) => activatorRunsSpawner(activator, spawner.pid))
             .map((activator) => world.row(activator));
-        spawns.push(world.row(spawner, lilyPid, activators));
+        spawns.push(world.row(spawner, spawnedPid, activators));
     }
     return spawns;
 }
@@ -878,7 +890,8 @@ function buildWorld(pkg) {
         rocks,
         bridges: buildBridges(world, columns, fenceKeys, blockedKeys, rocks, floors, surfaces, water),
         lilies: world.ofType('Lily').map((lily) => world.row(lily)),
-        lily_spawns: buildLilySpawns(world),
+        lily_spawns: buildSpawns(world, 'Lily'),
+        rock_spawns: buildSpawns(world, 'Rock'),
         area_pins: world.ofType('Area_Pin').map((pin) => [pin.pid, ...integerPosition(pin.fields)]),
         mechs: buildMechanics(world),
         monsters,
@@ -895,6 +908,7 @@ function buildWorld(pkg) {
             .toSorted((first, second) => first - second),
         magic_mirrors: collectMagicMirrors(world),
         mirror_facings: collectMirrorFacings(world),
+        rover_facings: collectRoverFacings(world),
         skippable: skippableRocks.map((rock) => rock.pid).toSorted((first, second) => first - second),
         teleport: wardrobesWithSkill(world, 'TELEPORT'),
         charm: wardrobesWithSkill(world, 'CHARM'),

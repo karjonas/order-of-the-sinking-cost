@@ -336,6 +336,90 @@ describe('a Lily a Spawner respawns on a river', () => {
     });
 });
 
+describe('a Rock a Spawner respawns', () => {
+    // a row of 8 at z 0: dry 0..2 and 4..6, water at 3 (surface 0), a wall at 7. Rock 9 belongs at (1, 0) with its
+    // Spawner (60); the save left it at (6, 0), out of reach. The hero starts at 0; the Activator (70) that runs the
+    // Spawner stands at `activatorAt`
+    const f32 = (value) => new Uint8Array(new Float32Array([value]).buffer);
+    const leftAt = (x) => ({
+        get: (pid, field) => (pid === 9 && field === 'base.position.x' ? f32(x) : undefined),
+        ocean: [],
+        created: new Map(),
+    });
+    const setup = ({ activatorAt = 0, activatorExists, spawnerExists, rockAt = 6 } = {}) => {
+        const activator = [70, activatorAt, 0, 0];
+        if (activatorExists !== undefined) activator.push(activatorExists);
+        const spawner = [60, 1, 0, 0, 9, [activator]];
+        if (spawnerExists !== undefined) spawner.push(spawnerExists);
+
+        world({
+            width: 8,
+            walls: { 7: [0] },
+            water: { 3: [0] },
+            extra: { oceans: [[1, 0, 0, 0, 0, 8, 1]], rocks: [[9, 1, 0, 0]], rock_spawns: [spawner] },
+        });
+        const walkGrid = walker(leftAt(rockAt), [], []);
+        return columns(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 0, 0)]));
+    };
+    test('the hero who reaches the Activator pushes the Rock from its Spawner into the water', () => {
+        expect(setup()).toEqual([0, 1, 2, 3, 4, 5]);
+    });
+    test('an Activator the hero does not reach puts nothing back', () => {
+        expect(setup({ activatorAt: 5 })).toEqual([0, 1, 2]);
+    });
+    test('an Activator or a Spawner that does not exist puts nothing back', () => {
+        expect(setup({ activatorExists: 0 })).toEqual([0, 1, 2]);
+        expect(setup({ spawnerExists: 0 })).toEqual([0, 1, 2]);
+    });
+    test('a Rock the save left at its Spawner needs no Activator', () => {
+        expect(setup({ activatorAt: 5, rockAt: 1 })).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    });
+});
+
+describe('a Rover that sinks', () => {
+    // three rows of 8 at z 0. Row 1: the hero's side 0..2, water 3 (surface 0), dry land 4..5, wall 6..7. Column 3 is
+    // water in rows 0 and 2 too and wall elsewhere in those rows. A Rover (30) at `roverAt` runs along `turns` quarter
+    // turns (odd: north-south). `wallAt`: a wall at z 0 in one more column; `exists`: the Rover's level-data `exists`
+    const setup = (roverAt, turns, { wallAt, exists } = {}) => {
+        const water = {},
+            walls = {};
+        for (let j = 0; j < 3; j++) water[j * 8 + 3] = [0];
+        for (const j of [0, 2]) for (let i = 0; i < 8; i++) if (i !== 3) walls[j * 8 + i] = [0];
+        walls[14] = [0];
+        walls[15] = [0];
+        if (wallAt !== undefined) walls[wallAt] = [0];
+
+        const rover = [30, ...roverAt, 3];
+        if (exists !== undefined) rover.push(exists);
+
+        world({
+            width: 8,
+            height: 3,
+            walls,
+            water,
+            extra: { oceans: [[1, 0, 0, 0, 0, 8, 3]], movables: [rover], rover_facings: [[30, turns]] },
+        });
+        const walkGrid = walker(NONE, [], []);
+        return cells(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 1, 0)]));
+    };
+    const SHORES = ['0,1', '1,1', '2,1', '3,1', '4,1', '5,1'];
+    test('a Rover pushed into water drives on along its axis: the hero boards it and steps off on the far shore', () => {
+        expect(setup([1, 1, 0], 1)).toEqual(['3,0', ...SHORES, '3,2']);
+    });
+    test('a Rover that runs across the push joins the shores at its own cell only', () => {
+        expect(setup([1, 1, 0], 0)).toEqual(SHORES);
+    });
+    test('a Rover the save left sunk is a ride from the start', () => {
+        expect(setup([3, 1, -1], 1)).toEqual(['3,0', ...SHORES, '3,2']);
+    });
+    test('a track ends at a wall', () => {
+        expect(setup([3, 1, -1], 1, { wallAt: 3 })).toEqual([...SHORES, '3,2']);
+    });
+    test('a Rover that does not exist runs nowhere', () => {
+        expect(setup([3, 1, -1], 1, { exists: 0 })).toEqual(['0,1', '1,1', '2,1']);
+    });
+});
+
 describe('a Lily that does not exist', () => {
     // a row of 4 at z 0: dry 0 and 2, water at 1 (surface 0) with a Lily, a wall at 3
     const setup = (lily) => {

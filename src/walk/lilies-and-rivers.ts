@@ -99,9 +99,11 @@ export function placeDrift(walkGrid: WalkGrid): void {
     }
 }
 
-/** Whether the hero steps off the drift cell `cell` onto a reached cell that is no drift cell, within a layer of it. */
+/**
+ * Whether the hero steps off the drift or track cell `cell` onto a reached cell that is neither, within a layer of it.
+ */
 function stepsOffDrift(walkGrid: WalkGrid, reached: Set<number>, cell: number): boolean {
-    const { grid, driftCells, layerCells, noFlood } = walkGrid;
+    const { grid, driftCells, rideCells, ferryCells, layerCells, noFlood } = walkGrid;
 
     for (const side of SIDES) {
         const target = cellOnSide(walkGrid, cell, side);
@@ -109,7 +111,8 @@ function stepsOffDrift(walkGrid: WalkGrid, reached: Set<number>, cell: number): 
         if (fenced(walkGrid, cell, side, target) || grid[target] & PUSH) continue;
 
         const landing = land(walkGrid, noFlood, target);
-        if (landing < 0 || !reached.has(landing) || driftCells.has(landing)) continue;
+        if (landing < 0 || !reached.has(landing)) continue;
+        if (driftCells.has(landing) || rideCells.has(landing) || ferryCells.has(landing)) continue;
         if (Math.abs(Math.floor(landing / layerCells) - Math.floor(cell / layerCells)) <= 1) return true;
     }
 
@@ -117,14 +120,16 @@ function stepsOffDrift(walkGrid: WalkGrid, reached: Set<number>, cell: number): 
 }
 
 /**
- * The reached cells of the Lilies' drifts that the hero rides through without a way off: no step off them lands on a
- * reached cell outside the drifts.
+ * The reached cells of the Lilies' drifts and of the tracks of the sunk Rovers that the hero rides through without a
+ * way off: no step off them lands on a reached cell outside the drifts and tracks.
  */
 export function transitCells(walkGrid: WalkGrid, reached: Set<number>): Set<number> {
     const transit = new Set<number>();
 
-    for (const cell of walkGrid.driftCells) {
-        if (reached.has(cell) && !stepsOffDrift(walkGrid, reached, cell)) transit.add(cell);
+    for (const rides of [walkGrid.driftCells, walkGrid.rideCells, walkGrid.ferryCells]) {
+        for (const cell of rides) {
+            if (reached.has(cell) && !stepsOffDrift(walkGrid, reached, cell)) transit.add(cell);
+        }
     }
 
     return transit;
