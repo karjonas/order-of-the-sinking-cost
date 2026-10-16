@@ -69,13 +69,53 @@ const floor = (width, more = {}) => ({
 });
 
 describe('fire', () => {
-    // a goblin at column 4 attacks columns 3 and 5 and the cells above and below it
+    // a goblin at column 4 attacks its own cell, columns 3 and 5 and the cells above and below it
     const goblin = { monsters: [[9, 4, 0, 1, -1]] };
-    test('a goblin attacks the 6 cells next to it, above and below included', () => {
+    test('a goblin attacks its own cell and the 6 cells next to it, above and below included', () => {
         world(8, floor(8, { 4: [] }), goblin);
         const walkGrid = walker(NONE, [], []);
-        expect([1, 2].map((z) => xs(walkGrid, walkGrid.fire, z))).toEqual([[3, 5], [4]]);
+        expect([1, 2].map((z) => xs(walkGrid, walkGrid.fire, z))).toEqual([[3, 4, 5], [4]]);
         expect(xs(walkGrid, walkGrid.fire, 0)).toEqual([4]);
+    });
+    test('a shut Gate or a Monster beside the goblin shields nothing', () => {
+        world(8, floor(8, { 4: [] }), {
+            ...goblin,
+            gates: [[61, 5, 0, 1, 0, 0, 7, 0, 5]],
+            monsters: [...goblin.monsters, [10, 3, 0, 1, 0]],
+        });
+        const walkGrid = walker(NONE, [], []);
+        expect(xs(walkGrid, walkGrid.fire, 1)).toEqual([3, 4, 5]);
+    });
+    describe('a Fence on the edge', () => {
+        // a Fence on the east side of column 4 parts the goblin from column 5; a SQUEEZE light at column 1 casts a beam
+        // over columns 2-6 (an Egg at 7 ends it)
+        const fenced = { ...goblin, fences: [[70, 4, 0, 1, 0]] };
+        const squeeze = { lights: [[50, 1, 0, 1, 0, 0, 0, 1, 9]], beam_stops: [[7, 0, 1]] };
+        test('spares the cell behind it', () => {
+            world(8, floor(8, { 4: [] }), fenced);
+            const walkGrid = walker(NONE, [], []);
+            expect(xs(walkGrid, walkGrid.fire, 1)).toEqual([3, 4]);
+        });
+        test('spares nothing when the goblin stands in a SQUEEZE beam', () => {
+            world(8, floor(8, { 4: [] }), { ...fenced, ...squeeze });
+            const walkGrid = walker(NONE, [], []);
+            expect(xs(walkGrid, walkGrid.fire, 1)).toEqual([3, 4, 5]);
+        });
+    });
+    describe('a wall beside the goblin', () => {
+        // a wall at column 5 for z 0..1; a THROUGH light at column 1 casts a beam over columns 2-6 (an Egg at 7 ends it)
+        const walled = floor(8, { 4: [], 5: [0, 1] });
+        const through = { lights: [[50, 1, 0, 1, 0, 0, 0, 1, 1]], beam_stops: [[7, 0, 1]] };
+        test('is not attacked', () => {
+            world(8, walled, goblin);
+            const walkGrid = walker(NONE, [], []);
+            expect(xs(walkGrid, walkGrid.fire, 1)).toEqual([3, 4]);
+        });
+        test('is attacked when the goblin stands in a THROUGH beam', () => {
+            world(8, walled, { ...goblin, ...through });
+            const walkGrid = walker(NONE, [], []);
+            expect(xs(walkGrid, walkGrid.fire, 1)).toEqual([3, 4, 5]);
+        });
     });
     test('a hero without PROTECTION does not enter an attacked cell; one with it does', () => {
         world(8, floor(8), goblin);

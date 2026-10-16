@@ -1,10 +1,10 @@
 // Dragon fire and goblin attacks (MOVEMENT.md "Goblins, dragons and PROTECTION", VIEWER.md "Attacks")
 import { latestF32 } from '../save.ts';
-import { addTo, cellOnSide, FIRE, FIRE_STOP, GOBLIN_STOP, mod, MONSTER } from './cells.ts';
+import { addTo, cellOnSide, FIRE, FIRE_STOP, FLOOR, mod, MONSTER, SOLID } from './cells.ts';
 import { exists, place, put } from './groups.ts';
 import { doorIn, doorOut } from './skills.ts';
 import type { WalkGrid } from './walker.ts';
-import { latestCell, noteTarget } from './walls.ts';
+import { fenced, latestCell, noteTarget } from './walls.ts';
 
 // world.monsters kinds below the dragons' facing sides
 export const GOBLIN = -1;
@@ -32,20 +32,35 @@ function foeFacing(walkGrid: WalkGrid, pid: number, kind: number): number {
     return kind;
 }
 
-/** A goblin attacks the 6 cells next to it, above and below included, unless a GOBLIN_STOP stands there. */
+/**
+ * A goblin attacks its own cell and the 6 cells next to it, above and below included. A Fence on the edge to a cell
+ * spares it (a floor Fence, for the cells above and below), unless the goblin stands in a SQUEEZE beam; a cell inside a
+ * wall is spared unless the goblin stands in a THROUGH beam. Walls, Gates and Monsters beside the goblin shield nothing.
+ */
 function goblinAttacks(walkGrid: WalkGrid, goblinCell: number): void {
-    const { grid, layerCells } = walkGrid;
-    const targets: number[] = [];
+    const { grid, layerCells, squeezeCells, throughBeam } = walkGrid;
+    const squeezes = squeezeCells.has(goblinCell);
+    const passesWalls = throughBeam.has(goblinCell);
+    const targets: number[] = [goblinCell];
 
     for (let side = 0; side < 4; side++) {
-        targets.push(cellOnSide(walkGrid, goblinCell, side));
+        const target = cellOnSide(walkGrid, goblinCell, side);
+        if (squeezes || !fenced(walkGrid, goblinCell, side, target)) targets.push(target);
     }
 
-    targets.push(goblinCell + layerCells, goblinCell - layerCells);
+    const above = goblinCell + layerCells;
+    if (squeezes || !(grid[above] & FLOOR)) targets.push(above);
+
+    const below = goblinCell - layerCells;
+    if (squeezes || !(grid[goblinCell] & FLOOR)) targets.push(below);
 
     for (const target of targets) {
         const insideGrid = target >= 0 && target < grid.length;
-        if (insideGrid && !(grid[target] & GOBLIN_STOP)) attack(walkGrid, target);
+        if (!insideGrid) continue;
+        const insideWall = (grid[target] & SOLID) !== 0;
+        if (insideWall && !passesWalls) continue;
+
+        attack(walkGrid, target);
     }
 }
 
@@ -73,13 +88,11 @@ function dragonFire(walkGrid: WalkGrid, dragonCell: number, side: number): numbe
 }
 
 /**
- * Places the living Monsters and the cells they attack, which kill a hero without PROTECTION and hold one with it
- * over water or air: a dragon's fire and the cells around a goblin. Every Monster is in the grid before any attack
- * runs, since a Monster stops fire.
+ * Places the living Monsters, which stop fire and are pushed. Their attacks are cast by recastAttacks once the beams
+ * are cast, since a goblin's SQUEEZE and THROUGH beams change what it attacks.
  */
 export function placeAttacks(walkGrid: WalkGrid): void {
     const { world, grid, latest } = walkGrid;
-    const foes: Array<[cell: number, facing: number, monsterIndex: number]> = [];
 
     for (const [pid, i, j, z, kind, existence] of world.monsters || []) {
         const cell = latestCell(walkGrid, pid, i, j, z);
@@ -97,12 +110,8 @@ export function placeAttacks(walkGrid: WalkGrid): void {
         let facing = kind;
         if (kind >= GOBLIN) facing = foeFacing(walkGrid, pid, kind);
 
-        const monsterIndex = walkGrid.monsters.length;
         walkGrid.monsters.push({ pid, cell, facing });
-        if (kind >= GOBLIN) foes.push([cell, facing, monsterIndex]);
     }
-
-    castAttacks(walkGrid, foes);
 }
 
 /** Runs the attacks of the goblins and dragons `foes` (their cell, facing and index into `monsters`). */

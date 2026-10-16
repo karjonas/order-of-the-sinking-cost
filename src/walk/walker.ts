@@ -4,7 +4,7 @@ import type { WorldCells } from '../data.ts';
 import { latestFlag } from '../save.ts';
 import type { LatestValues } from '../save.ts';
 import type { ExistenceGroup, Position, Teleporter, World } from '../types.ts';
-import { placeAttacks } from './attacks.ts';
+import { placeAttacks, recastAttacks } from './attacks.ts';
 import { NO_BEAM_MOVES, placeBeamMoves } from './beam-moves.ts';
 import type { BeamMoves } from './beam-moves.ts';
 import { placeGems, placeLights } from './beams.ts';
@@ -440,6 +440,7 @@ export function buildWalkGrid(
 
     placeGems(walkGrid);
     placeLights(walkGrid);
+    recastAttacks(walkGrid);
     placeBeamMoves(walkGrid);
     placeGemBridges(walkGrid);
 

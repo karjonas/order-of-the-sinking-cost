@@ -61,7 +61,6 @@ export const BEAMSTOP = 128;
 // fire runs until a solid voxel or rock, a shut Gate, a Monster or a movable; a goblin attacks the cell of a Rock or a
 // movable, where the hero stands once he has pushed it away
 export const FIRE_STOP = SOLID | SUPPORT | GATE | MONSTER | MOVABLE;
-export const GOBLIN_STOP = SOLID | GATE | MONSTER;
 
 // a beam runs through walls, Guys, Monsters, MIRRORABLE Rocks and mirrorable Rovers
 export const BEAM_STOP = GATE | BEAMSTOP;
