@@ -5,7 +5,7 @@ import { attackedAt } from './attacks.ts';
 import { addTo, cellOnSide, GATE, neighbourOf, PUSH, SIDES, SOLID, SUPPORT, THRU, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { exists, place, put } from './groups.ts';
-import { deep, levelWater, waterAt } from './ocean.ts';
+import { deep, waterStopsFall } from './ocean.ts';
 import { push, requeue, settle, visitReached } from './queue.ts';
 import { reachedEntries } from './room-answers.ts';
 import { LAYER_COUNT } from './skills.ts';
@@ -335,19 +335,14 @@ function movesOnto(
 
     pushesInto(target, z);
 
-    // an object that falls into water sinks to the surface - 1, so it falls through water only onto a target one
-    // below the surface of the water over it
-    let sinkSurface: number | null = null;
-    if (levelWater(walkGrid, target + layerCells, z + 1)) sinkSurface = waterAt(walkGrid, column, z + 1);
-
+    // an object that falls into water sinks to the surface - 1, so a fall reaches a cell only if the water does not
+    // cancel the step into it or into a cell below
     let into = target + layerCells;
 
     for (let intoZ = z + 1; into < grid.length && intoZ - z <= PRESS_FALL; intoZ++) {
+        if (waterStopsFall(walkGrid, column, intoZ - 1)) break;
         if (walled(walkGrid, floodState, into) || grid[into] & PUSH) break;
         if (holdsStone(walkGrid, floodState, into, intoZ)) break;
-
-        const surface = waterAt(walkGrid, column, intoZ);
-        if (surface != null && surface !== sinkSurface) break;
 
         pushesInto(into, intoZ);
         into += layerCells;

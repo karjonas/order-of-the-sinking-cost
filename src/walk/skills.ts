@@ -155,15 +155,22 @@ export function heroLayerOf(walkGrid: WalkGrid): number {
 /**
  * The cell a hero with TELEPORT swaps into from `cell` along side `side`: the TELEPORT line runs at the cell's z,
  * crosses water and air, wraps with the grid (inside the fast-travel box at map-room z) and ends at the first target.
+ * The line steps `stride` cells at a time, the hero's powered move: it tests only the cells at multiples of the stride.
  * -1 when it ends at a solid voxel outside a THROUGH beam, a Tree, Sign, Treasure_Display or Judge, a shut Gate, a
  * frozen cell, a Mirror met on an open side (the line turns there; the turn is not modelled), a Wardrobe door edge, or
  * back at the cell. A Mirror met on its back or a closed side is a target like any other.
  */
-export function swapCell(walkGrid: WalkGrid, floodState: FloodState, cell: number, side: number): number {
+export function swapCell(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    cell: number,
+    side: number,
+    stride: number,
+): number {
     const { width, height, mirrorSides, swapTargets } = walkGrid;
     const enteredSide = (side + 2) % 4;
     let previous = cell;
-    let next = cellOnSide(walkGrid, cell, side);
+    let next = cellsOnSide(walkGrid, cell, side, stride);
 
     for (let stepsTaken = 0; stepsTaken < width + height && next !== cell; stepsTaken++) {
         if (blocked(walkGrid, floodState, next)) return -1;
@@ -177,10 +184,18 @@ export function swapCell(walkGrid: WalkGrid, floodState: FloodState, cell: numbe
         }
 
         previous = next;
-        next = cellOnSide(walkGrid, next, side);
+        next = cellsOnSide(walkGrid, next, side, stride);
     }
 
     return -1;
+}
+
+/** The cell `count` cells from `cell` along side `side`. */
+function cellsOnSide(walkGrid: WalkGrid, cell: number, side: number, count: number): number {
+    let reached = cell;
+    for (let stepsLeft = count; stepsLeft > 0; stepsLeft--) reached = cellOnSide(walkGrid, reached, side);
+
+    return reached;
 }
 
 /** The current hero's seed: the cell the hero stands in at `position` (-1 inside a wall), and the walk layer. */

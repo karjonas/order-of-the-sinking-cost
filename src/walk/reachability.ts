@@ -26,10 +26,11 @@ export interface ViaPads {
  * Freezer, the levels not entered that opening it reaches, for the Freezers on the edge of the reached cells and for
  * the others. `from`: per level not reached that such a Freezer needs, the levels behind it a walk from it reaches.
  * `mech`: per level, the unmodelled mechanics in or next to the pockets that hold it. `fromSky`: per level, 1 when a
- * hero stepping off a sky ledge falls into one of those pockets. `viaPads`: per level, what the pads revealed from
- * those pockets lead through, and what the MINOR pads that land the hero where he walks on to the level lead through.
- * `dead`: the kept hero positions inside a wall. `reached`: the cells the main flood reached. `cols`: the reached cells
- * per map layer and column.
+ * hero stepping off a sky ledge falls into one of those pockets, or walks on from where he lands to the level.
+ * `viaPads`: per level, what the pads revealed from those pockets lead through, and what the MINOR pads that land the
+ * hero where he walks on to the level lead through. `dead`: the kept hero positions inside a wall. `reached`: the cells
+ * the main flood reached. `cols`: the reached cells per map layer and column, less the Lily drift cells the hero only
+ * rides through.
  */
 export interface Reachability {
     reached: Set<number>;
@@ -82,8 +83,8 @@ interface ReachContext {
 /**
  * The pad pockets and level pockets of one walk: per level, the pocket floods that hold it (`ofLevel`, indices into
  * `ways`) and the levels of the first pocket it is in (`first`); `fromSky`: per level, 1 when a hero stepping off a sky
- * ledge falls into a pocket that holds it; `landing`: per level, what the MINOR pads that land the hero where he walks
- * on to it lead through, less what its own pockets hold.
+ * ledge falls into a pocket that holds it, or walks on from where he lands to it; `landing`: per level, what the MINOR
+ * pads that land the hero where he walks on to it lead through, less what its own pockets hold.
  */
 interface Pockets {
     ways: PocketWays[];
@@ -553,6 +554,22 @@ function addLandingWays(context: ReachContext, pockets: Pockets, byGate: Map<num
 }
 
 /**
+ * Marks the levels of `rest` that the hero reaches by walking on from the cells he lands in off a sky ledge
+ * (`landings`), not only those in a pocket he falls into.
+ */
+function addSkyWalk(context: ReachContext, landings: number[], pockets: Pockets): void {
+    const { walk, reached, rest, restCells } = context;
+    const seeds = landings.filter((landing) => !reached.has(landing));
+    if (seeds.length === 0) return;
+
+    const skyWalk = walk.flood(seeds, reached, null, { reveal: false });
+
+    rest.forEach((levelIndex, position) => {
+        if (skyWalk.has(restCells[position])) pockets.fromSky[levelIndex] = 1;
+    });
+}
+
+/**
  * A level not reached sits behind the closed gates on the edge of the pockets of walkable cells that hold it, and may
  * need the unmodelled mechanics in or next to them: floods the pocket of each level of `rest` not in a pocket yet, and
  * adds their gates to `byGate` and their mechanics to `mech`.
@@ -567,18 +584,21 @@ function floodPockets(context: ReachContext, byGate: Map<number, Set<number>>, m
         landing: new Map(),
     };
 
+    const sky = context.walk.skyEntrances();
+
     const state: PocketFloods = {
         context,
         byGate,
         mech,
         pockets,
         done: new Uint8Array(levelCount),
-        enteredFromSky: context.walk.skyEntrances(),
+        enteredFromSky: sky.into,
         pads: padRevealersOf(context),
         padPockets: new Map(),
     };
 
     context.rest.forEach((_, position) => floodPocketOfLevel(state, position));
+    addSkyWalk(context, sky.landings, pockets);
     addLandingWays(context, pockets, byGate);
 
     return pockets;
@@ -736,18 +756,48 @@ export function reachability(
         fromSky: pockets.fromSky,
         viaPads,
         dead,
-        cols: reachColumns(reached),
+        cols: reachColumns(reached, transitNotShown(walk, reached, levelCells)),
     };
 }
 
 /**
- * The reached cells projected onto the map: per map layer key a Uint8Array over the map's columns (row 0 = north, as
- * in the layer images), 1 where a reached cell lies in the layer's z range; with heights, a Float32Array of the
- * highest reached z per column instead, NaN where none.
+ * The reached cells of the Lilies' drifts that the map does not paint: those the hero only rides through, less the
+ * ones a level entrance, a pad or an Area_Pin lands him on.
  */
-function reachColumns(reached: Set<number>): Record<string, Uint8Array>;
-function reachColumns(reached: Set<number>, heights: true): Record<string, Float32Array>;
-function reachColumns(reached: Set<number>, heights = false): Record<string, Uint8Array | Float32Array> {
+function transitNotShown(walk: Walker, reached: Set<number>, levelCells: number[]): Set<number> {
+    const transit = walk.transitCells(reached);
+    if (transit.size === 0) return transit;
+
+    for (const levelCell of levelCells) {
+        transit.delete(levelCell);
+        transit.delete(walk.land(levelCell));
+    }
+
+    PROG.teleporters.forEach((_, padIndex) => transit.delete(walk.padCell(padIndex)));
+
+    for (const [, x, y, z] of PROG.world.area_pins) {
+        const pinCell = walk.cellOf(x, y, z);
+        transit.delete(pinCell);
+        transit.delete(walk.land(pinCell, false));
+    }
+
+    return transit;
+}
+
+const NO_CELLS: ReadonlySet<number> = new Set();
+
+/**
+ * The reached cells projected onto the map, less `skipped`: per map layer key a Uint8Array over the map's columns (row
+ * 0 = north, as in the layer images), 1 where a reached cell lies in the layer's z range; with heights, a Float32Array
+ * of the highest reached z per column instead, NaN where none.
+ */
+function reachColumns(reached: Set<number>, skipped?: ReadonlySet<number>): Record<string, Uint8Array>;
+function reachColumns(reached: Set<number>, skipped: ReadonlySet<number>, heights: true): Record<string, Float32Array>;
+function reachColumns(
+    reached: Set<number>,
+    skipped: ReadonlySet<number> = NO_CELLS,
+    heights = false,
+): Record<string, Uint8Array | Float32Array> {
     const map = PROG.map;
     const [mapWidth, mapHeight] = map.size;
     const [width, height] = PROG.world.grid.size;
@@ -774,6 +824,8 @@ function reachColumns(reached: Set<number>, heights = false): Record<string, Uin
     };
 
     for (const cell of reached) {
+        if (skipped.has(cell)) continue;
+
         const column = cell % layerCells;
         const z = Math.floor(cell / layerCells) - Z_BIAS;
         const columns = columnsOf(z);
@@ -807,5 +859,5 @@ export function floorHeights(): Record<string, Float32Array> | null {
         ...teleporters.map((_, padIndex) => padCell(padIndex)),
         ...PROG.world.area_pins.map(([, x, y, z]) => land(cellOf(x, y, z), false)),
     ];
-    return reachColumns(flood(seeds), true);
+    return reachColumns(flood(seeds), NO_CELLS, true);
 }

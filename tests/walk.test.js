@@ -1,4 +1,5 @@
-// The walk model on the live saves, read-only: parsing, reachability, level roles and next steps
+// The walk model on save snapshots, read-only: parsing, reachability, level roles and next steps. The save tests run
+// only when SOKO_SAVES names a folder of snapshots, so a save that is still being played never decides a test.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
@@ -12,6 +13,7 @@ import { computeProgress, setProgressCache } from '../src/model/progress.ts';
 
 const read = (camp, name) => new Uint8Array(readFileSync(join(savesDir(), camp, name)));
 const hasSave = (camp) =>
+    Boolean(process.env.SOKO_SAVES) &&
     existsSync(join(savesDir(), camp, 'Status.sokoban_status')) &&
     existsSync(join(savesDir(), camp, 'overworld.history'));
 

@@ -124,16 +124,30 @@ type ExistenceTest = (pid: number, existence: number | undefined) => boolean;
  * ALTER, takes the hero off the map, where the hero is destroyed: -1, no landing.
  */
 export function endpointTarget(beam: EndpointBeam, along: boolean, altered: boolean): number {
+    const landing = endpointLanding(beam, along, altered);
+    if (landing < 0) return -1;
+    return beam.cells[landing];
+}
+
+/** How many cells an ENDPOINT move from its beam's cell jumps (endpointTarget); -1 when it has no landing. */
+export function endpointDistance(beam: EndpointBeam, along: boolean, altered: boolean): number {
+    const landing = endpointLanding(beam, along, altered);
+    if (landing < 0) return -1;
+    return Math.abs(landing - beam.index);
+}
+
+/** The index in a beam's cells of where an ENDPOINT move lands, -1 when it has no landing. */
+function endpointLanding(beam: EndpointBeam, along: boolean, altered: boolean): number {
     const { cells, index, atInfinity } = beam;
     if (along && atInfinity) return -1;
     if (!altered) {
-        if (along) return cells[cells.length - 1];
-        return cells[0];
+        if (along) return cells.length - 1;
+        return 0;
     }
 
-    if (!along) return cells[Math.floor(index / 2)];
+    if (!along) return Math.floor(index / 2);
     const cellsAhead = cells.length - 1 - index;
-    return cells[index + Math.ceil(cellsAhead / 2)];
+    return index + Math.ceil(cellsAhead / 2);
 }
 
 /** The room of a cell: a 19 x 13 screen of a ground, underworld or sky layer, or a whole map-room layer. */

@@ -86,7 +86,6 @@ export interface LevelGeometry extends GridShape, LayerSource {
     fenceCells: Int32Array;
     switchCells: Int32Array;
     gateCells: Int32Array;
-    lilyLevelCells: Int32Array;
     lilySpawns: LilySpawnCells[];
     bridges: BridgeCells[];
     elevators: ElevatorFrames[];
@@ -343,7 +342,6 @@ export function buildLevelGeometry(source: LevelSource, worldCells: WorldCells):
         fenceCells: cellsOfRows(shape, world.fences),
         switchCells,
         gateCells: cellsOfRows(shape, world.gates),
-        lilyLevelCells: cellsOfRows(shape, world.lilies),
         lilySpawns: lilySpawnsOf(shape, world),
         bridges: bridgesOf(shape, world),
         elevators: levelElevators(shape, world),

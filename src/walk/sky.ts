@@ -1,7 +1,7 @@
 // Sky entrances: whether a hero stepping off a sky ledge falls into a set of cells (WORLD.md "Ground layers")
 import { cellOnSide, FIRE, PUSH, SIDES, Z_BIAS } from './cells.ts';
 import { deep, layerOf } from './ocean.ts';
-import { blocked, fallsThrough } from './support.ts';
+import { blocked, fallsThrough, standable } from './support.ts';
 import type { WalkGrid } from './walker.ts';
 import { fenced } from './walls.ts';
 
@@ -12,12 +12,21 @@ const SKY_LAYER = 2;
 const NONE = 0x7fff;
 
 /**
- * The sky entrances: a test of whether a hero stepping off a sky ledge falls into a cell of a set below the sky. A
- * sky ledge is the cell over a solid voxel of the sky layer (static or of an existing Group) when it is not blocked,
- * attacked or under water; the hero steps off it into a cell next to it with no Fence on the edge and no pushable in
- * it, and falls down that cell's column. The walk does not climb, so a walk from the set never meets the ledge.
+ * What a hero stepping off a sky ledge falls into: `into` tests whether he falls into a cell of a set below the sky,
+ * `landings` lists the cells he lands in.
  */
-export function skyEntrances(walkGrid: WalkGrid): (cells: Iterable<number>) => boolean {
+export interface SkyEntrances {
+    into: (cells: Iterable<number>) => boolean;
+    landings: number[];
+}
+
+/**
+ * The sky entrances. A sky ledge is the cell over a solid voxel of the sky layer (static or of an existing Group) when
+ * it is not blocked, attacked or under water; the hero steps off it into a cell next to it with no Fence on the edge
+ * and no pushable in it, and falls down that cell's column. The walk does not climb, so a walk from the cells he falls
+ * into never meets the ledge.
+ */
+export function skyEntrances(walkGrid: WalkGrid): SkyEntrances {
     const { grid, cellFlags, layerCells, width, zOffset, boxZ, worldCells, noFlood } = walkGrid;
     const solid = worldCells.solid;
     const groupCells = worldCells.groups;
@@ -26,7 +35,7 @@ export function skyEntrances(walkGrid: WalkGrid): (cells: Iterable<number>) => b
     while (skyBase <= topZ && layerOf(walkGrid, skyBase) !== SKY_LAYER) skyBase++;
 
     // a world without a sky layer has no sky ledges
-    if (skyBase > topZ) return () => false;
+    if (skyBase > topZ) return { into: () => false, landings: [] };
 
     // per column, the lowest z of such a step whose fall leaves the sky layer, else NONE (the lowest step of a column
     // is under its others, so when something in the sky holds its fall, it holds theirs too)
@@ -91,11 +100,30 @@ export function skyEntrances(walkGrid: WalkGrid): (cells: Iterable<number>) => b
         return true;
     };
 
-    return (cells) => {
+    // per column with such a step, the cell the hero lands in: the first cell below the sky layer that holds him
+    const landings: number[] = [];
+
+    for (let column = 0; column < layerCells; column++) {
+        if (lowestStep[column] === NONE) continue;
+
+        let cell = (skyBase - 1 + Z_BIAS) * layerCells + column;
+
+        for (let z = skyBase - 1; z >= 1 - Z_BIAS; z--) {
+            if (!fallsThrough(walkGrid, noFlood, cell, z)) {
+                if (standable(walkGrid, noFlood, cell)) landings.push(cell);
+                break;
+            }
+            cell -= layerCells;
+        }
+    }
+
+    const into = (cells: Iterable<number>): boolean => {
         for (const cell of cells) {
             const cellZ = Math.floor(cell / layerCells) - Z_BIAS;
             if (cellZ < skyBase && lowestStep[cell % layerCells] !== NONE && openToSky(cell, cellZ)) return true;
         }
         return false;
     };
+
+    return { into, landings };
 }

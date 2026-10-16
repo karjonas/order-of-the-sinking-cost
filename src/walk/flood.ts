@@ -2,7 +2,7 @@
 // "Moves", "Seeds and the reached cells", "Pads revealed through the map rooms")
 import { pushForBeams, undoBeamMoves } from './beam-moves.ts';
 import type { BeamFlood } from './beam-moves.ts';
-import { endpointTarget } from './beams.ts';
+import { endpointDistance, endpointTarget } from './beams.ts';
 import type { EndpointBeam } from './beams.ts';
 import { sink } from './bridges.ts';
 import type { BridgeWay } from './bridges.ts';
@@ -723,6 +723,32 @@ function stepWith(
     }
 }
 
+/**
+ * The cells the TELEPORT line of a hero at `cell` steps on side `side` with the powers `powers`, the length of his move
+ * there: the jump to the endpoint in a parallel ENDPOINT beam, else the cells of a DOUBLE move. -1 when the move has
+ * no landing.
+ */
+function swapStride(side: number, powers: StepPowers): number {
+    const endpointBeam = powers.endpointBeams?.find((beam) => beam.side % 2 === side % 2);
+    if (!endpointBeam) return powers.steps;
+
+    return endpointDistance(endpointBeam, endpointBeam.side === side, powers.altered);
+}
+
+/** The hero in walk layer 2 at `cell` swaps with the first target of his TELEPORT line on each side, by `powers`. */
+function swapSides(walkGrid: WalkGrid, floodState: FloodState, cell: number, z: number, powers: StepPowers): void {
+    for (const side of SIDES) {
+        const stride = swapStride(side, powers);
+        if (stride <= 0) continue;
+
+        const swapped = swapCell(walkGrid, floodState, cell, side, stride);
+        if (swapped < 0) continue;
+
+        settle(walkGrid, floodState, swapped, z, WIZARD);
+        if (!floodState.pocket) noteSwap(walkGrid, floodState, cell, swapped);
+    }
+}
+
 /** Walks on from `cell` in walk layer `layer`: steps, TELEPORT swaps, magic-mirror hops, and with `travel` the rides. */
 function walkFrom(
     walkGrid: WalkGrid,
@@ -738,12 +764,9 @@ function walkFrom(
 
     // a hero with TELEPORT swaps with the first target along each side
     if (layer === WIZARD) {
-        for (const side of SIDES) {
-            const swapped = swapCell(walkGrid, floodState, cell, side);
-            if (swapped < 0) continue;
-
-            settle(walkGrid, floodState, swapped, z, layer);
-            if (!floodState.pocket) noteSwap(walkGrid, floodState, cell, swapped);
+        swapSides(walkGrid, floodState, cell, z, stepPowers(walkGrid, cell, false));
+        if (walkGrid.marks[cell] & OPTION_MARK) {
+            swapSides(walkGrid, floodState, cell, z, stepPowers(walkGrid, cell, true));
         }
     }
 

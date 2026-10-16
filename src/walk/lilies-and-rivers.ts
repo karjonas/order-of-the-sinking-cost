@@ -1,12 +1,12 @@
 // Lilies and the rivers they drift on (MOVEMENT.md "Lilies", "Rivers")
-import { cellOnSide, BEAMSTOP, FLOOR, KICK_MARK, PUSH, Z_BIAS } from './cells.ts';
+import { cellOnSide, BEAMSTOP, FLOOR, KICK_MARK, PUSH, SIDES, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { exists, place, put } from './groups.ts';
 import { waterAt } from './ocean.ts';
 import type { Kick } from './skipping-stones.ts';
-import { blocked } from './support.ts';
+import { blocked, land } from './support.ts';
 import type { WalkGrid } from './walker.ts';
-import { latestCell } from './walls.ts';
+import { fenced, latestCell } from './walls.ts';
 
 /** Notes that Lily `pid` holds the hero at `cell`. */
 function addLily(walkGrid: WalkGrid, cell: number, pid: number): void {
@@ -18,25 +18,21 @@ function addLily(walkGrid: WalkGrid, cell: number, pid: number): void {
     }
 }
 
-/** Places the Lilies, each at its level-data cell and where the save last left it (its home). */
+/** Places the Lilies, each where the save last left it (its home). */
 export function placeLilies(walkGrid: WalkGrid): void {
-    walkGrid.world.lilies.forEach(([pid, i, j, z, existence], index) => {
+    for (const [pid, i, j, z, existence] of walkGrid.world.lilies) {
         const home = latestCell(walkGrid, pid, i, j, z);
-        const cells = [walkGrid.geometry.lilyLevelCells[index], home];
+        if (home < 0) continue;
 
-        for (const cell of cells) {
-            if (cell < 0) continue;
+        place(walkGrid, pid, existence, () => {
+            put(walkGrid, walkGrid.grid, home, FLOOR);
+            if (walkGrid.writeLog) return;
 
-            place(walkGrid, pid, existence, () => {
-                put(walkGrid, walkGrid.grid, cell, FLOOR);
-                if (walkGrid.writeLog) return;
-
-                walkGrid.lilyCells.add(cell);
-                addLily(walkGrid, cell, pid);
-                if (cell === home) walkGrid.lilyHomes.set(pid, home);
-            });
-        }
-    });
+            walkGrid.lilyCells.add(home);
+            addLily(walkGrid, home, pid);
+            walkGrid.lilyHomes.set(pid, home);
+        });
+    }
 }
 
 /** The homes of the Lilies that hold the hero at `cell`: what stands in them rides those Lilies. */
@@ -101,6 +97,37 @@ export function placeDrift(walkGrid: WalkGrid): void {
             addLily(walkGrid, cell, pid);
         }
     }
+}
+
+/** Whether the hero steps off the drift cell `cell` onto a reached cell that is no drift cell, within a layer of it. */
+function stepsOffDrift(walkGrid: WalkGrid, reached: Set<number>, cell: number): boolean {
+    const { grid, driftCells, layerCells, noFlood } = walkGrid;
+
+    for (const side of SIDES) {
+        const target = cellOnSide(walkGrid, cell, side);
+        if (target < 0 || target === cell) continue;
+        if (fenced(walkGrid, cell, side, target) || grid[target] & PUSH) continue;
+
+        const landing = land(walkGrid, noFlood, target);
+        if (landing < 0 || !reached.has(landing) || driftCells.has(landing)) continue;
+        if (Math.abs(Math.floor(landing / layerCells) - Math.floor(cell / layerCells)) <= 1) return true;
+    }
+
+    return false;
+}
+
+/**
+ * The reached cells of the Lilies' drifts that the hero rides through without a way off: no step off them lands on a
+ * reached cell outside the drifts.
+ */
+export function transitCells(walkGrid: WalkGrid, reached: Set<number>): Set<number> {
+    const transit = new Set<number>();
+
+    for (const cell of walkGrid.driftCells) {
+        if (reached.has(cell) && !stepsOffDrift(walkGrid, reached, cell)) transit.add(cell);
+    }
+
+    return transit;
 }
 
 /**

@@ -8,6 +8,8 @@ import {
     FROZEN_MARK,
     GATE,
     KICK_MARK,
+    MONSTER,
+    MOVABLE,
     OPTION_MARK,
     POWER_MARK,
     SOLID,
@@ -53,6 +55,22 @@ function gateOpenedNow(walkGrid: WalkGrid, floodState: FloodState, cell: number)
 }
 
 /**
+ * Whether a living Monster or a movable in `cell` holds up what stands above it: a Monster the flood has not got rid
+ * of, a Gem, a Promesst_Light, a Rover, a Friendly_Dragon or a vertical Mirror. A flat Mirror holds nothing.
+ */
+function heldByEntity(walkGrid: WalkGrid, floodState: FloodState, cell: number): boolean {
+    const bits = walkGrid.grid[cell];
+
+    if (bits & MONSTER) {
+        const monsterIndex = walkGrid.triggers.monsterGates.monsterAt.get(cell);
+        return monsterIndex === undefined || !floodState.monsterGone[monsterIndex];
+    }
+
+    if (bits & MOVABLE) return !walkGrid.flatMirrors.has(cell);
+    return false;
+}
+
+/**
  * Whether the cell below `cell` holds up what stands in it while a flood runs; a closed Freezer does, unless the flood
  * walks no Freezer tops.
  */
@@ -63,17 +81,18 @@ export function heldFromBelow(walkGrid: WalkGrid, floodState: FloodState, cell: 
     const below = cell - layerCells;
     if (walkGrid.marks[below] & FROZEN_MARK && floodState.frozenHolds) return true;
     if (floodState.latchedShut.size && floodState.latchedShut.has(below)) return true;
-    return (walkGrid.grid[below] & SUPPORT) !== 0 && !gateOpenedNow(walkGrid, floodState, below);
+    if ((walkGrid.grid[below] & SUPPORT) !== 0 && !gateOpenedNow(walkGrid, floodState, below)) return true;
+    return heldByEntity(walkGrid, floodState, below);
 }
 
 /**
  * Whether the hero is held up in `cell`: by a solid voxel in the cell itself (entered only along a THROUGH beam; the
  * game holds an entity inside a wall), a lily or floor in the cell (a Lily on a river at every cell of its drift: the
- * hero boards it as it passes and rides it), solid or a rock below, a DOUBLE beam over water (the hero stands on the
- * surface), a rock bridge's water cell once its Rock sank (in a pocket flood always), a cell a kicked Lily drifts
- * through once the flood has reached the launch of the stone that kicks it, else the implicit ground floor
- * (z <= 0, z < 0 in water). The walker sets the cells' `marks` once the beams and the drift are placed, before the
- * first call.
+ * hero boards it as it passes and rides it), solid, a rock, a living Monster or a movable below, a DOUBLE beam over
+ * water (the hero stands on the surface), a rock bridge's water cell once its Rock sank (in a pocket flood always), a
+ * cell a kicked Lily drifts through once the flood has reached the launch of the stone that kicks it, else the
+ * implicit ground floor (z <= 0, z < 0 in water). The walker sets the cells' `marks` once the beams and the drift are
+ * placed, before the first call.
  */
 function supported(walkGrid: WalkGrid, floodState: FloodState, cell: number): boolean {
     if ((walkGrid.grid[cell] & (SOLID | FLOOR)) !== 0 || heldFromBelow(walkGrid, floodState, cell)) return true;
@@ -132,6 +151,7 @@ export function holdsStone(walkGrid: WalkGrid, floodState: FloodState, cell: num
     if (floodState.bridged.has(cell)) return true;
     if (cell >= layerCells && grid[below] & SUPPORT) return true;
     if (cell >= layerCells && walkGrid.marks[below] & FROZEN_MARK) return true;
+    if (cell >= layerCells && heldByEntity(walkGrid, floodState, below)) return true;
     if (floodState.latchedShut.size && floodState.latchedShut.has(below)) return true;
     return z <= 0 && layerOf(walkGrid, z) === 0 && waterAt(walkGrid, cell % layerCells, z) == null;
 }

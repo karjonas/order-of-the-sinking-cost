@@ -39,6 +39,15 @@ export function waterAt(walkGrid: WalkGrid, column: number, z: number): number |
     return null;
 }
 
+/**
+ * Whether water cancels a fall step into height z at the column: the surface lies more than 1 and less than 3 above z
+ * (MOVEMENT.md "Falling"), so a falling object stops one cell above, at surface - 1. Above the surface a fall passes.
+ */
+export function waterStopsFall(walkGrid: WalkGrid, column: number, z: number): boolean {
+    const surface = waterAt(walkGrid, column, z);
+    return surface != null && surface - 3 < z && z < surface - 1;
+}
+
 /** More than 0.1 under a water surface: a walk can't step there (swimming, or being carried over the sea). */
 export function deep(walkGrid: WalkGrid, cell: number): boolean {
     const z = Math.floor(cell / walkGrid.layerCells) - Z_BIAS;

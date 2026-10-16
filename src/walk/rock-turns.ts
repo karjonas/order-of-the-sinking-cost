@@ -5,7 +5,7 @@ import { BRIDGE_MARK, cellOnSide, PUSH, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { missChanged, PRESS_CELLS, PRESS_FALL, pressInputs, walled } from './gates.ts';
 import type { PressMiss } from './gates.ts';
-import { levelWater, waterAt } from './ocean.ts';
+import { levelWater, waterStopsFall } from './ocean.ts';
 import { requeue, visitReached } from './queue.ts';
 import { reachedEntries } from './room-answers.ts';
 import { holdsStone, standable } from './support.ts';
@@ -36,53 +36,24 @@ export function rockTurnsOf(walkGrid: WalkGrid): RockTurn[] {
 }
 
 /**
- * Whether the surfaces of the cells a Rock fell through are open to a fall onto a cell whose water surface is
- * `sinkSurface` (null: no water level with it): each is dry or the same surface, as movesOnto reads the cells over its
- * target.
- */
-function fallsThroughSurfaces(surfaces: Array<number | null>, sinkSurface: number | null): boolean {
-    for (const surface of surfaces) {
-        if (surface != null && surface !== sinkSurface) return false;
-    }
-
-    return true;
-}
-
-/**
  * Where a Rock in `from` ends when pushed on side `side`, as movesOnto reads it from the other end: it enters the next
- * cell and lands there if the cell holds it, else falls through open air and water at most PRESS_FALL cells onto the
- * first cell that holds it, or sinks in the first cell of water level with its height, where it becomes a bridge.
- * null where the push fails or the Rock never lands.
+ * cell and lands there if the cell holds it, else falls through open air at most PRESS_FALL cells onto the first cell
+ * that holds it, or sinks in the first cell of water level with its height, where it becomes a bridge. A fall stops
+ * short of a cell the water cancels the step into (waterStopsFall). null where the push fails or the Rock never lands.
  */
 export function landingOf(walkGrid: WalkGrid, floodState: FloodState, from: number, side: number): Landing | null {
     const { grid, layerCells } = walkGrid;
     const fromZ = Math.floor(from / layerCells) - Z_BIAS;
     let cell = cellOnSide(walkGrid, from, side);
     const column = cell % layerCells;
-    const surfaces: Array<number | null> = [];
 
     for (let fallen = 0; fallen <= PRESS_FALL && cell >= layerCells; fallen++) {
         const z = fromZ - fallen;
         if (walled(walkGrid, floodState, cell) || grid[cell] & PUSH) return null;
+        if (fallen > 0 && waterStopsFall(walkGrid, column, z)) return null;
+        if (holdsStone(walkGrid, floodState, cell, z)) return { cell, sinks: false };
+        if (levelWater(walkGrid, cell, z) && fallen < PRESS_FALL) return { cell, sinks: true };
 
-        if (holdsStone(walkGrid, floodState, cell, z)) {
-            let sinkSurface: number | null = null;
-            if (fallen > 0 && levelWater(walkGrid, cell + layerCells, z + 1)) {
-                sinkSurface = waterAt(walkGrid, column, z + 1);
-            }
-
-            if (!fallsThroughSurfaces(surfaces, sinkSurface)) return null;
-            return { cell, sinks: false };
-        }
-
-        const surface = waterAt(walkGrid, column, z);
-
-        if (levelWater(walkGrid, cell, z) && fallen < PRESS_FALL) {
-            if (!fallsThroughSurfaces(surfaces, surface)) return null;
-            return { cell, sinks: true };
-        }
-
-        surfaces.push(surface);
         cell -= layerCells;
     }
 

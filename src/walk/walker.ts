@@ -23,7 +23,7 @@ import { withGroups } from './groups.ts';
 import type { CellWrite } from './groups.ts';
 import { levelGeometry } from './geometry.ts';
 import type { LevelGeometry } from './geometry.ts';
-import { placeDrift, placeLilies, respawnKicks } from './lilies-and-rivers.ts';
+import { placeDrift, placeLilies, respawnKicks, transitCells } from './lilies-and-rivers.ts';
 import { mechAt, placeMechanics } from './mechanics.ts';
 import { magicMirrorHops } from './mirror-isles.ts';
 import type { SwitchHop } from './mirror-isles.ts';
@@ -45,6 +45,7 @@ import type { LayeredCell } from './skills.ts';
 import { placeCharmStones, placeKicks, skipLanes } from './skipping-stones.ts';
 import type { Kick, SkipLane } from './skipping-stones.ts';
 import { skyEntrances } from './sky.ts';
+import type { SkyEntrances } from './sky.ts';
 import { insideWall, land } from './support.ts';
 import { minorLanding, padCell, placePads } from './teleporters.ts';
 import type { TeleporterState } from './teleporters.ts';
@@ -86,6 +87,8 @@ export interface WalkGrid extends GridShape {
     // side (1 << side) it is open on, where the line turns instead of swapping
     swapTargets: Set<number>;
     mirrorSides: Map<number, number>;
+    // the cells of the existing flat Mirrors, which hold up nothing (every other movable does)
+    flatMirrors: Set<number>;
     // rock bridges, per Rock: [push cell, water cell] of each way to push it into water, where it sinks and holds the
     // hero up; `bridgeWater`: every bridge's water cell, which a pocket flood counts as floor whichever side the push
     // cell is on (flood option `pocket`)
@@ -207,7 +210,8 @@ export interface Walker {
         front?: Set<number> | null,
         options?: FloodOptions,
     ) => Set<number>;
-    skyEntrances: () => (cells: Iterable<number>) => boolean;
+    skyEntrances: () => SkyEntrances;
+    transitCells: (reached: Set<number>) => Set<number>;
     land: (cell: number, up?: boolean) => number;
     padCell: (padIndex: number) => number;
     minorLanding: (padIndex: number) => number;
@@ -278,6 +282,7 @@ function newWalkGrid(
         marks: new Uint8Array(volume),
         swapTargets: new Set(),
         mirrorSides: new Map(),
+        flatMirrors: new Set(),
         bridgesOf: new Map(),
         bridgeWater: new Set(),
         rocks: [],
@@ -461,6 +466,7 @@ function walkerOf(walkGrid: WalkGrid): Walker {
     return {
         flood: (seeds, outside, front, options) => flood(walkGrid, seeds, outside, front, options),
         skyEntrances: () => skyEntrances(walkGrid),
+        transitCells: (reached) => transitCells(walkGrid, reached),
         land: (cell, up) => land(walkGrid, walkGrid.noFlood, cell, up),
         padCell: (padIndex) => padCell(walkGrid, walkGrid.noFlood, padIndex),
         minorLanding: (padIndex) => minorLanding(walkGrid, walkGrid.noFlood, padIndex, 0),

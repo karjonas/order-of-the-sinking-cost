@@ -51,6 +51,11 @@ export function noteTarget(walkGrid: WalkGrid, cell: number): void {
     walkGrid.swapTargets.add(cell);
 }
 
+/** Whether a Mirror with this facing is flat; one with no facing is taken to be flat. */
+function isFlatMirror(facing: MirrorFacing | undefined): boolean {
+    return !facing || facing[1] === FLAT_MIRROR;
+}
+
 /**
  * The sides a horizontal line meets the Mirror `pid` on and turns at, one bit per side: a flat Mirror is open on two
  * sides, a vertical one on one. `theta_target` is the save's latest, else the level data's `facing`. A Mirror with no
@@ -134,6 +139,7 @@ export function placeEntities(walkGrid: WalkGrid): Set<number> {
 
         place(walkGrid, pid, existence, () => {
             put(walkGrid, grid, cell, cellBits);
+            if (movableKind === MIRROR_KIND && isFlatMirror(mirrorFacings.get(pid))) walkGrid.flatMirrors.add(cell);
             if (walkGrid.writeLog) return;
 
             if (bits & ROCK) {
