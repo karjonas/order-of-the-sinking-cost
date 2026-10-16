@@ -1,5 +1,5 @@
-// With spoilers hidden, no goal names or counts anything under fog: the demo ("Example: a new game") and the live
-// default save, read-only
+// With spoilers hidden, no goal names or counts anything under fog: the demo ("Example: a new game") and, when
+// SOKO_SAVES names a folder of snapshots, its default save, read-only
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
@@ -21,6 +21,7 @@ vi.mock('../src/model/layers.ts', async (importOriginal) => ({ ...(await importO
 const DEMO = 'No save loaded',
     LIVE = 'default';
 const hasSave = (camp) =>
+    Boolean(process.env.SOKO_SAVES) &&
     existsSync(join(savesDir(), camp, 'Status.sokoban_status')) &&
     existsSync(join(savesDir(), camp, 'overworld.history'));
 
@@ -108,7 +109,7 @@ describe('goals with spoilers hidden', () => {
         expect(model.goals[0].progress).toBe(null);
         checkHidden(model);
     });
-    test.skipIf(!hasSave(LIVE))('the live save names and counts nothing under fog', () => {
+    test.skipIf(!hasSave(LIVE))('the snapshot save names and counts nothing under fog', () => {
         setSpoilersHidden(true);
         const model = progressModel(LIVE);
         checkHidden(model);
