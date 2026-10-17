@@ -95,6 +95,7 @@ function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, open
 
 /** What the row of a totals line says about the things not found yet. */
 export function finderTip(finder: Finds): string {
+    if (finder.ready) return 'Show the ones ready to read, then the rest, on the map';
     if (finder.open.length) return 'Show the ones not found yet on the map';
     if (finder.fogged) return 'None left outside the fog';
     if (finder.off) return 'The rest are not on the map';

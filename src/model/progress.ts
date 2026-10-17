@@ -2,7 +2,7 @@
 // the levels it cannot reach and the plans built on them (rules: PROGRESSION.md "Level_Entry unlocking and state", the
 // viewer's model: VIEWER.md "Level states (viewer)", data: data/progress.json)
 import { PROG, WORLD } from '../data.ts';
-import { latestOf } from '../save.ts';
+import { latestFlag, latestOf } from '../save.ts';
 import type { History, LatestValues } from '../save.ts';
 import type { Status } from '../status-file.ts';
 import { reachability } from '../walk/reachability.ts';
@@ -21,7 +21,7 @@ import { towerProgress } from './towers.ts';
 import type { TowerProgress } from './towers.ts';
 import { freezersOpen, isSolved, levelFlagsOf, levelStates, signRuleMet } from './unlocking.ts';
 import type { LevelFlags, LevelState, SignRule } from './unlocking.ts';
-import { accessOf, gatesBehind, unlocksOf, wayInModel } from './way-in.ts';
+import { accessOf, gatesBehind, signAccessOf, unlocksOf, wayInModel } from './way-in.ts';
 import type { LevelUnlocks, WhyBlocked } from './way-in.ts';
 
 export const RANKS = ['Visitor', 'Egressant', 'Pusher', 'Arranger', 'Intrepid', 'Sokoban'];
@@ -52,6 +52,10 @@ export interface BaseProgress {
     goldFound: number;
     /** Whether a Sign's rule holds. */
     signOk: (rule: SignRule) => boolean;
+    /** Whether the hero has read a Sign (by pid); the Freezers it opens open only then. */
+    signRead: (pid: number) => boolean;
+    /** Per Sign, the layer the walk reaches nowhere that a hero must get onto to read it; null for the others. */
+    signAccess: Array<string | null>;
     /** The walk over the overworld state; null for the empty save. */
     reach: Reachability | null;
     /** Per level, the closed gates whose leads or pocket hold it. */
@@ -141,7 +145,8 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         (teleporter, i) => teleporter.gold && teleporterStates[i].disc,
     ).length;
     const signOk = (rule: SignRule) => signRuleMet(rule, status, towers, goldFound);
-    const gateOpen = freezersOpen(status, levelFlags, signOk);
+    const signRead = (pid: number) => latestFlag(latest, pid, 'rank_satisfied');
+    const gateOpen = freezersOpen(status, levelFlags, signRead);
     const reach = reachOf(history, latest, teleporterStates, gateOpen, levelFlags);
     const state = levelStates(levelFlags, reach);
     const unlocks = unlocksOf();
@@ -165,6 +170,8 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         tst: teleporterStates,
         goldFound,
         signOk,
+        signRead,
+        signAccess: signAccessOf(reach),
         reach,
         behind,
         why,

@@ -57,6 +57,7 @@ const LATEST_TYPES = new Set([
     'Rover',
     'Friendly_Dragon',
     'Group',
+    'Sign',
 ]);
 
 const LATEST_FIELDS = [
@@ -79,6 +80,7 @@ const LATEST_FIELDS = [
     'exists',
     'flags',
     'attached_to_entity_id',
+    'rank_satisfied',
 ];
 
 // LATEST_FIELDS indices: by name, and per schema field descriptor ('base.' + its name for a base field; -1 when not kept)

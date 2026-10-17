@@ -752,6 +752,7 @@ describe('unlock plans through cycles', () => {
             gateOpen: [false, false, false],
             towers: [],
             signOk: () => true,
+            signRead: () => true,
         };
     };
     test('a plan does not run through the key it is the plan of', () => {

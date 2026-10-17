@@ -607,6 +607,7 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 - Swapped targets ([Moves](#moves)): only a swap onto the Switch or the slot cell itself brings an object there (a swapped object pushed on from another cell is searched for a Rock that turns and not for a Switch or a slot), and only from the first swap with each object: a target that a swap moved is met where the save left it by every later swap and line. A Mirror swapped to the hero's cell hops from nothing there, a light casts no beam from it, a Gem fills a slot only in the slot's cell, and no swapped Rock is placed: it stops no beam in the cell it lands in (a swap that would is not taken) and blocks no step. A Rock swapped into water sinks there only by the pushes of the Rocks that turn. A swap from a cell a lead flood stays out of, or in a pocket flood, is not noted.
 - Beams: SMASH, STRONG; OPEN only for the Gate next to a hero standing in the beam (no pushed, falling or skipping movers, and ALTER only keeps the Gate shut: an open Gate is never shut); vertical THROUGH and vertical ENDPOINT beams; beams of lights that moved before being powered; a room losing power when a Group makes an unfilled slot exist (in the game its lights go off, [Promesst beams and powers](MOVEMENT.md#promesst-beams-and-powers)); colours other than THROUGH inside `withGroups`.
 - Beams moved by pushes ([Beams moved by pushes](#beams-moved-by-pushes)): a Gem or Promesst_Light is pushed in a straight line, and a Gem that needs a turn goes by the walk back from its slot only, which keeps it inside its room and takes no Gem from a slot; a Rock pushed back toward its light or into another beam; a Gem that lands in another beam does not cut it, and a light's spots all shine at once; a light, Gem or Rock moved this way is still met where the save left it by what was laid out when the walker was built (magic-mirror rays, skip lanes, lily drifts, TELEPORT swap targets). The walks of the build-time pad pockets make these pushes too.
+- The ruby lift ([Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)): the walk moves no Gem, light or blocking Rock, and the lift's Mirror is a plain vertical Mirror whose beam it does not turn up, so it does not find the lift; it reaches the sky only from a save's hero positions there, and the plans take the way onto the sky as a step after rank 1. The flavor-69105 Gates on the lift's row stay shut in the walk of a save: a Switch at the plaza mouth gets no object from the walk's pushes. Only the walk on the level data presses the flavor, by pushes alone.
 - Gates shutting on what stands in them (push or crush, [Gates, switches and buttons](MOVEMENT.md#gates-switches-and-buttons)), but for the Gate lifts ([Moves](#moves)): a Gate that closes upward lifts the hero only when he steps into it off a Switch of its flavor beside it, never when something else releases a Switch. So the closing Gate that lifts the hero onto the step of the sky hub's south way lifts nobody in the walk: its Switch is fenced in and not beside it.
 - TRANSMUTE ([Moves](#moves)): only Trees and dragons are turned, and only by a hero who left a TRANSMUTE Wardrobe by its door from layer 0. He pushes nothing, so he walks only where the save left no Rock, Monster or movable, even in a cell a hero in layer 0 pushed one out of; Skills do not stack on TRANSMUTE either (a TRANSMUTE door taken in another layer is ignored, and in layer 3 another skill's door changes nothing, so a TRANSMUTE + MULTIPUSH hero is treated as unable to push). A crystal is not turned back into what it was, no other kind of target is turned (a Rover, a mirrorable Rock or Mirror, a Friendly_Dragon, a Guy), a crystal made on a Switch from something that presses none (a Friendly_Dragon) is not counted, and a Tree's root Fences stay. The beams are not laid again for a crystal, so a Tree that stopped a beam still does. The crystals of dragons do not bridge water. A hero whose latest skills hold TRANSMUTE and no push starts in layer 3.
 - Switches: an object brought onto a Switch by CHARM (but for a launched skipping stone), PULL or MULTIPUSH, or a Monster that walks onto it (no Monster is known to walk by itself); a closed Freezer on the object's way counted as a way in. A pressed flavor keeps its gates changed for the rest of the flood, as if its objects stayed on their Switches and the hero never took one off: they are not placed, and no other flavor uses them. Flavors take their objects in latch order, the nearest first, so a later flavor may find none where another order would give it one. An object counts as held by a Gate below it that was shut at any point in the flood, even once the flood has opened it; in the game an open Gate holds nothing. Magic-mirror rays, skip lanes and lily drifts are laid out before any press, so they see each Gate as the save left it, and an OPEN beam never bumps open a notted Gate a press has shut.
@@ -638,6 +639,10 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 - `FastTravelEnableGroup` Markers ([Teleporter pads and fast travel](MOVEMENT.md#teleporter-pads-and-fast-travel)): a Marker the hero touches makes its Group exist, which the walk does not do; a save already holds the Groups touched so far. The lift's Marker enables the map-room copy of the ruby lift, whose pieces are a vertical ENDPOINT beam and a vertical Mirror (left out under Beams), so it would change nothing in the walk; what `FTEnd1`, which the hub Markers enable, holds is not documented. The page does not read these Markers' positions (they are not in `world.json`).
 - The map rooms' implicit floor; walls the hero can't see over. In the game every map-room layer has a dry floor at its base, z 78, 89 and 104 ([Ground layers](WORLD.md#ground-layers)), above the layer's bottom, so a dry fall there ends inside the layer, never nowhere.
 - The DOUBLE support probe 2 cells down; the Elevator_Platform drowning exemption; PLAYER_BLOCKING_ONLY maps in the drown check.
+- Reading a Sign ([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)): `reach.signFaced` is 1 when a reached cell
+  stands on one of the Sign's four sides with no Fence between and no closed Freezer in the Sign's cell. It does not
+  check that the hero can turn to face the Sign from that cell. A Sign no reached cell stands beside has no way in of its
+  own in the plans, except the way onto its layer when the walk reaches nothing there (the sky, the underworld).
 - The endgame areas: the walk does not find its way into the end2 room and its deck, or into the end3 rooms; the plans take their way-in gates from the level data ([Endgame way-in gates](#endgame-way-in-gates)).
 
 ## Level states (viewer)
@@ -725,8 +730,13 @@ It needs all its parts (AND), the cheapest one (OR), or the cheapest k of them (
   it may become a step of its own (below).
 - Freezer, open: met. Closed: its unmet levels and signs, all of them, or for an OR gate of more than one the
   cheapest. An OR gate with one of them met is a step with no parts: it opens at the next overworld load.
-- Sign, met: met. A tower sign needs its tower; a rank sign rank r; the gold-room sign the cheapest k of the gold rooms
-  still to find, k = 4 − the rooms found.
+- Sign: the step is reading it. Met once it is read (`rank_satisfied` in the history, `P.signRead`) or when it asks for
+  nothing. A tower sign whose tower is not active needs its tower; a rank sign whose rank is not reached rank r; the
+  gold-room sign the cheapest k of the gold rooms still to find, k = 4 − the rooms found. A sign whose rule holds and
+  which is not read has no parts: a step of its own, "read the sign". A sign on a layer the walk reaches nowhere and
+  that no reached cell stands beside (`P.signAccess`) also needs the way onto that layer. The page words the step "Read
+  the sign · `rule`" ([The page's words](#the-pages-words)). The tower status signs are never read: their step is met
+  with the tower active, and no Freezer lists them.
 - Gold room: met once its `gold_room_endpoint` pad is discovered; else a step after its tower: the step onto the
   tower's MINOR pad ([Endgame](PROGRESSION.md#endgame)).
 - Rank r, a part: the cheapest source of r or more: the ENDGAME levels (1, 3, 5), ASCEND (2) and DESCEND (4)
@@ -902,10 +912,13 @@ areas shown) and the save's Stats (with spoilers hidden, only the counters above
 scroll inside under their headers.
 
 The Signs row counts the signs that open Freezers (the rank, tower and gold-room signs; not the tower status signs,
-which open none) that are not under fog, with the per-layer split the other rows have. A sign counts when its rule
-holds ([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)); the viewer re-evaluates the rule from the rank, the
-towers and the gold rooms found, as it does for the Freezers. Its action frames the signs whose rule does not hold yet,
-the way the teleporter and voice log rows frame theirs, and turns the Ice overlay on to show them.
+which open none) that are not under fog, with the per-layer split the other rows have. A sign counts when it is read
+([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)), whatever its rule says now; a save without a history has
+none read. A sign not read is ready to read when its rule holds (the viewer works the rule out from the rank, the towers
+and the gold rooms found). The row reads "read / shown" and, while some are ready, " · N to read". Its action frames the
+signs not read, those ready to read first (the map goes to the layer with most of them), the way the teleporter and voice
+log rows frame theirs, and turns the Ice overlay on to show them. On the map a ready sign has its own mark between a
+sign not ready and a sign read.
 
 - Goals: one row per goal ([Goals (viewer)](#goals-viewer)) with a check when done, a ◆ on the active goal, and a
   count. An ending reads "23 left", or "under fog" when nothing is left to show; Endgame reads "1 / 4", the Antipode
@@ -937,7 +950,7 @@ layer unless All layers is on or a search runs.
 The map draws the list's levels. Solved, locked and blocked ones by state; playable ones by their role for the goal:
 Required (triangle), One of several (square), Optional (circle). Playable levels on the goal's cheapest plans are
 drawn above the others, and the level the save is in on top. Overlays show what is left for the goal: open Freezers,
-Freezers Optional for the goal, satisfied signs and found pads, gold rooms, voice logs, map scrolls and treasures are
+Freezers Optional for the goal, read signs and found pads, gold rooms, voice logs, map scrolls and treasures are
 left out unless the Solved chip is on. The key lists the colours drawn, with Clear filters when nothing matches. A
 level's or gate's panel names its role for the goal ("One of several for Endgame"), none for a solved level. The
 floor heights the base image draws come from `data/walk.json` ([The viewer's base image](DATAFILES.md#the-viewers-base-image)).
@@ -960,6 +973,7 @@ type or enum name ([Localisation and display names](GAMEDATA.md#localisation-and
 | Level sets, voice logs | not named: a voice log is "Voice log" | the level data's names are internal and some name a layer or an ending |
 | Layers | Ground, Sky, Underworld | plain words: the game only qualifies places as "High" and "Low" |
 | Gold rooms | "Antipode teleporter" | a ground tower's pad and its endpoint in The Antipode; Steam's descriptions call the pad "the HxM teleporter to the Antipode" |
+| Reading a sign | "Read the sign", "Ready to read" | plain words: the game has no name for the act |
 | The rest | ice gate, teleporter, voice log, map scroll, treasure plinth, sign, dropdown | plain words; "Teleporters" is also the game's |
 
 With spoilers hidden, the rules in [The spoiler model (viewer)](#the-spoiler-model-viewer) decide whether a thing is

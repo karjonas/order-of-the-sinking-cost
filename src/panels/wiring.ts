@@ -107,14 +107,19 @@ function findOnMap(context: PanelContext, kind: FindKind): void {
         return;
     }
 
-    const points = context.model.finds[kind].open;
+    const finds = context.model.finds[kind];
+    const points = finds.open;
     if (!points.length) return;
+
+    // the ones ready to be found choose the layer, as they are what the player has missed
+    let layerPoints = points;
+    if (finds.ready) layerPoints = points.slice(0, finds.ready);
 
     if (!filters.find) context.findBack = { view: map.getView(), turned: new Set() };
     const [markerClass, overlay] = FIND_MARKS[kind];
     if (!map.setOverlay(overlay, true)) context.findBack?.turned.add(overlay);
 
-    const perLayer = countBy(points, (point) => mapLayerOf(point[2]));
+    const perLayer = countBy(layerPoints, (point) => mapLayerOf(point[2]));
     let target = map.layer;
     if (!perLayer.has(map.layer)) {
         const byCount = [...perLayer].toSorted((first, second) => second[1] - first[1]);

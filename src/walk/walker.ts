@@ -51,7 +51,7 @@ import type { SkyEntrances } from './sky.ts';
 import { insideWall, land } from './support.ts';
 import { minorLanding, padCell, placePads } from './teleporters.ts';
 import type { TeleporterState } from './teleporters.ts';
-import { placeEntities, placeFences, placeWallSets } from './walls.ts';
+import { fenced, placeEntities, placeFences, placeWallSets } from './walls.ts';
 
 /**
  * A walker's grid: the cells of one overworld state and what stands in them, built once by walker() in place and
@@ -246,6 +246,7 @@ export interface Walker {
     driftHops: Set<number>;
     cellOf: (x: number, y: number, z: number) => number;
     neighbourOf: (cell: number, dx: number, dy: number) => number;
+    fenced: (cell: number, side: number, neighbour: number) => boolean;
     frozen: ReadonlyMap<number, number>;
     thaw: (cell: number) => void;
     freeze: (cell: number, freezerIndex: number) => void;
@@ -518,6 +519,7 @@ function walkerOf(walkGrid: WalkGrid): Walker {
         driftHops: walkGrid.driftHops,
         cellOf: (x, y, z) => cellOf(walkGrid, x, y, z),
         neighbourOf: (cell, dx, dy) => neighbourOf(walkGrid, cell, dx, dy),
+        fenced: (cell, side, neighbour) => fenced(walkGrid, cell, side, neighbour),
         frozen: walkGrid.frozen,
         thaw: (cell) => thaw(walkGrid, cell),
         freeze: (cell, freezerIndex) => freeze(walkGrid, cell, freezerIndex),

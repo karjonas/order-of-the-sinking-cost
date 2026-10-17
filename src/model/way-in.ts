@@ -389,3 +389,17 @@ export function accessOf(state: LevelState[], reach: Reachability | null): Array
         return null;
     });
 }
+
+/** Per Sign the hero cannot face yet on a layer where the walk reaches nothing (sky, underworld), that layer. */
+export function signAccessOf(reach: Reachability | null): Array<string | null> {
+    const layers = PROG.map?.layers || [];
+    return (PROG.signs || []).map((sign, i) => {
+        if (!reach || reach.signFaced[i]) return null;
+
+        const z = sign.p[2];
+        const layer = layers.find((candidate) => z >= candidate.z[0] && z < candidate.z[1]);
+        if (!layer || layer.key === 'ground') return null;
+        if (reach.cols[layer.key]?.some((value) => value)) return null;
+        return layer.key;
+    });
+}

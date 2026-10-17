@@ -17,7 +17,7 @@ overworld level data.
 - Unlocking is not saved. It is recomputed from the other state at every overworld load and after each change (a visual `enabled_t_target = 1`, bark `level_unlocked`). Entering checks `enabled_t`, copied from `enabled_t_target` at load.
 - What an unlocker id may be (it resolves in the same level file):
   - **Level_Entry**: satisfied if its `solved_t_target ≠ 0` (SOLVED). For Level_Entry gates the mode (`partial_solve_count`, see Freezer) is −1, so a PARTIALLY_SOLVED unlocker does not count.
-  - **Sign**: satisfied if `rank_satisfied`.
+  - **Sign**: satisfied if `rank_satisfied`, which only reading the Sign sets ([Sign `rank_satisfied`](#sign-rank_satisfied)); a Sign with no rank, tower or gold-room setting counts as satisfied.
   - **Teleporter**: if `discovered`.
   - **Marker** named `intro_end1_freezer_thaw` (its `float_parameter` is set to the campaign rank while a hero is inside its box; satisfied when > 0, so at rank 1 or more; the same branch re-checks the Signs `intro_end2_sign` and `intro_end3_sign` against the rank and reruns the unlock pass) or with script `end3_exploit_level_freezer_thaw` (`boolean_argument`).
   - **Judge**: only for Freezers.
@@ -38,13 +38,23 @@ overworld level data.
 
 ### Sign `rank_satisfied`
 
-Evaluated every turn, and the unlock pass then reruns. Once set it stays set.
+A Sign is read when a hero stands in the cell next to it and faces it, with no closed Freezer in the Sign's own cell
+and no Fence between the two cells. Reading tests the Sign's setting once, at that moment. If it holds,
+`rank_satisfied` is set and the unlock pass reruns, which opens the Freezers that list the Sign. Nothing else tests
+the setting: not each turn and not the overworld load. A rank reached, a tower activated or a gold-room count met while
+the Sign is unread opens nothing until a hero reads it. The flag stays set, and the history keeps it (it comes back on
+load). A Freezer's Sign gate is met exactly when the Sign's `rank_satisfied` is set.
 
-| Sign setup | Satisfied when |
+| Sign setup | Satisfied when read and |
 |---|---|
-| `unlock_freezers_with_rank` = r (`Character_Rank`) | r == 0xFF or r ≤ Status rank. 0xFF (255) skips the rank compare, so such a Sign is satisfied from the start |
+| `unlock_freezers_with_rank` = r (`Character_Rank`) | r == 0xFF or r ≤ Status rank. 0xFF (255) skips the rank compare, so such a Sign is satisfied on the first read |
 | `tower_id` ≠ 0 | that Tower has `activated` |
-| `gold_room_connection_unlocker` (only on Signs without `tower_id`; with one, the tower decides) | at least 4 Teleporters on the overworld have `gold_room_endpoint && discovered` (a runtime count, recomputed on overworld load) |
+| `gold_room_connection_unlocker` (only on Signs without `tower_id`; with one, the tower decides) | at least 4 Teleporters on the overworld have `gold_room_endpoint && discovered` (a runtime count at the moment of reading) |
+| none of the three (a status Sign) | never set; a Freezer that lists such a Sign counts it as met |
+
+Only the Markers of the `intro` level set the flag without a read: the Signs `intro_end2_sign` and `intro_end3_sign`
+follow the rank when it changes ([Level_Entry unlocking and state](#level_entry-unlocking-and-state)). The overworld
+sets none that way.
 
 ### Tower
 
@@ -115,7 +125,8 @@ ENDGAME3 → 5. Order is not enforced: DESCEND at rank 0 gives 4, and ENDGAME1 t
 pass through the rank function and do nothing. A rise requests a campaign save. The rank is copied into the campaign
 list entry (titles `rank_visitor`..`rank_sokoban`).
 
-What ranks unlock (rank Signs exist only for 1, 3 and 5):
+What ranks unlock (rank Signs exist only for 1, 3 and 5). A rank opens nothing by itself: each Sign opens its Freezers
+when a hero reads it at that rank or higher ([Sign `rank_satisfied`](#sign-rank_satisfied)).
 
 | Rank | Effect |
 |---|---|
@@ -154,10 +165,10 @@ nothing on the overworld.
    tower's `gold_room_endpoint` pad in the ground hub and so discovers that gold room
    ([Treasures and gold rooms](#treasures-and-gold-rooms)).
 3. `end1` stands in the ground hub at (−15, 147, 0), inside Freezers on the
-   `gold_room_connection_unlocker` Sign (−19, 147, 0). 4 discovered gold rooms open them
+   `gold_room_connection_unlocker` Sign (−19, 147, 0). Once 4 gold rooms are discovered, reading the Sign opens them
    ([Sign `rank_satisfied`](#sign-rank_satisfied)).
-4. Win `end1`. The win returns the hero to `~end1` (−15, 138, 0) on the overworld. Rank 1 opens the Freezer (−15, 134);
-   the Door leads to `intro`.
+4. Win `end1`. The win returns the hero to `~end1` (−15, 138, 0) on the overworld. At rank 1 reading the rank-1 Sign
+   (−15, 138) opens the Freezer (−15, 134); the Door leads to `intro`.
 
 `end1` is a Judge level (Judge code `end1`, `return_to_prelude`). Its prelude rooms are boxed by the `=H`, `=M`, `=P`
 and `=S` markers. The Judge's stage is `state_int0`; a Freezer with `judge_unlock_level` n opens when the stage is at
@@ -236,7 +247,8 @@ leaves at stage 5.
 
 ### Final Endgame
 
-1. Rank 3 or more. Signs test rank ≥ r, so DESCEND's rank 4 also opens rank-3 Freezers, the `~end2` Door's among them.
+1. Rank 3 or more. Signs test rank ≥ r when read, so at DESCEND's rank 4 reading a rank-3 Sign also opens its Freezers,
+   the `~end2` Door's among them.
 2. Reach the underworld. DESCEND is out of reach before the sky. Its Marker (80, 69, −21) is the hub elevator's
    bottom Stairs cell. Its pocket holds only `push_down_chain`, and its Freezers, (80, 66), (77, 69),
    (80, 72) and (83, 69) at z −21, all need `push_down_chain`. It is entered only by its pad (80, 68, −21), or by

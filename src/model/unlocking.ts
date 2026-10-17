@@ -60,10 +60,28 @@ export function signRuleMet(
     return false;
 }
 
-function gateSatisfied(freezer: Freezer, levelFlags: LevelFlags, signOk: (sign: FreezerSign) => boolean): boolean {
+/** Whether a sign reads as satisfied to a Freezer: it is read, or it asks for nothing (no rank, tower or gold rooms). */
+export function signGateMet(sign: FreezerSign, signRead: (pid: number) => boolean): boolean {
+    if (!sign.rank && sign.tower == null && !sign.gold) return true;
+    return signRead(sign.pid);
+}
+
+/** How far a sign has come: read, its rule holding but not read yet, or its rule not holding. */
+export type SignState = 'read' | 'ready' | 'unmet';
+
+export function signStateOf(
+    progress: { signOk: (rule: SignRule) => boolean; signRead: (pid: number) => boolean },
+    sign: FreezerSign,
+): SignState {
+    if (progress.signRead(sign.pid)) return 'read';
+    if (progress.signOk(sign)) return 'ready';
+    return 'unmet';
+}
+
+function gateSatisfied(freezer: Freezer, levelFlags: LevelFlags, signRead: (pid: number) => boolean): boolean {
     const optionsMet = [
         ...freezer.req.map((level) => gateOptionMet(freezer, level, levelFlags)),
-        ...(freezer.signs || []).map((sign) => signOk(sign)),
+        ...(freezer.signs || []).map((sign) => signGateMet(sign, signRead)),
     ];
     if (optionsMet.length === 0) return false;
     if (freezer.or) return optionsMet.some(Boolean);
@@ -72,17 +90,18 @@ function gateSatisfied(freezer: Freezer, levelFlags: LevelFlags, signOk: (sign: 
 
 /**
  * Freezers: opened when listed in the status, or when their gate is satisfied now (re-evaluated at every overworld load).
+ * A Sign counts once it is read; its rule holding is not enough.
  */
 export function freezersOpen(
     status: { openedFreezers: number[] },
     levelFlags: LevelFlags,
-    signOk: (sign: FreezerSign) => boolean,
+    signRead: (pid: number) => boolean,
 ): boolean[] {
     const listed = new Set(status.openedFreezers);
     return PROG.freezers.map((freezer) => {
         if (listed.has(freezer.pid)) return true;
         if (freezer.judge) return false;
-        return gateSatisfied(freezer, levelFlags, signOk);
+        return gateSatisfied(freezer, levelFlags, signRead);
     });
 }
 

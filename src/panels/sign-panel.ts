@@ -4,6 +4,7 @@ import { escapeHtml } from '../util.ts';
 import type { MapLink, SelectHow } from '../map/map-view.ts';
 import { unlockPlan } from '../model/plans.ts';
 import { towerName } from '../model/towers.ts';
+import { signStateOf } from '../model/unlocking.ts';
 import type { Sign } from '../types.ts';
 import type { PanelContext } from './context.ts';
 import { markSelected } from './list.ts';
@@ -24,7 +25,7 @@ export function showSignPanel(context: PanelContext, signIndex: number, how?: Se
     markSelected(context, null);
 
     const sign = context.signs[signIndex];
-    const satisfied = progress.signOk(sign);
+    const signState = signStateOf(progress, sign);
     const gateIds = sign.gates.filter((freezerIndex) => context.gateShown(context.freezers[freezerIndex]));
 
     let towerIndex: number | undefined;
@@ -35,12 +36,17 @@ export function showSignPanel(context: PanelContext, signIndex: number, how?: Se
     let html = panelHead(context, 'Sign');
     let status = 'Not yet';
     let statusTone = '';
-    if (satisfied) {
-        status = 'Satisfied';
+    if (signState === 'read') {
+        status = 'Read';
         statusTone = ' good';
+    }
+    if (signState === 'ready') {
+        status = 'Ready to read';
+        statusTone = ' warn';
     }
 
     html += `<div><span class="chip${statusTone}">${status}</span></div>`;
+    if (signState === 'ready') html += '<div class="muted">Stand next to it, facing it, to read it.</div>';
     html += `<div class="h">Needs</div><div>${signNeed(context, sign)}</div>`;
     if (towerIndex !== undefined) {
         const name = escapeHtml(towerName(progress.towers[towerIndex].t));
@@ -48,7 +54,7 @@ export function showSignPanel(context: PanelContext, signIndex: number, how?: Se
     }
 
     let plan = null;
-    if (towerIndex !== undefined && !satisfied) plan = unlockPlan(progress, ['sign', signIndex]);
+    if (signState === 'unmet') plan = unlockPlan(progress, ['sign', signIndex]);
 
     const steps = plan && stepsOf(context, plan);
     const chain = chainOf(context, plan, steps);

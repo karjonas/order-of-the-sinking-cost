@@ -78,6 +78,7 @@ function setup({ rooms = 3, achievements = 0n, activated = [], visited = [] } = 
     }
     const tst = PROG.teleporters.map(() => ({ en: true, disc: false }));
     for (const room of visited) tst[PROG.gold_rooms[room].endpoint].disc = true;
+    const signOk = (sign) => !!sign.gold && visited.length >= sign.gold;
     const progress = {
         state,
         wayIn,
@@ -87,7 +88,9 @@ function setup({ rooms = 3, achievements = 0n, activated = [], visited = [] } = 
         towers,
         tst,
         goldFound: visited.length,
-        signOk: (sign) => !!sign.gold && visited.length >= sign.gold,
+        signOk,
+        // a Sign counts as read once its rule holds
+        signRead: (pid) => signOk(PROG.signs.find((sign) => sign.pid === pid) ?? {}),
         solved: 0,
         hidden: state.map(() => false),
         towerHidden: towers.map(() => false),

@@ -3,7 +3,7 @@
 import { PROG, WORLD } from '../data.ts';
 import { heroesWithSkill, latestFlag, PROTECTION_FLAG, TELEPORT_FLAG, TRANSMUTE_FLAG } from '../save.ts';
 import type { History, LatestValues } from '../save.ts';
-import { addTo, gridCol, Z_BIAS } from './cells.ts';
+import { addTo, gridCol, STEP, Z_BIAS } from './cells.ts';
 import type { FloodOptions, Seed } from './flood.ts';
 import { ICE } from './freezers.ts';
 import { PROTECTED, TRANSMUTING, WIZARD } from './skills.ts';
@@ -30,7 +30,8 @@ export interface ViaPads {
  * `viaPads`: per level, what the pads revealed from those pockets lead through, and what the MINOR pads that land the
  * hero where he walks on to the level lead through. `dead`: the kept hero positions inside a wall. `reached`: the cells
  * the main flood reached. `cols`: the reached cells per map layer and column, less the Lily drift cells the hero only
- * rides through.
+ * rides through. `signFaced`: per Sign, 1 when a reached cell next to it has no Fence between and the Sign's own cell
+ * holds no closed Freezer: a hero there can face the Sign and read it.
  */
 export interface Reachability {
     reached: Set<number>;
@@ -43,6 +44,7 @@ export interface Reachability {
     viaPads: Map<number, ViaPads>;
     dead: number;
     cols: Record<string, Uint8Array>;
+    signFaced: Uint8Array;
 }
 
 /** The pocket a walk from a revealing pad's cell reaches: the closed Freezers it bumps into, and its levels. */
@@ -812,7 +814,30 @@ export function reachability(
         viaPads,
         dead,
         cols: reachColumns(reached, transitNotShown(walk, reached, levelCells)),
+        signFaced: signsFaced(walk, reached),
     };
+}
+
+/** Per Sign, 1 when a hero on a reached cell can face it (see Reachability). */
+function signsFaced(walk: Walker, reached: Set<number>): Uint8Array {
+    const signs = PROG.signs || [];
+    const faced = new Uint8Array(signs.length);
+
+    signs.forEach((sign, signIndex) => {
+        const signCell = walk.cellOf(...sign.p);
+        if (signCell < 0 || walk.frozen.has(signCell)) return;
+
+        for (let side = 0; side < STEP.length; side++) {
+            const [dx, dy] = STEP[side];
+            const heroCell = walk.neighbourOf(signCell, dx, dy);
+            if (!reached.has(heroCell) || walk.fenced(signCell, side, heroCell)) continue;
+
+            faced[signIndex] = 1;
+            return;
+        }
+    });
+
+    return faced;
 }
 
 /**

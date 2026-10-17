@@ -13,8 +13,15 @@ vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null,
 
 const level = (name, extra = {}) => ({ n: name, req: [], p: [0, 0, 0], ...extra });
 const keys = (P, root) => [...unlockPlan(P, root).nodes.keys()];
+const ruleOf = (pid) =>
+    [...PROG.signs, ...PROG.freezers.flatMap((freezer) => freezer.signs || [])].find((sign) => sign.pid === pid);
 // a progress state: `state` per level, way-in gates per blocked level, every gate closed
 function progress({ state, wayIn = [], towers = [], rank = 0, extra = {} }) {
+    const signOk = (sign) => {
+        if (sign.rank) return sign.rank <= rank;
+        if (sign.tower != null) return !!towers[sign.tower]?.active;
+        return false;
+    };
     const P = {
         state,
         wayIn: state.map((levelState, i) => (levelState === 'blocked' ? wayIn[i] || [] : null)),
@@ -24,11 +31,9 @@ function progress({ state, wayIn = [], towers = [], rank = 0, extra = {} }) {
         towers,
         tst: (PROG.teleporters || []).map(() => ({ en: true, disc: false })),
         goldFound: 0,
-        signOk: (sign) => {
-            if (sign.rank) return sign.rank <= rank;
-            if (sign.tower != null) return !!towers[sign.tower]?.active;
-            return false;
-        },
+        signOk,
+        // a Sign counts as read once its rule holds
+        signRead: (pid) => signOk(ruleOf(pid)),
         ...extra,
     };
     return P;

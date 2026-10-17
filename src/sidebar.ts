@@ -129,6 +129,7 @@ function totalsRowHtml(
     tag = 'div',
     tip = '',
     attributes = '',
+    note = '',
 ): string {
     const done = total > 0 && found >= total;
     let titleAttribute = '';
@@ -140,7 +141,7 @@ function totalsRowHtml(
 
     let check = '';
     if (done) check = checkIcon;
-    const count = `<span class="cnt">${check}${found} / ${total}</span>`;
+    const count = `<span class="cnt">${check}${found} / ${total}${note}</span>`;
     return `<${tag}${attributes}${titleAttribute} class="${className}">${icon}<span>${label}</span>${count}</${tag}>`;
 }
 
@@ -165,6 +166,8 @@ function findOnMapHtml(model: ProgressModel): string {
         }
 
         const tip = [stats.by[kind], finderTip(model.finds[kind])].filter(Boolean).join(' · ');
+        let note = '';
+        if (kind === 'signs' && stats.signsReady > 0) note = ` · ${stats.signsReady} to read`;
         rows.push(
             totalsRowHtml(
                 STATE_ICONS[kind],
@@ -173,6 +176,7 @@ function findOnMapHtml(model: ProgressModel): string {
                 'button',
                 tip,
                 ` data-find="${kind}" aria-pressed="false"`,
+                note,
             ),
         );
     }

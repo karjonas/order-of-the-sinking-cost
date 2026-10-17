@@ -48,7 +48,8 @@ latest change at or before its record key holds PROTECTION (else the level-data 
 
 - Every overworld freezer is one square. No `judge_unlock_level` and no Judge on the overworld.
 - `other` unlockers on the overworld are all Signs.
-- Opened = Pid in Status list A, or the gate is satisfied now (the unlock pass runs at every overworld load).
+- Opened = Pid in Status list A, or the gate is satisfied now (the unlock pass runs at every overworld load). A Sign
+  gate is satisfied once the Sign is read (`rank_satisfied` in the history, [Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)).
 
 ### Teleporters in the save
 

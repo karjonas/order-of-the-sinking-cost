@@ -15,7 +15,7 @@ import type { ShownProgress } from '../model/progress.ts';
 import { SIGN_INDEX } from '../model/requirements.ts';
 import type { PlanStep } from '../model/requirements.ts';
 import { towerName } from '../model/towers.ts';
-import { optionCount } from '../model/unlocking.ts';
+import { optionCount, signStateOf } from '../model/unlocking.ts';
 import type { LevelState, SignRule } from '../model/unlocking.ts';
 import type { Freezer, FreezerSign, Position } from '../types.ts';
 import type { PanelContext } from './context.ts';
@@ -96,10 +96,13 @@ export function signNeed(context: PanelContext, sign: SignRule): string {
     return 'Sign';
 }
 
-export function signText(context: PanelContext, sign: SignRule): string {
-    let mark = '';
-    if (context.progress.signOk(sign)) mark = '✓ ';
-    return mark + signNeed(context, sign);
+/** What a sign asks for, marked when it is read and led by "Read the sign" when its rule holds but it is not read. */
+export function signText(context: PanelContext, sign: FreezerSign): string {
+    const need = signNeed(context, sign);
+    const state = signStateOf(context.progress, sign);
+    if (state === 'read') return '✓ ' + need;
+    if (state === 'ready') return 'Read the sign · ' + need;
+    return need;
 }
 
 /** How a Freezer with several options opens: with any of them or all of them. */
@@ -134,7 +137,9 @@ export function signChip(context: PanelContext, sign: FreezerSign): string {
     if (opens) attributes = ` data-psign="${signIndex}" tabindex="0" role="button"`;
 
     let tone = '';
-    if (context.progress.signOk(sign)) tone = ' good';
+    const state = signStateOf(context.progress, sign);
+    if (state === 'read') tone = ' good';
+    if (state === 'ready') tone = ' warn';
     return `<span class="chip${tone}"${attributes}>${signText(context, sign)}</span>`;
 }
 

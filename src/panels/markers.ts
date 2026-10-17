@@ -23,6 +23,7 @@ import { roleFor } from '../model/goal-roles.ts';
 import { FOG_LAYER_KEYS, layerName, mapLayerOf } from '../model/layers.ts';
 import { stateLabel } from '../model/progress.ts';
 import { towerName } from '../model/towers.ts';
+import { signStateOf } from '../model/unlocking.ts';
 import type { Area, GoldRoom, TreasureDisplay, ViewGiver, VoiceLog } from '../types.ts';
 import type { PanelContext } from './context.ts';
 import { FOG_TEXT, gateMode, signNeed, signText, stateDot, towerNameHtml } from './plan-chips.ts';
@@ -297,10 +298,14 @@ function gateOverlay(context: PanelContext, freezerIndex: number): MapOverlay {
 // signs that open gates open their panel; a tower status sign opens its tower's
 function signOverlay(context: PanelContext, signIndex: number): MapOverlay {
     const sign = context.signs[signIndex];
-    const satisfied = context.progress.signOk(sign);
+    // a tower status sign is never read: it counts as done once its tower is active
+    let signState = signStateOf(context.progress, sign);
+    if (sign.status && signState === 'ready') signState = 'read';
+
     let attr: [name: string, value: number] = ['data-sign', signIndex];
     let status = 'Not yet';
-    if (satisfied) status = 'Satisfied';
+    if (signState === 'read') status = 'Satisfied';
+    if (signState === 'ready') status = 'Ready to read';
     let tip = `<b>Sign</b><br>${signNeed(context, sign)}<br>${status}`;
     if (sign.status && sign.tower !== undefined) {
         const tower = context.progress.towers[sign.tower];
@@ -313,12 +318,13 @@ function signOverlay(context: PanelContext, signIndex: number): MapOverlay {
 
     let className = 'sg';
     if (sign.status) className += ' status';
-    if (satisfied) className += ' ok';
+    if (signState === 'read') className += ' ok';
+    if (signState === 'ready') className += ' ready';
     return {
         id: 's' + signIndex,
         attr,
         kind: 'gates',
-        done: satisfied,
+        done: signState === 'read',
         layer: FOG_LAYER_KEYS[sign.l],
         x: sign.p[0],
         y: sign.p[1],

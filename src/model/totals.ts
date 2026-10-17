@@ -7,6 +7,8 @@ import type { GoldRoom, Position, Teleporter, TreasureDisplay, ViewGiver, VoiceL
 import { isDoorway } from './freezer-names.ts';
 import { AREA_LAYERS, FOG_LAYER_KEYS, layerName, mapLayerOf } from './layers.ts';
 import type { BaseProgress } from './progress.ts';
+import { signStateOf } from './unlocking.ts';
+import type { SignState } from './unlocking.ts';
 import { indicesWhere } from '../util.ts';
 
 /** Whether a thing at a position on a layer (the layer key, undefined for none) is not under fog. */
@@ -15,9 +17,13 @@ export type ShownAt = (layer: string | undefined, position: Position) => boolean
 /** Found and total. */
 export type FoundOfTotal = [found: number, total: number];
 
-/** What a totals row frames on the map: the positions of the things not found yet and not under fog, how many more are under fog, and how many are off the world map. */
+/**
+ * What a totals row frames on the map: the positions of the things not found yet and not under fog (the first `ready`
+ * of them are ready to be found), how many more are under fog, and how many are off the world map.
+ */
 export interface Finds {
     open: Position[];
+    ready: number;
     fogged: number;
     off: number;
 }
@@ -36,7 +42,10 @@ export interface TotalsStats {
     treasures: FoundOfTotal;
     pods: FoundOfTotal;
     doorways: FoundOfTotal;
+    /** The signs read over the signs shown. */
     signs: FoundOfTotal;
+    /** The shown signs whose rule holds and are not read yet. */
+    signsReady: number;
     tps: FoundOfTotal;
     by: TotalsByLayer;
     logs: FoundOfTotal;
@@ -97,15 +106,20 @@ interface FindItem {
     p: Position;
     key: string | 0 | undefined;
     found: boolean;
+    /** Not found yet, but findable now. */
+    ready?: boolean;
 }
 
-// what a totals row frames on the map: the [x, y, z] of the things not found yet that are not under fog, and how many
-// more are under fog (`off`: not on the world map)
+// what a totals row frames on the map: the [x, y, z] of the things not found yet that are not under fog, the ones
+// ready to be found first, and how many more are under fog (`off`: not on the world map)
 function findsOf(items: FindItem[], shownAt: ShownAt): Finds {
     const missing = items.filter((item) => !item.found);
-    const open = missing.filter((item) => item.key && shownAt(item.key, item.p));
+    const shown = missing.filter((item) => item.key && shownAt(item.key, item.p));
+    const ready = shown.filter((item) => item.ready);
+    const open = [...ready, ...shown.filter((item) => !item.ready)];
     return {
         open: open.map((item) => item.p),
+        ready: ready.length,
         fogged: missing.filter((item) => item.key).length - open.length,
         off: missing.filter((item) => !item.key).length,
     };
@@ -197,12 +211,15 @@ export function totalsOf({
                 progress.gateOpen[freezerIndex],
             ]),
         );
-    const signMet = (signIndex: number): boolean => progress.signOk(allSigns[signIndex]);
+    const signState = (signIndex: number): SignState => signStateOf(progress, allSigns[signIndex]);
+    const signMet = (signIndex: number): boolean => signState(signIndex) === 'read';
+    const signReady = (signIndex: number): boolean => signState(signIndex) === 'ready';
     const stats: TotalsStats = {
         treasures: [treasures.got, treasures.total],
         pods: [pods.filter((freezerIndex) => progress.gateOpen[freezerIndex]).length, pods.length],
         doorways: [doorways.filter((freezerIndex) => progress.gateOpen[freezerIndex]).length, doorways.length],
         signs: [signs.filter(signMet).length, signs.length],
+        signsReady: signs.filter(signReady).length,
         tps: [pads.filter(padDisc).length, pads.length],
         by: {
             treasures: split(
@@ -224,7 +241,12 @@ export function totalsOf({
 
     const finds = {
         signs: findsOf(
-            openers.map((i): FindItem => ({ p: allSigns[i].p, key: layerKey(allSigns[i]), found: signMet(i) })),
+            openers.map((i): FindItem => ({
+                p: allSigns[i].p,
+                key: layerKey(allSigns[i]),
+                found: signMet(i),
+                ready: signReady(i),
+            })),
             shownAt,
         ),
         tps: findsOf(

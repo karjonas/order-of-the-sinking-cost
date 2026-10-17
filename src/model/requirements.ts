@@ -3,6 +3,7 @@ import { PROG } from '../data.ts';
 import type { FreezerSign } from '../types.ts';
 import { ENDINGS, MARKER_RANKS } from './achievements.ts';
 import type { BaseProgress } from './progress.ts';
+import { signGateMet } from './unlocking.ts';
 
 export const SIGN_INDEX = new Map((PROG.signs || []).map((sign, signIndex): [number, number] => [sign.pid, signIndex]));
 
@@ -145,17 +146,30 @@ export function requirementGraph(progress: BaseProgress): Graph {
         if (!signIds.has(key)) {
             const id = graph.add(key, { t: 's', id: signIndex, g: rule });
             signIds.set(key, id);
-            if (progress.signOk(rule)) {
+
+            // a tower status sign is never read: its tower active is all it asks. Any other sign is a step of reading
+            // it: its rule comes first, and the hero has to get to it.
+            const isStatus = signIndex != null && !!PROG.signs[signIndex].status;
+            if (isStatus) {
+                if (progress.signOk(rule)) graph.met[id] = true;
+            } else if (signGateMet(rule, progress.signRead)) {
                 graph.met[id] = true;
-            } else if (rule.tower != null && progress.towers[rule.tower]) {
-                graph.parts[id] = [towerId[rule.tower]];
-            } else if (rule.rank && rankId.has(rule.rank)) {
-                graph.parts[id] = [rankId.get(rule.rank)!];
-            } else if (rule.gold) {
-                graph.kind[id] = 'k';
-                graph.k[id] = rule.gold - (progress.goldFound || 0);
-                graph.parts[id] = roomId.filter((room) => !graph.met[room]);
             }
+
+            if (!graph.met[id] && !progress.signOk(rule)) {
+                if (rule.tower != null && progress.towers[rule.tower]) {
+                    graph.parts[id] = [towerId[rule.tower]];
+                } else if (rule.rank && rankId.has(rule.rank)) {
+                    graph.parts[id] = [rankId.get(rule.rank)!];
+                } else if (rule.gold) {
+                    graph.kind[id] = 'k';
+                    graph.k[id] = rule.gold - (progress.goldFound || 0);
+                    graph.parts[id] = roomId.filter((room) => !graph.met[room]);
+                }
+            }
+
+            const layer = signIndex != null && !isStatus ? progress.signAccess?.[signIndex] : null;
+            if (!graph.met[id] && layer && graph.kind[id] === 'and') graph.parts[id].push(accessId(layer));
         }
         return signIds.get(key)!;
     };
@@ -237,7 +251,7 @@ export function requirementGraph(progress: BaseProgress): Graph {
         const items = [
             ...freezer.req.map((required) => ({ met: levelMet(required), id: levelId[required] })),
             ...(freezer.signs || []).map((rule, position) => ({
-                met: progress.signOk(rule),
+                met: signGateMet(rule, progress.signRead),
                 id: signId(rule, freezerIndex, position),
             })),
         ];
