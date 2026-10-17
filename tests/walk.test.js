@@ -64,7 +64,8 @@ function heroesOutside(status, history, progress) {
         isReached = (cell) => reached.has(cell) || reached.has(land(cell));
     return [...history.heroes.values()].filter((position) => {
         const cell = cellOf(...position);
-        return !insideWall(cell) && land(cell, false) >= 0 && !isReached(cell);
+        const landing = land(cell, false);
+        return !insideWall(cell) && landing >= 0 && !deep(landing) && !isReached(cell);
     });
 }
 
