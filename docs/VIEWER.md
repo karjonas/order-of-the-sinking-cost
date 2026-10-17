@@ -928,8 +928,8 @@ layer unless All layers is on or a search runs.
 - Groups, each with its count: Play now, Not reachable yet, Locked, Solved. Within a group the levels Required as one
   of several and off the goal's cheapest plans go last.
 - A row: state dot, role dot, name, then what it leads to and its area. The tooltip adds the state, role and why.
-- Empty list: "No levels match." with Clear filters, and while a search runs outside Completionist, "Search every
-  level", which picks Completionist; "`goal` is done."; "No more on this layer."; "Nothing to show yet; more is under
+- Empty list: "No levels match." with Clear filters, and while a search runs outside Completionist or with a state
+  chip off, "Search every level", which picks Completionist and turns every state chip on; "`goal` is done."; "No more on this layer."; "Nothing to show yet; more is under
   fog."; "No levels left for `goal`."
 - Show in list (from a level's panel): the chips are cleared and the Solved chip turned on for a solved level; when
   the goal doesn't hold the level, the list switches to Completionist.

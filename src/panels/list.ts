@@ -160,7 +160,8 @@ function emptyHtml(context: PanelContext): string {
 
     if (context.narrowed()) {
         let everything = '';
-        if (context.filters.q && goal.kind !== 'completionist') {
+        const everyState = context.filters.states.length === STATE_CHIPS.length;
+        if (context.filters.q && (goal.kind !== 'completionist' || !everyState)) {
             everything = ' <button data-all-levels>Search every level</button>';
         }
 

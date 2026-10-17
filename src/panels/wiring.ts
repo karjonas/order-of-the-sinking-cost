@@ -9,6 +9,7 @@ import type { SelectHow } from '../map/map-view.ts';
 import { mapLayerOf } from '../model/layers.ts';
 import { syncSide } from '../sidebar.ts';
 import { refreshSideGoals } from '../sidebar/goals.ts';
+import { STATE_CHIPS } from './context.ts';
 import type { PanelContext } from './context.ts';
 import { hashDone, markHashDone, panelKeep, setHash } from './hash.ts';
 import { applyFilters, showLevelRow } from './list.ts';
@@ -250,6 +251,7 @@ function onPageClick(context: PanelContext, event: Event): void {
         $('#pgRows .rr[tabindex="0"]')?.focus({ preventScroll: true });
     } else if (data.allLevels != null) {
         filters.goal = 'completionist';
+        filters.states = STATE_CHIPS.map(([key]) => key);
         applyFilters(context);
         refreshSideGoals();
     } else if (data.clear != null) {
