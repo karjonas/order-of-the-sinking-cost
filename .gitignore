@@ -4,9 +4,11 @@ ida/
 # save copies
 saves/
 
-# generated and dumped data, and the built page; the schema comes from the game binary, so it is kept
+# generated and dumped data, and the built page; the schema comes from the game binary and the WikiTactics list from
+# another repository, so both are kept
 data/*
 !data/schema.json
+!data/wikitactics.txt
 /viewer.html
 /viewer.html.map
 

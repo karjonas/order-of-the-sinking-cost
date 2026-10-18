@@ -6,7 +6,9 @@ The schema of every data file the viewer is built from (`schema.json`, `levels.j
 ## Derived data files
 
 The pipeline turns the game data into these files in `data/`, and the viewer embeds `schema.json`, `progress.json` and
-`walk.json`.
+`walk.json`. It also embeds `wikitactics.txt`, which is not derived: it is a copy of
+[joric/ootss data/wt.txt](https://github.com/joric/ootss/blob/main/data/wt.txt), refreshed by replacing the file. Each
+row is `level,area,anchor`, and a level's panel links to `https://sinkingstar.wikitactics.com/areas/<area>/#<anchor>`.
 Positions are world units; a cell is (i, j) = ((x − corner.x) mod W, (y − corner.y) mod H) with the overworld grid
 corner (−24, −2) and W × H = 190 × 156. The world, fog and map scripts fill a field a blob leaves out with its type
 default: the first value stored for that field in any level of the package (no two levels disagree), not the

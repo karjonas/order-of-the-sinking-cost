@@ -14,3 +14,8 @@ declare module '*/walk.json' {
     const walk: import('./types.ts').WalkFile;
     export default walk;
 }
+
+declare module '*.txt?raw' {
+    const text: string;
+    export default text;
+}

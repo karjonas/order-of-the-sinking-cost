@@ -1553,7 +1553,8 @@ main > .mapbox {
     font-weight: 600;
     margin: var(--s1) 0 var(--s1) var(--s2);
 }
-.mapbox .sel .showlist {
+.mapbox .sel .showlist,
+.mapbox .sel .extlink {
     margin-top: var(--s2);
 }
 .mapbox .sel .chip {

@@ -14,6 +14,7 @@ import { towerName } from '../model/towers.ts';
 import type { TowerProgress } from '../model/towers.ts';
 import type { LevelUnlocks } from '../model/way-in.ts';
 import type { Freezer, Position, ProgressLevel } from '../types.ts';
+import { wikiTacticsUrl } from '../wikitactics.ts';
 import type { PanelContext } from './context.ts';
 import { markSelected, NEAR } from './list.ts';
 import {
@@ -251,6 +252,12 @@ function unlocksHtml(context: PanelContext, unlocks: LevelUnlocks, unlockedGates
     return `<div class="h">Unlocks</div><div>${pick(context, unlocks.levels)}${gateChips}</div>`;
 }
 
+function wikiTacticsHtml(level: ProgressLevel): string {
+    const url = wikiTacticsUrl(level.n);
+    if (!url) return '';
+    return `<div class="extlink"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">WikiTactics</a></div>`;
+}
+
 // the lines the map draws for the level: what it requires and unlocks, its tower, the gates around it and its chain
 function levelLinks(context: PanelContext, parts: LevelPanelParts): MapLink[] {
     const { levelIndex, chain, gates, unlockedGates, towerInfo } = parts;
@@ -360,6 +367,7 @@ export function showLevelPanel(context: PanelContext, levelIndex: number, how?: 
 
     const unlockedGates = gatesUnlockedBy(context, levelIndex);
     html += unlocksHtml(context, progress.unlocks[levelIndex], unlockedGates);
+    html += wikiTacticsHtml(level);
     html += `<div class="showlist"><button class="plain lnk" data-goto="${levelIndex}">Show in list</button></div>`;
 
     const parts: LevelPanelParts = {

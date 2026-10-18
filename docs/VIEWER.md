@@ -946,6 +946,8 @@ layer unless All layers is on or a search runs.
   fog."; "No levels left for `goal`."
 - Show in list (from a level's panel): the chips are cleared and the Solved chip turned on for a solved level; when
   the goal doesn't hold the level, the list switches to Completionist.
+- WikiTactics (from a level's panel): opens the level's WikiTactics page in a new tab, for a level `wikitactics.txt`
+  lists ([data/wikitactics.txt](DATAFILES.md#derived-data-files)).
 
 The map draws the list's levels. Solved, locked and blocked ones by state; playable ones by their role for the goal:
 Required (triangle), One of several (square), Optional (circle). Playable levels on the goal's cheapest plans are
