@@ -1,4 +1,4 @@
-// The overworld map of the progress view (VIEWER.md "The page (viewer)"): one layer's base image under the fog, the
+// The overworld map of the progress view (VIEWER.md "The page (viewer)"): one layer's image under the fog, the
 // Reachable overlay, the overlay marks, the level and tower markers with the selection's links and steps, the area
 // labels, the selection panel, the key and the tooltip, over panZoom's view of the wrapping map
 import { PROG } from '../data.ts';
@@ -11,8 +11,8 @@ import type { MapLayer, Position } from '../types.ts';
 import { $, setButtonPressed } from '../util.ts';
 import { achievementBadgePath, HERO_PATH, OVERLAY_PAD, SHAPES, STAR, STAR_BIG } from './icons.ts';
 import type { ShapeName } from './icons.ts';
-import { mapLayerImage } from './layer-image.ts';
-import type { OceanSquares } from './layer-image.ts';
+import { layerImageUrl } from './layer-images.ts';
+import type { OceanSquares } from './ocean-water.ts';
 import { isOverlayKind, knownLayers, mapKeep, overlayOn, startLayer } from './map-html.ts';
 import type { MapKeep, OverlayKind } from './map-html.ts';
 import { LayerMarks } from './mark-pool.ts';
@@ -273,6 +273,9 @@ function padBox(box: Box, min = MIN_BOX): Box {
 const greatestCommonDivisor = (first: number, second: number): number =>
     second ? greatestCommonDivisor(second, first % second) : first;
 
+// the pixels per square of the layer images in public/assets/
+const MAP_IMAGE_PIXELS_PER_SQUARE = 32;
+
 function mapLayer(key: string): MapLayer {
     const layer = PROG.map.layers.find((candidate) => candidate.key === key);
     if (!layer) throw new Error(`The map has no layer ${key}`);
@@ -364,10 +367,14 @@ export class MapView {
     private fogBlur = 0;
     private hatchWidth = 0;
 
+    // the terrain group, which holds the layer images; its `crisp` class is set once a map image pixel is wider than a
+    // screen pixel
+    private terrainGroup: SVGGElement;
+
     // the Reachable overlay image of each layer of this map, built the first time the layer is shown
     private reachUrls: Record<string, string | null> = {};
 
-    // the layer's base image, fogged rectangles, Reachable image and hatch, and changed water: drawn again when the
+    // the layer's image, fogged rectangles, Reachable image and hatch, and changed water: drawn again when the
     // layer or the Reachable switch changes (drawnLayer); reachEmpty: no Reachable image or hatch on the layer
     private drawnLayer: string | null = null;
 
@@ -402,6 +409,7 @@ export class MapView {
         this.keep.layer = this.currentLayer;
 
         this.labelsGroup = find(this.svg, 'g.lbl', SVGGElement);
+        this.terrainGroup = find(this.svg, `#${id}-w`, SVGGElement);
         this.fogGroup = find(this.svg, '.fog', SVGGElement);
         this.fogCore = find(this.svg, '.fogc', SVGGElement);
         this.blur = find(this.svg, 'feGaussianBlur', SVGFEGaussianBlurElement);
@@ -614,6 +622,13 @@ export class MapView {
         this.placeLinks(view);
         this.cullLabels(view);
         this.softenFog(view);
+        this.sharpenImages(view);
+    }
+
+    // the layer images are smoothed, except once the map is zoomed in past one image pixel per screen pixel: then their
+    // pixels are shown as blocks
+    private sharpenImages({ scale }: ViewCorner): void {
+        this.terrainGroup.classList.toggle('crisp', scale < 1 / MAP_IMAGE_PIXELS_PER_SQUARE);
     }
 
     // the fog's feathered edge keeps about the same width on screen: its blur and growth (a stroke in the fog colour,
@@ -762,6 +777,14 @@ export class MapView {
         return !!this.selection?.overlays?.has(overlay.id);
     }
 
+    // starts loading a layer's full image; once it has loaded, the layer's thumbnail is removed (a full image that
+    // fails to load leaves the thumbnail)
+    private loadFullImage(image: SVGImageElement, layer: string): void {
+        const thumbnail = this.svg.querySelector(`image.thumb[data-layer="${layer}"]`);
+        image.addEventListener('load', () => thumbnail?.remove(), { once: true });
+        image.setAttribute('href', layerImageUrl(layer));
+    }
+
     private drawLayer(): void {
         const { options, svg } = this;
         const layer = this.currentLayer;
@@ -776,13 +799,13 @@ export class MapView {
         // the slight overlap leaves no seams between neighbours
         this.fogCore.innerHTML = fogParts.map((rect) => rectHtml(...rect, 0.02)).join('');
 
-        // a layer's base image is painted the first time the layer is shown
-        svg.querySelectorAll<SVGImageElement>('image:not(.reach)').forEach((image) => {
+        // a layer's full image is loaded the first time the layer is shown; its thumbnail stays until then
+        svg.querySelectorAll<SVGImageElement>('image.thumb, image.full').forEach((image) => {
             const isCurrent = image.dataset.layer === layer;
-            if (isCurrent && !image.hasAttribute('href')) {
-                image.setAttribute('href', mapLayerImage(mapLayer(layer), options.fog));
-            }
             image.style.display = isCurrent ? '' : 'none';
+            if (isCurrent && image.classList.contains('full') && !image.hasAttribute('href')) {
+                this.loadFullImage(image, layer);
+            }
         });
 
         if (options.reach && !(layer in this.reachUrls)) {

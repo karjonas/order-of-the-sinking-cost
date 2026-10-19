@@ -23,7 +23,7 @@ meant to be enough to rebuild the viewer's map and progress logic with nothing e
 | [VIEWER.md](VIEWER.md) | The viewer's own model built on the game's rules: the walk, level states, roles, unlock plans, goals and their roles, level areas, the page and the spoiler rules. The game does none of those; they are how the viewer approximates what the player can reach. |
 | [SAVES.md](SAVES.md) | Byte layouts of the save files, `settings.menu_state`, `Status.sokoban_status` and the `<level>.history` undo files, with every version the game reads. Types are in [Notation](#notation). |
 | [GAMEDATA.md](GAMEDATA.md) | Byte layouts of the game's own data: the packages and `.entities` levels, the grid computed at load, the render assets (vertex paint, meshes, textures, materials, water), localisation and display names, and the Jai type information the schema is read from. Types are in [Notation](#notation). |
-| [DATAFILES.md](DATAFILES.md) | The schema of every data file the viewer is built from (`schema.json`, `levels.json`, `level_areas.json`, `fog.json`, `map.json`, `world.json`, `progress.json`, `walk.json`) and how the map image is drawn. |
+| [DATAFILES.md](DATAFILES.md) | The schema of every data file the viewer is built from (`schema.json`, `levels.json`, `level_areas.json`, `fog.json`, `map.json`, `world.json`, `progress.json`, `walk.json`) and the map images. |
 | [UNCONFIRMED.md](UNCONFIRMED.md) | Open questions: what was not traced or confirmed in the game, and what the viewer's model does not explain yet. |
 
 ## Conventions

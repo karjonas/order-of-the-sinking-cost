@@ -115,8 +115,9 @@ The details are in [docs/](docs/):
 
 ## Building
 
-The page is built from `src/` with [Vite+](https://viteplus.dev/), installed locally, into a single self-contained
-`viewer.html`. It needs data generated from your own copy of the game with `npm run data`. See
+The page is built from `src/` with [Vite+](https://viteplus.dev/), installed locally, into `dist/`:
+`viewer.html` with `viewer.js`, `viewer.css` and the map images in `assets/`. It needs data generated from your own
+copy of the game with `npm run data`, and the map images in `public/assets/`. See
 [scripts/README.md](scripts/README.md) for the pipeline and for `npm run dev`, `npm run build`, `npm test`,
 `npm run typecheck` and `npm run lint`.
 

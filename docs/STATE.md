@@ -42,7 +42,7 @@ latest change at or before its record key holds PROTECTION (else the level-data 
 - `idx = (x − corner.x) + (y − corner.y) × squares_x` in the map's local grid, x/y rounded with +0.5 floor, wrapped.
 - Water query: [Water](MOVEMENT.md#water).
 - Every existence-group Ocean_Map is in the map rooms; nothing on the playable layers drains except by an ocean reset.
-- Viewer recipe: for each OCEAN_CHANGE (latest per (pid, index)), `water = new & 1`; with `map.oceans[pid]`, square = (x0 + idx % sx, y0 + ⌊idx / sx⌋); paint `water_rgb` where that bit becomes 1 and the stored cell height is below `zw`.
+- Viewer recipe: for each OCEAN_CHANGE (latest per (pid, index)), `water = new & 1`; with `map.oceans[pid]`, square = (x0 + idx % sx, y0 + ⌊idx / sx⌋); draw water where that bit becomes 1 and the square's walk floor is below `zw` (or it has none).
 
 ### Freezers in the save
 

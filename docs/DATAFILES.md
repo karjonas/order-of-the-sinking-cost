@@ -1,7 +1,7 @@
-# Derived data and the map image
+# Derived data and the map images
 
 The schema of every data file the viewer is built from (`schema.json`, `levels.json`, `level_areas.json`, `fog.json`,
-`map.json`, `world.json`, `progress.json`, `walk.json`) and how the map image is drawn.
+`map.json`, `world.json`, `progress.json`, `walk.json`) and the map images.
 
 ## Derived data files
 
@@ -93,14 +93,13 @@ The current-area rule applied at each overworld Level_Entry (the rule itself is 
 
 ### data/map.json
 
-`{corner, size, layers, water_rgb, oceans}`, built as in "Drawing the map".
+`{corner, size, layers, oceans}`: the frame of the overhead map, which [The map images](#the-map-images) fill.
 
 - `corner` is the world position of square (0, 0)'s centre. Square (i, j) covers x in [corner.x + i − 0.5, +1) and
   y in [corner.y + j − 0.5, +1).
-- `layers`: [{key, name, z: [z0, z1], zbase, zscale, cells}] in the order underworld (−57, −4.001), ground (−4,
-  9.999), sky (10, 75.156). `cells` = base64 of W × H × 4 bytes, row-major, row 0 = north (j = H − 1). Each square is
-  R, G, B (sRGB) and a height byte h: 0 = nothing there (RGB 0), else the surface is at z = zbase + (h − 1) × zscale.
-- `water_rgb`: the displayed open-water colour.
+- `layers`: [{key, name, z: [z0, z1]}] in the order underworld (−57, −4.001), ground (−4, 9.999), sky (10, 75.156). A
+  layer holds the z in [z0, z1). The ground layer table gives the bounds: the Settings' underground and skyground
+  barriers and the fast-travel rooms above the sky. The underworld has no lower barrier; its lowest surface is at −57.
 - `oceans`: [{pid, layer (index into `layers`), x0, y0, sx, sy, zw, water}] for every drawn Ocean_Map that is not
   PLAYER_BLOCKING_ONLY: square k is world square (x0 + k % sx, y0 + ⌊k / sx⌋), the drawn surface is at `zw` (z −
   `sink`), and `water` = base64 of the initial bit-0 mask, holes applied (bit k % 8 of byte k >> 3). Only an unrotated
@@ -205,69 +204,17 @@ in the pipeline.
 | `floors` | {underworld, ground, sky}: per map layer key, zlib + base64 of one byte per map column (W × H = 29640, row-major, row 0 = north, as `map.json`): the highest z where the walk on the level data stands the hero there, plus 128; 0 where it stands him nowhere. The flood: gates as stored, no Freezer closed, every teleporter enabled and discovered, seeded at every Level_Entry, pad and Area_Pin. All values are whole numbers |
 | `rooms` | {searched, variants, answered, empty, states, capped, data}: the exhaustive push search of the screen rooms ([Room answers](VIEWER.md#room-answers)) on the level data, with every Freezer closed and, for a room with up to three Freezers around it, with each other combination of them open. `searched`: rooms with an object and a place for the hero to start, searched with every Freezer closed; `variants`: rooms searched with some Freezers open (a merged room counts once for each combination that makes it); `answered`: answers stored that have entries; `empty`: answers stored with no entries, for rooms with no start, nothing to tell or too many positions (a walker that finds such a room as the level data has it does not search it again); `states`: positions visited in all; `capped`: the first cell of each room (or merged room) that hit the cap of 200 000 positions (no entries). `data`: zlib + base64 of JSON, a list of rooms `[cells, attackers, entries, opens]`: `cells` the room's cells (grid cell keys, ascending, each as the difference from the one before, the first from 0); `attackers` the pids of the Monsters whose attacks cross the room or the cells beside it, with the Freezers of `opens` open; `entries` the answers, one per start and one for all starts together, each `[reps, bridges, holders, filled, dead]`: `reps` a cell of each start piece of ground; `bridges`, `holders` and `filled` flat lists of `key, count, values…` (per Rock its water cells, per Switch cell its objects, per Gem_Slot cell its Gems, a Rock, object or Gem by the cell the level data puts it in); `dead` the cells of the Monsters that die; `opens` the states of the Freezers around the room (the Freezers in its cells or beside them, above or below, ascending by index) the answer holds for, each a bit set with bit n set when the nth of those Freezers is open (0: all closed). A cell key is `(z + 80) × W × H + row × W + column` on the walk's grid |
 
-## Drawing the map
+## The map images
 
-### The colour and height grid (map.json)
+`public/assets/map-<layer>.avif` holds one image per map layer (`underworld`, `ground`, `sky`), each a top-down render of
+that layer of the overworld with the fog cleared, the hero hidden and the time frozen.
 
-- **What is drawn.** Entities of type Inanimate, Rock, Procedurally_Animating, Tree, Stairs and Elevator_Platform with a
-  mesh. Left out: `INVISIBLE` ones, Inanimates with HIDDEN_IN_MAP_VIEW (`overhead_map_flags` bit 1), pure black
-  materials (shadow casters) and everything in the map rooms. Puzzle and progress entities are not drawn: their look
-  changes at runtime. The layer comes from the ground layer table by z; a Group's `bind_to_layer` overrides it.
-- **Rasterizing.** The LOD 1 triangles are drawn from above into quarter-metre sub-squares (4 × 4 per square) with a
-  z-buffer: each layer keeps the highest sample per sub-square. A triangle covers the sub-squares whose centres lie
-  inside it; one too small to cover any centre still leaves one sample at its centroid. A triangle that winds
-  clockwise seen from above faces down and is not drawn (front faces wind counter-clockwise,
-  [Render assets](GAMEDATA.md#render-assets); a mirrored placement, with a negative determinant, swaps that). The
-  `foliage` and `foliage_masked` shaders are drawn from both sides.
-- **Colour.** A sample gets the albedo its material's shader computes at its UV, interpolated from the triangle's
-  corners: texture × material tint × entity tint (the shader table in
-  [data/materials.package](GAMEDATA.md#datamaterialspackage)). Surface textures are read at their 64-pixel mip,
-  tint maps at 512. The two layers blend by the red paint, interpolated from the corners too (`all_paint_data`, else
-  the mesh's own vertex colours). For `ground_general` the tint maps are read at the sample's world position. In a
-  cut-out material (`basic_masked`, `foliage`, `foliage_masked`) a texel whose opacity (`OPAC_tex`, else `MASKS_tex`,
-  else the diffuse alpha) is below 0.5 is a hole. The 0.5 cutoff and the two-sided foliage are the builder's choices.
-- **Walls.** Each visible voxel of a Wall_Set (not `OCEAN_HOLE`) is 4 × 4 points at its top (z + 1), colour
-  0.75 × `tint_color_a`.
-- **Water.** Every Ocean_Map in a drawn layer that exists at the start (by its stored flags) paints its water squares
-  (bit 0, holes applied) at z − `sink` over anything lower. Colour, linear: 0.34 × `depth_color` of material
-  `Ocean_Basic~overworld` + (0.018, 0.002, 0.016). Geometry within 1.2 m under the surface lightens it toward foam
-  (0.11, 0.23, 0.39), up to half, keeping a tenth of the floor colour. All overworld water draws alike, though the
-  mirror-isle materials differ.
-- **Squares.** A square is filled when at least 4 of its 16 sub-squares hold a point. Its colour is the mean of those,
-  its height the highest. Displayed colour = sRGB(tone(EXPOSURE × albedo)), EXPOSURE = (1.85, 1.72, 1.5), tone = a soft
-  shoulder above 0.8: c → 0.8 + 0.2 × (1 − e^(−(c − 0.8) / 0.2)). EXPOSURE stands in for the game's lighting; it was
-  fitted to one in-game full-map screenshot, so the colours are an approximation.
-- **Height byte.** h = 1 + round((z − zbase) / zscale), clamped to 1..255; zscale = (z1 − zbase) / 254 over the layer's
-  z range (the underworld's lower end comes from the data: −57).
-
-### The viewer's base image
-
-Per layer, 4 × 4 pixels per square, north up. Inputs: the `map.json` layer and `oceans`; `world` floors and lilies
-(those whose `exists` is not 0), rivers, rocks, fences and Wall_Set voxels (solid, plus Wall_Sets whose `exists` is
-not 0; a voxel at z has its top at z + 1); and the walk floors, `walk.json` `floors`: the highest z per square that a
-flood of the level data reaches in that layer ([data/walk.json](#datawalkjson)). River Lilies add their whole drift
-there.
-
-Per square with a height byte, with wz = the highest drawn water surface there:
-- *water* = a drawn map has water there. *wet* = water and (the square's z ≤ wz + zscale + 0.01, or its colour lies
-  within OKLab distance 0.06 of `water_rgb`). *walk* = the walk floors have the square.
-- Its kind, first match: LILY (a lily in the layer); BRIDGE (a floor Fence over water); FLOOR (walk and not wet);
-  RIVER (water, no voxel top above wz + 0.05, and a `rivers` square); SHALLOW (walk); WALL (no water); WALL (a voxel
-  top above wz + 0.5); FLOOR (a voxel top above wz + 0.05); DEEP.
-- A DEEP square whose z is at least wz + 0.5 next to a FLOOR (4 neighbours) becomes WALL: a shore cliff.
-
-Colours are OKLab:
-- Smoothing: each channel is the median over the 3 × 3 squares of the same group (FLOOR, LILY and BRIDGE together;
-  SHALLOW; DEEP; WALL; RIVER) whose colour lies within distance 0.07.
-- band(lo, hi, ch): L' = lo + lift + (hi − lo) × clamp((L − 0.3) / 0.6), a and b times ch; lift = 0.1 ×
-  clamp((chroma − 0.08) / 0.1) + 0.6 × max(0, L − 0.8), so strongly coloured and near-white squares keep some
-  brightness.
-- Fill: DEEP `water_rgb`; RIVER water with L + 0.07; SHALLOW and LILY water with L + 0.12, a and b × 0.8; WALL
-  band(0.22, 0.32, 0.8); FLOOR and BRIDGE band(0.4, 0.56, 0.95).
-- Edge lines, the outer pixel row on a side: a WALL next to an empty square band(0.4, 0.5, 0.6), next to a walkable
-  square (FLOOR, SHALLOW, LILY, BRIDGE) band(0.14, 0.2, 0.6). A BRIDGE next to water: the SHALLOW colour. A RIVER next
-  to a non-river square, unless that square is a lily or bridge on a river square: water with L + 0.33, a and b × 0.4.
-  A FLOOR next to an empty square, or next to a walkable square whose floor is 1 or more lower: band(0.32, 0.46, 0.95).
-- A blocking Fence in the layer, within 1 of the walk floor: RGB (30, 34, 38) on its side.
-- A lily: inner pixels RGB (104, 168, 92), rim the river or deep colour. A level-data Rock in a DEEP, RIVER or SHALLOW
-  square: inner pixels RGB (112, 100, 90).
+- An image is 32 pixels per square: 190 × 156 squares are 6080 × 4992 pixels. Pixel row 0 is the north edge.
+- Square (i, j) of the map grid ([data/map.json](#datamapjson)) covers pixels x in [32 i, 32 i + 32) and rows
+  [32 (155 − j), 32 (155 − j) + 32). World square (x, y) has its centre at pixel ((x + 24.5) × 32, (153.5 − y) × 32).
+- The pixels are opaque RGB. Pits are black.
+- The images show everything, fogged parts included; the viewer covers what the save has not uncovered
+  ([Fog of war](STATE.md#fog-of-war)).
+- `src/map/thumbs/<layer>.avif` is the same layer at one pixel per square (190 × 156, each pixel the average colour
+  of its square, row 0 north). The page embeds the thumbnails and draws a layer's thumbnail pixelated until its full
+  image, published next to the page, has loaded.

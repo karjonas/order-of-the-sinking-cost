@@ -1,7 +1,8 @@
 # Data scripts
 
 Run the scripts with the npm scripts below. Generated data lands in `data/` (not committed, apart from
-`data/schema.json`); the built page is `viewer.html` in the project root. The page source is in `src/`.
+`data/schema.json`); the built page is `dist/viewer.html` with `viewer.js`, `viewer.css` and `viewer.js.map` beside it. The page source is
+in `src/`. The map images are `public/assets/map-<layer>.avif`; the build copies them to `dist/assets/`.
 
 `npm install` sets up Vite+. Then `npm run build` builds the page, `npm run dev` serves it with live reload, `npm test`
 runs the tests, `npm run typecheck` type-checks the TypeScript modules, `npm run lint` lints and `npm run fmt` formats
@@ -20,10 +21,10 @@ Game folder: `--game DIR`, else `$SOKO_GAME`, else the Steam install. Saves: `$S
 | 3 | `build-areas.js` | `data/levels.package` (game), `data/strings/en.localization` (game) | `data/level_areas.json` | `npm run data:areas` |
 | 4 | `build-fog.js` | `data/levels.package` (game), `data/schema.json` | `data/fog.json` | `npm run data:fog` |
 | 5 | `build-world.js` | `data/levels.package` (game), `data/schema.json` | `data/world.json` | `npm run data:world` |
-| 6 | `build-map.js` | `data/levels.json`, game `data/levels.package`, `data-pc/`, `data-common/`, `data/materials.package` | `data/map.json` | `npm run data:map` |
+| 6 | `build-map.js` | `data/levels.json`, game `data/levels.package` | `data/map.json` | `npm run data:map` |
 | 7 | `build-progress.js` | `data/levels.json`, `data/level_areas.json`, `data/fog.json`, `data/map.json`, `data/world.json`, game `data/levels.package` | `data/progress.json` | `npm run data:progress` |
 | 8 | `build-walk.js` | `data/progress.json` (hashes `data/world.json` too) | `data/walk.json` | `npm run data:walk` |
-| 9 | `vite.config.js` | `src/`, `data/schema.json`, `data/progress.json`, `data/walk.json` | `viewer.html`, `viewer.html.map` | `npm run build` |
+| 9 | `vite.config.js` | `src/`, `public/assets/`, `data/schema.json`, `data/progress.json`, `data/walk.json` | `dist/viewer.html`, `dist/viewer.js`, `dist/viewer.css`, `dist/viewer.js.map`, `dist/assets/` | `npm run build` |
 
 `npm run data` runs steps 2 to 8 in order. `build-fog.js` also takes a campaign folder and then prints a report on
 that save: `npm run data:fog -- "<campaign folder>"`.
@@ -51,7 +52,7 @@ streams in `world.json` and `progress.json` differ between zlib implementations,
 - `npm run docs:check`: every link in `docs/*.md` reaches a file and a heading, no page has two headings with the same
   anchor, and nothing cites a section by number.
 - `npm run dev`: serves the page at `http://127.0.0.1:8765/viewer.html`, with `/saves/` mapped read-only onto the saves
-  folder.
+  folder and `/assets/` onto the map images in `public/assets/`.
 - `npm run dump:model -- <campaign|save folder|--demo> <out.json>`: everything the page's model computes for a save, as
   stable JSON. Compare dumps from before and after a refactor that should not change behaviour.
 - `node scripts/walk-fingerprint.js <input> <outFile>`: a canonical fingerprint of everything the walk computes for one
@@ -65,4 +66,4 @@ streams in `world.json` and `progress.json` differ between zlib implementations,
   `tests/walk-exact.expected.json`; regenerate them with `UPDATE_WALK_EXPECTED=1 npx vp test run
   tests/walk-exact.test.js` after an intended change of the walk or new game data.
 - `npm run trace -- <line:col>` (or a pasted stack on stdin): the source position of a position in the minified build,
-  from `viewer.html.map`.
+  from `dist/viewer.js.map`.

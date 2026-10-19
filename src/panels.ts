@@ -7,7 +7,7 @@ import type { Fog } from './fog.ts';
 import { mapHtml, mapKeep, startLayer } from './map/map-html.ts';
 import { mapInit } from './map/map-view.ts';
 import type { MapOptions } from './map/map-view.ts';
-import { oceanWater } from './map/layer-image.ts';
+import { oceanWater } from './map/ocean-water.ts';
 import type { ProgressModel } from './model/progress-model.ts';
 import { refreshSideAreas } from './sidebar.ts';
 import { copyPath, folderAction, folderLabel } from './folder.ts';

@@ -955,7 +955,7 @@ drawn above the others, and the level the save is in on top. Overlays show what 
 Freezers Optional for the goal, read signs and found pads, gold rooms, voice logs, map scrolls and treasures are
 left out unless the Solved chip is on. The key lists the colours drawn, with Clear filters when nothing matches. A
 level's or gate's panel names its role for the goal ("One of several for Endgame"), none for a solved level. The
-floor heights the base image draws come from `data/walk.json` ([The viewer's base image](DATAFILES.md#the-viewers-base-image)).
+floor heights the changed water is compared with come from `data/walk.json` ([data/walk.json](DATAFILES.md#datawalkjson)).
 
 ### The page's words
 
@@ -1007,7 +1007,7 @@ names. Fog is the game's own ([Fog of war](STATE.md#fog-of-war)), read from the 
 - Totals (Freezers, MAJOR pads, gold rooms, treasures, voice logs, map scrolls, signs) list only things not under fog, or already found (gold rooms only once visited). "Ground 70 / 90 · Sky 17 / 35" style splits cover only the layers the fog has uncovered.
 - A sign in a plan follows the same fog rule as the sign on the map: its step is left out of the plan's steps and counts
   while the sign is under fog.
-- The map paints fogged squares in the fog colour in the base image and leaves them out of the Reachable overlay, so the images hold nothing the fog hides.
+- The map covers fogged squares with opaque rectangles in the fog colour over the layer image, and leaves them out of the Reachable overlay, so nothing the fog hides shows.
 - An unearned achievement is hidden when what earns it is hidden: all its levels are hidden, its tower is hidden, or its layer has no cleared fog (ASCEND: the sky; DESCEND: the underworld). The sidebar and the plans share this rule.
 - Endings go by their achievements' names ("Endgame", "Endgame High", "Endgame Low"). An ending's achievement is hidden by the endings' order alone: it is shown (in the ladder and the achievements) only once every ending before it is earned, so the ladder never counts the endings ahead.
 - A rank sign names its rank only while the achievement that gives that rank (an ending, ASCEND or DESCEND) is shown; otherwise it asks for "A higher rank".

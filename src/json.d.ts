@@ -15,6 +15,11 @@ declare module '*/walk.json' {
     export default walk;
 }
 
+// Vite's import.meta.glob, as the page uses it: the default exports of the matched files, loaded with the page
+interface ImportMeta {
+    glob(pattern: string, options: { query: string; import: 'default'; eager: true }): Record<string, string>;
+}
+
 declare module '*.txt?raw' {
     const text: string;
     export default text;

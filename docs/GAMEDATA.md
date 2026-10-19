@@ -102,7 +102,7 @@ all; every one on the overworld).
 
 ## Render assets
 
-The map is drawn from these ([Drawing the map](DATAFILES.md#drawing-the-map)).
+The game draws the overworld from these.
 
 **Asset header** (`.compressed_mesh`, `.texture`, `.shader`): `u16, u16, u16, u16 header length, u32 total size`
 (header included), then an LZ4 block of `total - header` bytes. A file whose size equals the total is stored

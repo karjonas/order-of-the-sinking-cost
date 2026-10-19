@@ -10,6 +10,7 @@ import { readPreference, state } from '../shared.ts';
 import type { MapLayer } from '../types.ts';
 import { escapeHtml } from '../util.ts';
 import { HERO_PATH, ICON_STROKE, OVERLAY_ICONS, svgIcon } from './icons.ts';
+import { layerThumbnail } from './layer-images.ts';
 import { wrapCopies } from './torus.ts';
 
 /** The overlays of the map that the viewer can switch off. */
@@ -45,12 +46,20 @@ try {
     }
 } catch {}
 
-// the terrain group: the base images, the changed water, the Reachable images and the fog, clipped to the map
+// the terrain group: the layer images, the changed water, the Reachable images and the fog, clipped to the map
 function terrainHtml(id: string, layers: MapLayer[], reach: boolean): string {
     const [width, height] = PROG.map.size;
-    const water = (PROG.map.water_rgb || WATER_RGB).join(',');
     const size = `width="${width}" height="${height}"`;
-    const images = layers.map((layer) => `<image data-layer="${layer.key}" x="0" y="0" ${size}/>`).join('');
+
+    // each layer's full image has no href until the layer is shown; its thumbnail lies under it
+    let images = '';
+    for (const layer of layers) {
+        const thumbnail = layerThumbnail(layer.key);
+        if (thumbnail) {
+            images += `<image class="thumb" data-layer="${layer.key}" x="0" y="0" ${size} href="${thumbnail}"/>`;
+        }
+        images += `<image class="full" data-layer="${layer.key}" x="0" y="0" ${size}/>`;
+    }
 
     let reachImages = '';
     let hatch = '';
@@ -74,7 +83,7 @@ function terrainHtml(id: string, layers: MapLayer[], reach: boolean): string {
     const cloudGroup = `<g class="fog" filter="url(#${id}-cloud)" style="stroke: var(--fog)"></g>`;
     const fogGroups = `${cloudGroup}<g class="fogc"></g><g class="rfog" fill="url(#${id}-hatch)"></g>`;
     const fog = `${clip}<g clip-path="url(#${id}-clip)">${fogGroups}</g>`;
-    const waterGroup = `<g class="wtr" fill="rgb(${water})" shape-rendering="crispEdges"></g>`;
+    const waterGroup = `<g class="wtr" fill="rgb(${WATER_RGB.join(',')})" shape-rendering="crispEdges"></g>`;
     return `<g id="${id}-w" class="mw">${images}${waterGroup}${reachImages}<defs>${cloud}${hatch}</defs>${fog}</g>`;
 }
 
@@ -101,9 +110,8 @@ function controlsHtml(layers: MapLayer[]): string {
 }
 
 /**
- * The markup of the map `id`. `fog`: the fog to bake into the images; layers it has not uncovered get no image and no
- * button. `reach`: whether to include the Reachable overlay images (hidden until mapInit gets the bitmaps in
- * opts.reach).
+ * The markup of the map `id`. `fog`: the fog to hide; layers it has not uncovered get no image and no button. `reach`:
+ * whether to include the Reachable overlay images (hidden until mapInit gets the bitmaps in opts.reach).
  */
 export function mapHtml(id: string, fog: Fog | null | undefined, reach: boolean): string {
     const [width, height] = PROG.map.size;

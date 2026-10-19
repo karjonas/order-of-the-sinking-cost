@@ -1,12 +1,12 @@
-// Maps line:col positions in the built viewer.html (as a browser's stack trace prints them, 1-based) back to the
-// sources, with viewer.html.map from the same build. Positions come from the arguments, else from stack trace text
-// on stdin. --shift N: the trace's line numbers are N lines below the built file's (a page served inside a wrapper).
-// Usage: npm run trace -- [--shift N] [<line:col> ...] [< trace.txt]
+// Maps line:col positions in the built dist/viewer.js (as a browser's stack trace prints them, 1-based) back to the
+// sources, with dist/viewer.js.map from the same build. Positions come from the arguments, else from stack trace text
+// on stdin.
+// Usage: npm run trace -- [<line:col> ...] [< trace.txt]
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const map = JSON.parse(readFileSync(resolve(ROOT, 'viewer.html.map'), 'utf8'));
+const map = JSON.parse(readFileSync(resolve(ROOT, 'dist/viewer.js.map'), 'utf8'));
 const B64 = Object.fromEntries(
     [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'].map((c, i) => [c, i]),
 );
@@ -58,12 +58,6 @@ function lookup(line, col) {
     return `${map.sources[hit[1]]}:${hit[2] + 1}:${hit[3] + 1}${hit[4] >= 0 ? ` (${map.names[hit[4]]})` : ''}`;
 }
 const args = process.argv.slice(2);
-let shift = 0;
-const si = args.indexOf('--shift');
-if (si >= 0) {
-    shift = Number(args[si + 1]) || 0;
-    args.splice(si, 2);
-}
 const text = args.length ? args.join('\n') : readFileSync(0, 'utf8');
 for (const ln of text.split(/\r?\n/)) {
     const m = ln.match(/(\d+):(\d+)\)?\s*$/);
@@ -71,5 +65,5 @@ for (const ln of text.split(/\r?\n/)) {
         if (ln.trim()) console.log(ln);
         continue;
     }
-    console.log(`${ln.trim()}  ->  ${lookup(Number(m[1]) - shift, Number(m[2])) || 'no mapping'}`);
+    console.log(`${ln.trim()}  ->  ${lookup(Number(m[1]), Number(m[2])) || 'no mapping'}`);
 }

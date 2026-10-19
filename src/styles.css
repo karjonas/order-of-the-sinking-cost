@@ -1237,8 +1237,11 @@ main > .mapbox {
 .dlg #achBody {
     padding: var(--s4);
 }
-/* .mw is the map's group that the wrapped copies repeat; a copy matches selectors only through ancestors inside the group */
-.mw image {
+/* .mw is the map's group that the wrapped copies repeat; a copy matches selectors only through ancestors inside the group.
+   Thumbnails and Reachable images are always pixelated; the layer images are once the map is zoomed in far enough */
+.mw image.reach,
+.mw image.thumb,
+.mw.crisp image {
     image-rendering: pixelated;
 }
 /* the marks a totals row asks for pulse for a moment */

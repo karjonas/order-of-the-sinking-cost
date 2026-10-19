@@ -26,7 +26,6 @@
     "data:walk": "node scripts/build-walk.js"
   },
   "devDependencies": {
-    "vite-plugin-singlefile": "2.3.3",
     "vite-plus": "1.0.0"
   }
 }

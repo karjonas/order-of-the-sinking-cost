@@ -9,8 +9,7 @@ saves/
 data/*
 !data/schema.json
 !data/wikitactics.txt
-/viewer.html
-/viewer.html.map
+/dist/
 
 # local notes
 IDA_BRIEF.md

@@ -6,10 +6,38 @@ import type { MapLayer } from '../types.ts';
 import { mapCol } from '../walk/cells.ts';
 import { INK_RGB, REACH_EDGE_RGB, REACH_RGB } from './colors.ts';
 import type { Rgb } from './colors.ts';
-import { imageUrl, MAP_SCALE, pixelOffset, putPixel } from './layer-image.ts';
 
 /** A pixel's colour and alpha byte. */
 type ReachPixel = [color: Rgb, alpha: number];
+
+/** The Reachable images are painted MAP_SCALE pixels per square, so they stay crisp when zoomed. */
+const MAP_SCALE = 4;
+
+/** A data URL of a map-sized image (MAP_SCALE pixels per square) whose RGBA bytes fill(pixels) writes. */
+function imageUrl(fill: (pixels: Uint8ClampedArray) => void): string {
+    const [width, height] = PROG.map.size;
+    const canvas = document.createElement('canvas');
+    canvas.width = width * MAP_SCALE;
+    canvas.height = height * MAP_SCALE;
+
+    const context = canvas.getContext('2d')!;
+    const image = context.createImageData(canvas.width, canvas.height);
+    fill(image.data);
+    context.putImageData(image, 0, 0);
+    return canvas.toDataURL();
+}
+
+/** Writes a colour (and alpha) to the pixel at a byte offset of image data. */
+const putPixel = (pixels: Uint8ClampedArray, offset: number, color: Rgb, alpha: number): void => {
+    pixels[offset] = color[0];
+    pixels[offset + 1] = color[1];
+    pixels[offset + 2] = color[2];
+    pixels[offset + 3] = alpha;
+};
+
+/** The byte offset of pixel (x, y) of square (i, j) in an image of a map width squares wide. */
+const pixelOffset = (width: number, i: number, j: number, x: number, y: number): number =>
+    ((j * MAP_SCALE + y) * width * MAP_SCALE + i * MAP_SCALE + x) * 4;
 
 // the alpha of a reached square's wash, of its edge line and of an unreached square's dimming
 const REACH_FILL = 0.32;

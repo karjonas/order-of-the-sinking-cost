@@ -156,10 +156,6 @@ export interface MapLayer {
     key: MapLayerKey;
     name: string;
     z: [low: number, high: number];
-    zbase: number;
-    zscale: number;
-    /** Base64 of W x H x 4 bytes: sRGB and a height byte per square, row 0 = north. */
-    cells: string;
 }
 
 /** One drawn Ocean_Map of the overhead map. */
@@ -188,7 +184,6 @@ export interface ProgressMap {
     corner: XY;
     size: XY;
     layers: MapLayer[];
-    water_rgb: [red: number, green: number, blue: number];
     oceans: MapOcean[];
     main_box?: Record<string, MapBox | undefined>;
 }

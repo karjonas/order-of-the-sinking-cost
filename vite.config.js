@@ -1,10 +1,10 @@
-import { realpathSync, createReadStream, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, realpathSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { defineConfig } from 'vite-plus';
-import { viteSingleFile } from 'vite-plugin-singlefile';
 import { savesDir } from './scripts/saves.js';
 
 const ROOT = import.meta.dirname;
+const DIST = resolve(ROOT, 'dist');
 
 // The dev server opens the page at /, and /saves/<campaign>/<file> reads the game's save folder: GET and HEAD only, and anything that
 // resolves outside the folder (backslashes, drive letters, ..) is not found
@@ -73,79 +73,89 @@ function schemaForPage() {
     };
 }
 
-// The build writes the inlined page as viewer.html in the project root, and next to it viewer.html.map, a source map of
-// the page itself (not referenced by it) for reading stack traces with scripts/trace.js. The script starts on its own
-// line, so the script's map only needs that line offset.
-const SCRIPT_TAG = '<script type="module" crossorigin>';
-function pageOut() {
-    let script = null;
-    // the script as built, before vite:singlefile inlines it and drops it from the bundle
-    const keepScript = {
-        name: 'soko:script',
+// The page's script is a classic script loaded with defer, which also runs when viewer.html is opened from disk, where
+// browsers refuse module scripts. The bundle has no imports or exports, and a banner and footer wrap it in a function;
+// the iife format would put the styles in the script instead of viewer.css. Vite writes the script as a module script
+// and the styles with crossorigin attributes.
+function classicScript() {
+    return {
+        name: 'soko:classic-script',
         apply: 'build',
-        generateBundle: {
-            order: 'pre',
-            handler(_, bundle) {
-                const js = Object.values(bundle).filter((c) => c.type === 'chunk');
-                if (js.length !== 1 || !js[0].map)
-                    this.error(`expected one script with a source map, got ${js.map((c) => c.fileName).join(', ')}`);
-                script = js[0];
+        transformIndexHtml: {
+            order: 'post',
+            handler(html) {
+                return html
+                    .replace(
+                        /<script type="module" crossorigin src="[^"]*viewer\.js"><\/script>/,
+                        '<script defer src="viewer.js"></script>',
+                    )
+                    .replace(/(<link rel="stylesheet") crossorigin /, '$1 ');
             },
         },
     };
-    return [
-        keepScript,
-        {
-            name: 'soko:page',
-            apply: 'build',
-            enforce: 'post',
-            generateBundle(options, bundle) {
-                delete bundle[script.fileName + '.map'];
-                const page = bundle['viewer.html'];
-                const extra = Object.keys(bundle).filter((k) => k !== 'viewer.html');
-                if (!page || extra.length)
-                    this.error(`expected only viewer.html in the bundle, got ${Object.keys(bundle).join(', ')}`);
-                const at = page.source.indexOf(SCRIPT_TAG) + SCRIPT_TAG.length,
-                    code = script.code.trim();
-                if (
-                    at < SCRIPT_TAG.length ||
-                    script.code.trimStart() !== script.code ||
-                    page.source.slice(at, at + code.length) !== code
-                )
-                    this.error('the script is not inlined as built');
-                const html = page.source.slice(0, at) + '\n' + page.source.slice(at),
-                    lines = html.slice(0, at + 1).split('\n').length - 1;
-                const map = script.map,
-                    dir = options.dir || resolve(ROOT, 'src/dist');
-                const out = {
-                    version: 3,
-                    file: 'viewer.html',
-                    sources: map.sources.map((s) => relative(ROOT, resolve(dir, s)).replace(/\\/g, '/')),
-                    sourcesContent: map.sourcesContent.map((c, i) => (map.sources[i].endsWith('.json') ? null : c)),
-                    names: map.names,
-                    mappings: ';'.repeat(lines) + map.mappings,
-                };
-                writeFileSync(resolve(ROOT, 'viewer.html'), html);
-                writeFileSync(resolve(ROOT, 'viewer.html.map'), JSON.stringify(out));
-            },
+}
+
+// The build has exactly one script, and its source map lists the sources relative to the repository, with the contents
+// of the JSON data files left out
+function scriptMap() {
+    return {
+        name: 'soko:script-map',
+        apply: 'build',
+        enforce: 'post',
+        generateBundle(options, bundle) {
+            const scripts = Object.values(bundle).filter((output) => output.type === 'chunk');
+            if (scripts.length !== 1 || !scripts[0].map) {
+                const names = scripts.map((script) => script.fileName).join(', ');
+                this.error(`expected one script with a source map, got ${names}`);
+            }
+
+            const map = scripts[0].map;
+            const outDir = options.dir || DIST;
+            map.sources = map.sources.map((source) => relative(ROOT, resolve(outDir, source)).replace(/\\/g, '/'));
+            map.sourcesContent = map.sourcesContent.map((content, index) => {
+                if (map.sources[index].endsWith('.json')) return null;
+                return content;
+            });
+
+            const file = bundle[`${scripts[0].fileName}.map`];
+            if (file) file.source = JSON.stringify(map);
         },
-    ];
+    };
+}
+
+// Fixed file names, so publishing the build again overwrites the same paths
+function assetFileName(asset) {
+    const name = asset.names?.[0] ?? asset.name ?? '';
+    if (name.endsWith('.css')) return 'viewer.css';
+    return 'assets/[name][extname]';
 }
 
 export default defineConfig({
     root: resolve(ROOT, 'src'),
-    publicDir: false,
-    plugins: [saves(), schemaForPage(), viteSingleFile(), pageOut()],
+    base: './',
+    publicDir: resolve(ROOT, 'public'),
+    plugins: [saves(), schemaForPage(), classicScript(), scriptMap()],
     json: { namedExports: false, stringify: true },
     server: { host: '127.0.0.1', port: 8765, strictPort: true },
     build: {
-        write: false,
+        outDir: DIST,
+        emptyOutDir: true,
         minify: true,
         cssMinify: true,
-        sourcemap: 'hidden',
+        sourcemap: true,
         modulePreload: { polyfill: false },
         reportCompressedSize: false,
-        rolldownOptions: { input: resolve(ROOT, 'src/viewer.html') },
+        rolldownOptions: {
+            input: resolve(ROOT, 'src/viewer.html'),
+            output: {
+                format: 'es',
+                banner: '(function () {',
+                footer: '})();',
+                entryFileNames: 'viewer.js',
+                chunkFileNames: 'viewer-[name].js',
+                assetFileNames: assetFileName,
+            },
+        },
     },
     test: {
         root: ROOT,
@@ -159,19 +169,10 @@ export default defineConfig({
         tabWidth: 4,
         useTabs: false,
         endOfLine: 'lf',
-        ignorePatterns: [
-            'data/**',
-            'docs/**',
-            'ida/**',
-            '**/*.md',
-            '**/*.json',
-            '/viewer.html',
-            '/viewer.html.map',
-            'node_modules/**',
-        ],
+        ignorePatterns: ['data/**', 'docs/**', 'ida/**', '**/*.md', '**/*.json', 'dist/**', 'node_modules/**'],
     },
     lint: {
-        ignorePatterns: ['data/**', 'viewer.html', 'ida/**', 'node_modules/**'],
+        ignorePatterns: ['data/**', 'dist/**', 'ida/**', 'node_modules/**'],
         options: { typeAware: true, typeCheck: true },
         categories: { correctness: 'error', suspicious: 'error' },
         rules: {
