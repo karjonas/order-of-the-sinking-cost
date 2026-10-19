@@ -3,55 +3,51 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Sinking Star Saves</title>
+        <title>Order of the Sinking Star · Save Viewer</title>
         <meta
             name="description"
             content="Progress viewer for Order of the Sinking Star saves that runs locally in your browser, with a spoiler-free map."
         />
-        <meta name="theme-color" content="#0f1c24" />
+        <meta name="theme-color" content="#0a2234" />
         <meta name="color-scheme" content="dark" />
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="Sinking Star Saves" />
+        <meta property="og:title" content="Order of the Sinking Star · Save Viewer" />
         <meta
             property="og:description"
             content="Progress viewer for Order of the Sinking Star saves that runs locally in your browser, with a spoiler-free map."
         />
-        <meta property="og:site_name" content="Sinking Star Saves" />
+        <meta property="og:site_name" content="Order of the Sinking Star · Save Viewer" />
         <meta name="twitter:card" content="summary" />
-        <link
-            rel="icon"
-            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1c24'/%3E%3Cpath d='M16 3C17 12 20 15 29 16C20 17 17 20 16 29C15 20 12 17 3 16C12 15 15 12 16 3Z' fill='%23f5d84a'/%3E%3C/svg%3E"
-        />
+        <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
+        <link rel="icon" type="image/png" sizes="64x64" href="assets/icons/favicon-64.png" />
         <link rel="stylesheet" href="./styles.css" />
     </head>
     <body>
         <div class="page">
-            <dialog id="achDlg" class="dlg" aria-label="Achievements">
-                <div class="dh"><b>Achievements</b><button data-close title="Close" aria-label="Close">×</button></div>
-                <div id="achBody"></div>
-            </dialog>
             <aside class="side" id="sidebar" aria-label="Save and filters">
-                <div class="np">
-                    <div class="brand"><span class="mark">✦</span>Order of the Sinking Star</div>
-                    <div class="btns">
-                        <button class="primary" id="openDir">Open save folder</button
-                        ><input id="dirInput" type="file" webkitdirectory multiple hidden />
+                <div class="sidein">
+                    <div class="np">
+                        <div class="brand"><span class="mark">✦</span>Sinking Star</div>
+                        <div class="btns">
+                            <button class="primary" id="openDir">Open save folder</button
+                            ><input id="dirInput" type="file" webkitdirectory multiple hidden />
+                        </div>
+                        <div id="sideCamp"></div>
                     </div>
-                    <div id="sideCamp"></div>
-                </div>
-                <div id="sidePanels"></div>
-                <div class="sidefoot">
-                    <a
-                        class="gh"
-                        href="https://github.com/xPaw/order-of-the-sinking-cost"
-                        target="_blank"
-                        rel="noopener"
-                        ><svg viewBox="0 0 16 16" aria-hidden="true">
-                            <path
-                                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-                            /></svg
-                        >Source on GitHub</a
-                    >
+                    <div id="sidePanels"></div>
+                    <div class="sidefoot">
+                        <a
+                            class="gh"
+                            href="https://github.com/xPaw/order-of-the-sinking-cost"
+                            target="_blank"
+                            rel="noopener"
+                            ><svg viewBox="0 0 16 16" aria-hidden="true">
+                                <path
+                                    d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                                /></svg
+                            >Source on GitHub</a
+                        >
+                    </div>
                 </div>
             </aside>
             <div id="banner"></div>

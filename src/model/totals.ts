@@ -17,17 +17,6 @@ export type ShownAt = (layer: string | undefined, position: Position) => boolean
 /** Found and total. */
 export type FoundOfTotal = [found: number, total: number];
 
-/**
- * What a totals row frames on the map: the positions of the things not found yet and not under fog (the first `ready`
- * of them are ready to be found), how many more are under fog, and how many are off the world map.
- */
-export interface Finds {
-    open: Position[];
-    ready: number;
-    fogged: number;
-    off: number;
-}
-
 /** The per layer counts of each total, as the page shows them ("Ground 70 / 90 · Sky 17 / 35"). */
 export interface TotalsByLayer {
     treasures: string;
@@ -35,7 +24,9 @@ export interface TotalsByLayer {
     doorways: string;
     signs: string;
     tps: string;
+    towerPads: string;
     logs: string;
+    maps: string;
 }
 
 export interface TotalsStats {
@@ -47,8 +38,12 @@ export interface TotalsStats {
     /** The shown signs whose rule holds and are not read yet. */
     signsReady: number;
     tps: FoundOfTotal;
+    /** The discovered pads of the towers that have one, over those not under fog, with the gold rooms' endpoints. */
+    towerPads: FoundOfTotal;
     by: TotalsByLayer;
     logs: FoundOfTotal;
+    /** The map scrolls taken over the map scrolls shown. */
+    maps: FoundOfTotal;
 }
 
 export interface TreasureTotals {
@@ -69,7 +64,6 @@ export interface Totals {
     maps: number[];
     heard: (log: VoiceLog) => boolean;
     taken: (giver: ViewGiver) => boolean;
-    finds: { signs: Finds; tps: Finds; logs: Finds };
 }
 
 function popcount(value: number): number {
@@ -102,29 +96,6 @@ function layerSplit(list: Array<[layer: string | undefined, found: boolean]>, kn
     return parts.join(' · ');
 }
 
-interface FindItem {
-    p: Position;
-    key: string | 0 | undefined;
-    found: boolean;
-    /** Not found yet, but findable now. */
-    ready?: boolean;
-}
-
-// what a totals row frames on the map: the [x, y, z] of the things not found yet that are not under fog, the ones
-// ready to be found first, and how many more are under fog (`off`: not on the world map)
-function findsOf(items: FindItem[], shownAt: ShownAt): Finds {
-    const missing = items.filter((item) => !item.found);
-    const shown = missing.filter((item) => item.key && shownAt(item.key, item.p));
-    const ready = shown.filter((item) => item.ready);
-    const open = [...ready, ...shown.filter((item) => !item.ready)];
-    return {
-        open: open.map((item) => item.p),
-        ready: ready.length,
-        fogged: missing.filter((item) => item.key).length - open.length,
-        off: missing.filter((item) => !item.key).length,
-    };
-}
-
 /** The totals the page shows; shownAt(key, p): whether a thing at p on layer key is not under fog. */
 export function totalsOf({
     status,
@@ -132,12 +103,14 @@ export function totalsOf({
     hide,
     shownAt,
     known,
+    towerHidden = [],
 }: {
     status: { treasureFlags: number };
     progress: BaseProgress;
     hide: boolean;
     shownAt: ShownAt;
     known: string[] | null;
+    towerHidden?: boolean[];
 }): Totals {
     const teleporters = PROG.teleporters || [];
     const teleporterIndex = new Map(teleporters.map((teleporter, i): [number, number] => [teleporter.pid, i]));
@@ -203,6 +176,26 @@ export function totalsOf({
 
     const maps = indicesWhere(viewGivers, (giver) => taken(giver) || shownAt(FOG_LAYER_KEYS[giver.l], giver.p));
 
+    // the towers with a pad of their own that are not under fog
+    const padTowers = indicesWhere(
+        progress.towers,
+        (tower, towerIndex) => tower.pad !== undefined && !towerHidden[towerIndex],
+    );
+    const towerPadFound = (towerIndex: number): boolean => {
+        const pad = progress.towers[towerIndex].pad;
+        return pad !== undefined && padDisc(pad);
+    };
+    const towerPadLayer = (towerIndex: number): string | undefined => {
+        const pad = progress.towers[towerIndex].pad;
+        if (pad === undefined) return undefined;
+        return layerKey(teleporters[pad]);
+    };
+    const roomVisited = (room: GoldRoom): boolean => progress.tst[room.endpoint].disc;
+    const roomLayers = rooms.map((room): [string | undefined, boolean] => [
+        layerKey(teleporters[room.endpoint]),
+        roomVisited(room),
+    ]);
+
     const split = (list: Array<[layer: string | undefined, found: boolean]>) => layerSplit(list, known);
     const freezerSplit = (indices: number[]) =>
         split(
@@ -221,6 +214,11 @@ export function totalsOf({
         signs: [signs.filter(signMet).length, signs.length],
         signsReady: signs.filter(signReady).length,
         tps: [pads.filter(padDisc).length, pads.length],
+        towerPads: [
+            padTowers.filter(towerPadFound).length + rooms.filter(roomVisited).length,
+            padTowers.length + rooms.length,
+        ],
+        maps: [maps.filter((i) => taken(viewGivers[i])).length, maps.length],
         by: {
             treasures: split(
                 plinths.map((display): [string | undefined, boolean] => [
@@ -232,38 +230,19 @@ export function totalsOf({
             doorways: freezerSplit(doorways),
             signs: split(signs.map((i): [string | undefined, boolean] => [layerKey(allSigns[i]), signMet(i)])),
             tps: split(pads.map((i): [string | undefined, boolean] => [layerKey(teleporters[i]), padDisc(i)])),
+            towerPads: split([
+                ...padTowers.map((i): [string | undefined, boolean] => [towerPadLayer(i), towerPadFound(i)]),
+                ...roomLayers,
+            ]),
             logs: split(
                 logs.map((i): [string | undefined, boolean] => [FOG_LAYER_KEYS[voiceLogs[i].l], heard(voiceLogs[i])]),
+            ),
+            maps: split(
+                maps.map((i): [string | undefined, boolean] => [FOG_LAYER_KEYS[viewGivers[i].l], taken(viewGivers[i])]),
             ),
         },
         logs: [logs.filter((i) => heard(voiceLogs[i])).length, logs.length],
     };
 
-    const finds = {
-        signs: findsOf(
-            openers.map((i): FindItem => ({
-                p: allSigns[i].p,
-                key: layerKey(allSigns[i]),
-                found: signMet(i),
-                ready: signReady(i),
-            })),
-            shownAt,
-        ),
-        tps: findsOf(
-            teleporters
-                .map((teleporter, i): FindItem => ({
-                    p: teleporter.p,
-                    key: teleporter.major && layerKey(teleporter),
-                    found: padDisc(i),
-                }))
-                .filter((item) => item.key),
-            shownAt,
-        ),
-        logs: findsOf(
-            voiceLogs.map((log): FindItem => ({ p: log.p, key: FOG_LAYER_KEYS[log.l], found: heard(log) })),
-            shownAt,
-        ),
-    };
-
-    return { teleporters, padDisc, gates, pads, rooms, treasures, stats, logs, maps, heard, taken, finds };
+    return { teleporters, padDisc, gates, pads, rooms, treasures, stats, logs, maps, heard, taken };
 }

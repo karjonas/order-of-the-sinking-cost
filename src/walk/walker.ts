@@ -25,7 +25,7 @@ import { levelGeometry } from './geometry.ts';
 import type { LevelGeometry } from './geometry.ts';
 import { placeDrift, placeKickedRides, placeLilies, respawnKicks, transitCells } from './lilies-and-rivers.ts';
 import { mechAt, placeMechanics } from './mechanics.ts';
-import { magicMirrorHops } from './mirror-isles.ts';
+import { hopSourcesOf, magicMirrorHops } from './mirror-isles.ts';
 import type { PairHop, SwitchHop } from './mirror-isles.ts';
 import type { RoomMonster } from './monster-gates.ts';
 import { deep, placeWater } from './ocean.ts';
@@ -162,12 +162,13 @@ export interface WalkGrid extends GridShape {
     gemsAt: Map<number, Gem[]>;
     // the magic-mirror hops: per arm cell the landing cells, the arm cells of a Mirror riding a lily, and the hops off
     // a Switch the hero holds down; per arm cell between two facing magic Mirrors its pairs of landings, and per
-    // landing the arm cells it leaves
+    // landing the arm cells it leaves; per landing of any hop the arm cells it leaves
     mirrorHops: Map<number, number[]>;
     driftHops: Set<number>;
     switchHops: SwitchHop[];
     pairHops: Map<number, PairHop[]>;
     pairArms: Map<number, number[]>;
+    hopSources: Map<number, number[]>;
     // per river cell, the side its current flows to (the geometry's); the cells the drifting Lilies pass
     flowSide: Map<number, number>;
     driftCells: Set<number>;
@@ -286,6 +287,7 @@ function newWalkGrid(
         boxHeight: geometry.boxHeight,
         boxColumn: geometry.boxColumn,
         boxRow: geometry.boxRow,
+        sideColumns: geometry.sideColumns,
         existenceGroups,
         groupExists,
         groupOfMember: geometry.groupOfMember,
@@ -344,6 +346,7 @@ function newWalkGrid(
         switchHops: [],
         pairHops: new Map(),
         pairArms: new Map(),
+        hopSources: new Map(),
         flowSide: geometry.flowSide,
         driftCells: new Set(),
         rovers: [],
@@ -463,6 +466,7 @@ export function buildWalkGrid(
     walkGrid.switchHops = switchHops;
     walkGrid.pairHops = pairHops;
     walkGrid.pairArms = pairArms;
+    walkGrid.hopSources = hopSourcesOf(hops, pairArms);
     placeDrift(walkGrid);
     placeKickedRides(walkGrid);
     markLookups(walkGrid);

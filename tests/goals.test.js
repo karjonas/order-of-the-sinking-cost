@@ -116,7 +116,7 @@ function view({ progress, status }, { endings = [], towerHidden = [], signShown 
         achievementHidden: () => false,
         achievementRule: () => null,
         gateShown: () => true,
-        gateArea: () => 'Heroes and Light',
+        gatePlace: () => 'Heroes and Light',
         signShown: () => signShown,
         stepShown: (node) => node.t !== 't' || !progress.towerHidden[node.id],
         heroDist: () => 0,

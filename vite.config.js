@@ -140,7 +140,8 @@ export default defineConfig({
     build: {
         outDir: DIST,
         emptyOutDir: true,
-        minify: true,
+        // the script is minified in rolldownOptions below, keeping its names
+        minify: false,
         cssMinify: true,
         sourcemap: true,
         modulePreload: { polyfill: false },
@@ -151,6 +152,7 @@ export default defineConfig({
                 format: 'es',
                 banner: '(function () {',
                 footer: '})();',
+                minify: { compress: true, mangle: false, codegen: { removeWhitespace: true } },
                 entryFileNames: 'viewer.js',
                 chunkFileNames: 'viewer-[name].js',
                 assetFileNames: assetFileName,

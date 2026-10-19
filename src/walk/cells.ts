@@ -7,7 +7,7 @@ import { PROG } from '../data.ts';
  * the fast-travel box (at and above z `boxZ` cells wrap inside the box, grid columns boxColumn..boxColumn+boxWidth-1,
  * rows boxRow..boxRow+boxHeight-1, instead of the whole grid).
  */
-export interface GridShape {
+export interface GridDimensions {
     cornerX: number;
     cornerY: number;
     width: number;
@@ -20,6 +20,14 @@ export interface GridShape {
     boxHeight: number;
     boxColumn: number;
     boxRow: number;
+}
+
+/**
+ * A grid's dimensions and, per side and column, the column offset of the neighbour on that side: first the table for
+ * the layers below the fast-travel box, then the one for the layers at and above it (`sideColumns`, see sideColumnsOf).
+ */
+export interface GridShape extends GridDimensions {
+    sideColumns: Int32Array;
 }
 
 /** A grid step [dx, dy]. */
@@ -114,7 +122,7 @@ export function gridCol(column: number, row: number): number {
 
 // the column offset in a z layer of the cell `columnsFromCorner` columns and `rowsFromCorner` rows from the box
 // corner, wrapped inside the box
-function inBox(walkGrid: GridShape, columnsFromCorner: number, rowsFromCorner: number): number {
+function inBox(walkGrid: GridDimensions, columnsFromCorner: number, rowsFromCorner: number): number {
     const { boxColumn, boxRow, boxWidth, boxHeight, width, height } = walkGrid;
     const column = mod(boxColumn + mod(columnsFromCorner, boxWidth), width);
     const row = mod(boxRow + mod(rowsFromCorner, boxHeight), height);
@@ -125,7 +133,7 @@ function inBox(walkGrid: GridShape, columnsFromCorner: number, rowsFromCorner: n
  * The cell key of world point x, y, z: (z + Z_BIAS) * width * height + row * width + column, with the column and row
  * wrapped in the grid (inside the fast-travel box at and above its z); -1 outside the z range.
  */
-export function cellOf(walkGrid: GridShape, x: number, y: number, z: number): number {
+export function cellOf(walkGrid: GridDimensions, x: number, y: number, z: number): number {
     const cellZ = Math.round(z);
     if (cellZ < 1 - Z_BIAS || cellZ >= walkGrid.layerCount - Z_BIAS - 1) return -1;
     const { width, height, layerCells, boxZ, boxColumn, boxRow } = walkGrid;
@@ -144,7 +152,7 @@ function wrapOnce(value: number, size: number): number {
 }
 
 /** The cell dx, dy (each -1..1) away from `cell` (not negative) in the same z. */
-export function neighbourOf(walkGrid: GridShape, cell: number, dx: number, dy: number): number {
+export function neighbourOf(walkGrid: GridDimensions, cell: number, dx: number, dy: number): number {
     const { width, height, layerCells } = walkGrid;
     const inLayer = cell % layerCells;
     const layerStart = cell - inLayer;
@@ -163,13 +171,46 @@ export function neighbourOf(walkGrid: GridShape, cell: number, dx: number, dy: n
 }
 
 /** The cell key of a grid column, row and z, without wrapping; -1 outside the z range. */
-export function keyOf(walkGrid: GridShape, column: number, row: number, z: number): number {
+export function keyOf(walkGrid: GridDimensions, column: number, row: number, z: number): number {
     if (z < 1 - Z_BIAS || z >= walkGrid.layerCount - Z_BIAS - 1) return -1;
     return (z + Z_BIAS) * walkGrid.layerCells + row * walkGrid.width + column;
 }
 
+/**
+ * The tables of GridShape.sideColumns: per side and column, the neighbour's column offset in the layer, for the layers
+ * below the fast-travel box and then for the layers at and above it.
+ */
+export function sideColumnsOf(dimensions: GridDimensions): Int32Array {
+    const layerCells = dimensions.layerCells;
+    const boxLayerStart = (dimensions.boxZ + Z_BIAS) * layerCells;
+    const sideColumns = new Int32Array(8 * layerCells);
+
+    for (let side = 0; side < 4; side++) {
+        const [dx, dy] = STEP[side];
+
+        for (let column = 0; column < layerCells; column++) {
+            const below = neighbourOf(dimensions, column, dx, dy);
+            let boxed = below;
+
+            if (Number.isFinite(boxLayerStart)) {
+                boxed = neighbourOf(dimensions, boxLayerStart + column, dx, dy) - boxLayerStart;
+            }
+
+            sideColumns[side * layerCells + column] = below;
+            sideColumns[(4 + side) * layerCells + column] = boxed;
+        }
+    }
+
+    return sideColumns;
+}
+
 /** The cell next to `cell` on side `side`. */
 export function cellOnSide(walkGrid: GridShape, cell: number, side: number): number {
-    const [dx, dy] = STEP[side];
-    return neighbourOf(walkGrid, cell, dx, dy);
+    const layerCells = walkGrid.layerCells;
+    const column = cell % layerCells;
+    const layerStart = cell - column;
+    let tableSide = side;
+    if (layerStart >= (walkGrid.boxZ + Z_BIAS) * layerCells) tableSide += 4;
+
+    return layerStart + walkGrid.sideColumns[tableSide * layerCells + column];
 }

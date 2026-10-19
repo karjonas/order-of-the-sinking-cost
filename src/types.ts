@@ -1,6 +1,7 @@
 // The shapes of the data files the viewer embeds: data/progress.json (with data/world.json merged in) and
 // data/walk.json, as docs/DATAFILES.md describes them. A trailing `exists` element of a world row is the entity's
 // existence when the level loads; rows without it always exist.
+import type { GlowGroup } from './map/level-icons.ts';
 
 /** A world position. */
 export type Position = [x: number, y: number, z: number];
@@ -21,6 +22,10 @@ export interface ProgressLevel {
     en?: number;
     /** Its tower_flags bits. */
     t?: number;
+    /** The glow colour group of its pad. */
+    glow: GlowGroup;
+    /** 1 when its pad is the 16-point star of a tower level. */
+    tower?: number;
     /** 1 for a dropdown. */
     d?: number;
     /** Its achievement name. */
@@ -50,6 +55,8 @@ export interface Tower {
     /** levels_required. */
     req: number;
     p: Position;
+    /** Index into `teleporters` of its `teleporter_id` pad when that is a MINOR pad (a high tower's is a MAJOR one). */
+    pad?: number;
 }
 
 /** An unlock id of a Freezer that is not a level: a Sign by rank, a tower Sign, the gold-room Sign, or another. */

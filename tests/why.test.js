@@ -19,8 +19,8 @@ function context(fromSky, skyShown) {
     };
 }
 
-test('a pocket entered only by a drop from a sky ledge is "from the Sky" once the sky shows', () => {
-    expect(whyText(context(true, true), 0)).toBe('from the Sky');
+test('a pocket entered only by a drop from a sky ledge is "from High" once the sky shows', () => {
+    expect(whyText(context(true, true), 0)).toBe('from High');
 });
 test('under fog it stays "no known route"', () => {
     expect(whyText(context(true, false), 0)).toBe('no known route');

@@ -13,8 +13,17 @@ export function mapLayerOf(z: number): string {
     return (layers.find((layer) => z >= layer.z[0] && z < layer.z[1]) || layers[1] || layers[0]).key;
 }
 
-export const layerName = (key: string): string =>
-    PROG.map?.layers.find((layer) => layer.key === key)?.name || key[0].toUpperCase() + key.slice(1);
+const LAYER_NAMES: Record<string, string> = { ground: 'Overworld', sky: 'High', underworld: 'Low' };
+
+/** A layer's name on the page: the overworld, and the High and Low layers above and below it. */
+export const layerName = (key: string): string => LAYER_NAMES[key] || key[0].toUpperCase() + key.slice(1);
+
+/** The way into a layer in prose: "the way up to High", "the way down to Low". */
+export function wayTo(key: string): string {
+    if (key === 'sky') return `the way up to ${layerName(key)}`;
+    if (key === 'underworld') return `the way down to ${layerName(key)}`;
+    return `the way to ${layerName(key)}`;
+}
 
 /** The offset `delta` on a circle of length `size`, taken the short way round: in (-size/2, size/2]. */
 export const wrapDelta = (delta: number, size: number): number => delta - Math.ceil(delta / size - 0.5) * size;

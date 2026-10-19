@@ -17,13 +17,20 @@ import { computeProgress } from './progress.ts';
 import type { ShownProgress } from './progress.ts';
 import type { PlanStep } from './requirements.ts';
 import { totalsOf } from './totals.ts';
-import type { Finds, ShownAt, TotalsStats, TreasureTotals } from './totals.ts';
+import type { ShownAt, TotalsStats, TreasureTotals } from './totals.ts';
+
+// added to the distance to a level on another layer, so every level on the layer is nearer than any on another
+const OTHER_LAYER_DISTANCE = 1e6;
+const OTHER_LAYER_SQUARED_DISTANCE = OTHER_LAYER_DISTANCE ** 2;
 
 /** Everything the page's progress view reads for one campaign. */
 export interface ProgressModel {
     status: Status | DemoStatus;
     progress: ShownProgress;
     levels: ProgressLevel[];
+    /** How many levels fog hides, and how many it leaves; a level the viewer clicks open leaves the hidden ones. */
+    readonly hiddenLevelCount: number;
+    readonly shownLevelCount: number;
     fog: Fog;
     /** Whether spoilers are hidden. */
     hide: boolean;
@@ -51,6 +58,12 @@ export interface ProgressModel {
     goalByKey: (key: string) => GoalView | null;
     goalFor: (key: string) => GoalView | null;
     gateArea: (freezer: number) => string | null;
+    /** A place-like name for a Freezer: its area while shown, else "near" the closest level not under fog; empty for none. */
+    gatePlace: (freezer: number) => string;
+    /** The closest level not under fog to a point on a layer key; -1 for none. */
+    nearestShownLevel: (x: number, y: number, layerKey: string) => number;
+    /** The name of the area a position is in while that area is shown; null for none. */
+    areaAt: (position: number[]) => string | null;
     stepShown: (step: PlanStep) => boolean;
     heroDist: (level: number) => number;
     onOverworld: boolean;
@@ -58,7 +71,6 @@ export interface ProgressModel {
     rooms: GoldRoom[];
     treasures: TreasureTotals;
     stats: TotalsStats;
-    finds: { signs: Finds; tps: Finds; logs: Finds };
     hero: { x: number; y: number; z: number } | null;
     /** The level the save is in; null for none. */
     inLevel: number | null;
@@ -108,7 +120,7 @@ export function progressModel(camp: string): ProgressModel {
 
     // the layers the fog has uncovered; null when nothing is hidden
     const known = hide ? fog.knownLayers() : null;
-    const totals = totalsOf({ status, progress: shownProgress, hide, shownAt, known });
+    const totals = totalsOf({ status, progress: shownProgress, hide, shownAt, known, towerHidden });
 
     // signs: the ones that open gates and the tower status signs; a status sign of a tower under fog is left out
     const allSigns = PROG.signs || [];
@@ -146,13 +158,15 @@ export function progressModel(camp: string): ProgressModel {
         shown: !achievementHidden(name),
     }));
 
-    // a Freezer is named by the area it stands in while that area is shown, else by its position
+    // a Freezer, sign or pad is named by the area it stands in while that area is shown, else by its position
     const gatePins = hide ? pinsOn : new Set(areas.map((area) => area.pin));
-    const gateArea = (freezer: number) => {
-        const area = heroAreaAt(PROG.freezers[freezer].p, gatePins);
+    const areaAt = (position: number[]) => {
+        const area = heroAreaAt(position, gatePins);
         if (area == null) return null;
         return areaName(areas[area]);
     };
+
+    const gateArea = (freezer: number) => areaAt(PROG.freezers[freezer].p);
 
     const gateShown = (freezer: number) => shownAt(FOG_LAYER_KEYS[PROG.freezers[freezer].l], PROG.freezers[freezer].p);
 
@@ -171,19 +185,55 @@ export function progressModel(camp: string): ProgressModel {
         return true;
     };
 
-    // the distance from the hero to a level, wrapped, the levels on the hero's layer first
-    const heroDist = (level: number) => {
-        const heroAt = history?.hero;
-        const size = (PROG.world?.grid || PROG.map)?.size;
-        if (!heroAt || !size) return 0;
+    const gridSize = (PROG.world?.grid || PROG.map)?.size;
+    const levelLayers = levels.map((level) => mapLayerOf(level.p[2]));
+
+    // how far a level is from a point along each axis, wrapped
+    const offsetToLevel = (x: number, y: number, level: number): [number, number] => {
+        if (!gridSize) return [0, 0];
 
         const position = levels[level].p;
-        const sameLayer = mapLayerOf(position[2]) === mapLayerOf(heroAt[2]);
-        const distance = Math.hypot(
-            wrapDelta(position[0] - heroAt[0], size[0]),
-            wrapDelta(position[1] - heroAt[1], size[1]),
-        );
-        return distance + (sameLayer ? 0 : 1e6);
+        return [wrapDelta(position[0] - x, gridSize[0]), wrapDelta(position[1] - y, gridSize[1])];
+    };
+
+    // the distance from the hero to a level, the levels on the hero's layer first
+    const heroDist = (level: number) => {
+        const heroAt = history?.hero;
+        if (!heroAt) return 0;
+
+        const distance = Math.hypot(...offsetToLevel(heroAt[0], heroAt[1], level));
+        if (!gridSize || levelLayers[level] === mapLayerOf(heroAt[2])) return distance;
+        return distance + OTHER_LAYER_DISTANCE;
+    };
+
+    // the closest level not under fog to a point on a layer, those on the layer first; -1 when every level is under fog
+    const nearestShownLevel = (x: number, y: number, layerKey: string): number => {
+        let nearest = -1;
+        let nearestSquared = Infinity;
+        for (let levelIndex = 0; levelIndex < levels.length; levelIndex++) {
+            if (shownProgress.hidden[levelIndex]) continue;
+
+            const [deltaX, deltaY] = offsetToLevel(x, y, levelIndex);
+            let squared = deltaX * deltaX + deltaY * deltaY;
+            if (gridSize && levelLayers[levelIndex] !== layerKey) squared += OTHER_LAYER_SQUARED_DISTANCE;
+            if (squared < nearestSquared) {
+                nearest = levelIndex;
+                nearestSquared = squared;
+            }
+        }
+
+        return nearest;
+    };
+
+    // a Freezer is named by its area while that area is shown, else by the nearest level not under fog
+    const gatePlace = (freezer: number): string => {
+        const area = gateArea(freezer);
+        if (area != null) return area;
+
+        const position = PROG.freezers[freezer].p;
+        const nearest = nearestShownLevel(position[0], position[1], mapLayerOf(position[2]));
+        if (nearest < 0) return '';
+        return `near ${levels[nearest].n}`;
     };
 
     const goalView = goalsView({
@@ -194,7 +244,7 @@ export function progressModel(camp: string): ProgressModel {
         achievementHidden,
         achievementRule: (name) => achievementRuleOf.get(name),
         gateShown,
-        gateArea,
+        gatePlace,
         signShown: (sign) => signSet.has(sign),
         stepShown,
         heroDist,
@@ -213,6 +263,12 @@ export function progressModel(camp: string): ProgressModel {
         status,
         progress: shownProgress,
         levels,
+        get hiddenLevelCount() {
+            return shownProgress.hidden.filter(Boolean).length;
+        },
+        get shownLevelCount() {
+            return levels.length - this.hiddenLevelCount;
+        },
         fog,
         hide,
         noFog: !fogData,
@@ -237,6 +293,9 @@ export function progressModel(camp: string): ProgressModel {
         goalByKey: goalView.goalByKey,
         goalFor: goalView.goalFor,
         gateArea,
+        gatePlace,
+        nearestShownLevel,
+        areaAt,
         stepShown,
         heroDist,
         onOverworld,
@@ -244,7 +303,6 @@ export function progressModel(camp: string): ProgressModel {
         rooms: totals.rooms,
         treasures: totals.treasures,
         stats: totals.stats,
-        finds: totals.finds,
         hero,
         inLevel,
         F: filtersOf(camp),

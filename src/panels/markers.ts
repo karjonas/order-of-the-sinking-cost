@@ -1,72 +1,47 @@
-// What the map draws for the progress view: the level markers by state or role, the towers, the area labels, the
-// overlays (Freezers, signs, pads, gold rooms, voice logs, map scrolls, treasures) and the key
+// What the map draws for the progress view: the level markers by state or role, the towers, the area labels and the
+// overlays (Freezers, signs, pads, gold rooms, voice logs, map scrolls, treasures)
 // (VIEWER.md "The page (viewer)", "The spoiler model (viewer)")
 import { PROG } from '../data.ts';
 import { escapeHtml } from '../util.ts';
-import {
-    achievementIcon,
-    OVERLAY_PATHS,
-    ringIcon,
-    ROLE_SHAPES,
-    ROLES,
-    shapeIcon,
-    starIcon,
-    STATE_COLORS,
-    towerIcon,
-} from '../map/icons.ts';
-import type { Role, ShapeName } from '../map/icons.ts';
+import { ROLES } from '../map/icons.ts';
+import type { IconName, Role } from '../map/icons.ts';
+import type { OverlayKind } from '../map/map-html.ts';
 import type { MapFreezer, MapLabel, MapMarker, MapOverlay, MapTower, MarkerStyle } from '../map/map-view.ts';
+import type { PanelKey } from '../shared.ts';
 import { achievementName } from '../model/achievements.ts';
 import { areaName } from '../model/areas.ts';
-import { capitalized, freezerNoun } from '../model/freezer-names.ts';
+import type { FindKind } from '../model/find-kinds.ts';
+import { capitalized, freezerNoun, isDoorway } from '../model/freezer-names.ts';
 import { roleFor } from '../model/goal-roles.ts';
 import { FOG_LAYER_KEYS, layerName, mapLayerOf } from '../model/layers.ts';
 import { stateLabel } from '../model/progress.ts';
 import { towerName } from '../model/towers.ts';
 import { signStateOf } from '../model/unlocking.ts';
+import type { LevelState } from '../model/unlocking.ts';
 import type { Area, GoldRoom, TreasureDisplay, ViewGiver, VoiceLog } from '../types.ts';
 import type { PanelContext } from './context.ts';
-import { FOG_TEXT, gateMode, signNeed, signText, stateDot, towerNameHtml } from './plan-chips.ts';
-
-/** How a level marker takes its colour: by its state, or by its role for the goal. */
-type MarkerColor =
-    | { source: 'state'; state: 'solved' | 'locked' | 'blocked' | 'unlocked' }
-    | { source: 'role'; role: Role };
-
-const isRole = (name: string): name is Role => name in ROLES;
+import { FOG_TEXT, gateMode, levelPadHtml, levelPadOf, signNeed, signText, towerNameHtml } from './plan-chips.ts';
 
 // Which overlay markers the map draws: what is left to do for the goal. Freezers that are open or that the goal does
 // not need, signs satisfied, and teleporters, gold rooms, logs, map scrolls and treasures found are left out, unless
-// the Solved chip asks for what is done.
-export const markerShown = (overlay: MapOverlay, solvedShown: boolean): boolean =>
-    solvedShown || (!overlay.done && overlay.req !== false);
+// the Solved toggle asks for what is done. Under Completionist every closed Freezer is drawn, whether or not it is needed.
+export function markerShown(overlay: MapOverlay, solvedShown: boolean, completionist: boolean): boolean {
+    if (solvedShown) return true;
+    if (overlay.done) return false;
 
-// the order markers are drawn in: solved, then the ones coloured by state (locked, blocked), then playable ones, then
-// playable ones on the goal's cheapest plans, then the level the save is in
-function drawRank(solved: boolean, stateColored: boolean, onPlan: boolean | undefined, current: boolean): number {
+    const isFreezer = overlay.kind === 'pods' || overlay.kind === 'doorways';
+    if (completionist && isFreezer) return true;
+    return overlay.req !== false;
+}
+
+// the order markers are drawn in: solved, then locked and blocked ones and those outside the goal, then playable ones,
+// then playable ones on the goal's cheapest plans, then the level the save is in
+function drawRank(levelState: LevelState, inGoal: boolean, onPlan: boolean | undefined, current: boolean): number {
     if (current) return 4;
-    if (solved) return 0;
-    if (stateColored) return 1;
+    if (levelState === 'solved') return 0;
+    if (levelState === 'locked' || levelState === 'blocked' || !inGoal) return 1;
     if (onPlan) return 3;
     return 2;
-}
-
-// solved, locked and blocked levels by state; playable ones by their role for the goal, with a ring once entered
-function colorOf(context: PanelContext, levelIndex: number): MarkerColor {
-    const levelState = context.progress.state[levelIndex];
-    if (levelState === 'solved' || levelState === 'locked' || levelState === 'blocked') {
-        return { source: 'state', state: levelState };
-    }
-
-    const role = context.entries.get(levelIndex)?.role;
-    if (role) return { source: 'role', role };
-    return { source: 'state', state: 'unlocked' };
-}
-
-// the key item that stands for a marker colour
-function colorKeyOf(markerColor: MarkerColor): string {
-    if (markerColor.source === 'role') return `role:${markerColor.role}`;
-    return `state:${markerColor.state}`;
 }
 
 // what a level's role for the goal says in its tooltip
@@ -74,47 +49,6 @@ function roleTip(context: PanelContext, levelIndex: number): string {
     const role = context.entries.get(levelIndex)?.role;
     if (!role) return '';
     return ` · ${ROLES[role][0]}`;
-}
-
-const KEY_ITEMS: Array<[colorKey: string, label: string, color: string]> = [
-    ['state:solved', 'Solved', STATE_COLORS.solved],
-    ...Object.entries(ROLES).map(([role, [label, color]]): [string, string, string] => [`role:${role}`, label, color]),
-    ['state:unlocked', 'Reachable', STATE_COLORS.unlocked],
-    ['state:blocked', 'Blocked', STATE_COLORS.blocked],
-    ['state:locked', 'Locked', STATE_COLORS.locked],
-];
-
-function keyIcon(colorKey: string, color: string): string {
-    if (colorKey === 'state:solved') return starIcon(color);
-    if (colorKey.startsWith('role:')) {
-        const role = colorKey.slice('role:'.length);
-        if (isRole(role)) return shapeIcon(ROLE_SHAPES[role], color);
-    }
-
-    return shapeIcon('circle', color);
-}
-
-// the key lists only the colours of markers the current filter draws on the map's layer
-export function keyHtml(context: PanelContext): string {
-    if (!context.goalIds.some((levelIndex) => context.match(levelIndex))) {
-        if (context.narrowed()) {
-            return '<span class="none">No levels match</span><button data-clear>Clear filters</button>';
-        }
-        return '';
-    }
-
-    const shown = context.goalIds.filter((levelIndex) => context.match(levelIndex) && context.inView(levelIndex));
-    if (!shown.length) return '';
-
-    const used = new Set(shown.map((levelIndex) => colorKeyOf(colorOf(context, levelIndex))));
-    let html = KEY_ITEMS.filter(([colorKey]) => used.has(colorKey))
-        .map(([colorKey, label, color]) => `<span>${keyIcon(colorKey, color)}${label}</span>`)
-        .join('');
-
-    if (shown.some((levelIndex) => context.started(levelIndex))) html += `<span>${ringIcon}Entered</span>`;
-    if (shown.some((levelIndex) => context.towerShown(levelIndex))) html += `<span>${towerIcon}Tower level</span>`;
-    if (shown.some((levelIndex) => context.levels[levelIndex].a)) html += `<span>${achievementIcon}Achievement</span>`;
-    return html;
 }
 
 // a level marker per level; a fogged tower stays unnamed on the levels it owns
@@ -130,7 +64,9 @@ export function levelMarkers(context: PanelContext): MapMarker[] {
 
         const freezerIndex = context.iceOf[levelIndex];
         let ice: MapFreezer | undefined;
-        if (freezerIndex !== undefined) ice = { id: 'g' + freezerIndex, open: progress.gateOpen[freezerIndex] };
+        if (freezerIndex !== undefined) {
+            ice = { id: 'g' + freezerIndex, doorway: isDoorway(freezerIndex), open: progress.gateOpen[freezerIndex] };
+        }
 
         return {
             levelIndex,
@@ -165,14 +101,25 @@ export function towerMarkers(context: PanelContext): MapTower[] {
             let activated = '';
             if (tower.active) activated = ' · activated';
 
+            // a tower with a pad of its own is drawn on the pad
+            let position = tower.p;
+            let padLine = '';
+            if (tower.pad !== undefined) {
+                position = context.teleporters[tower.pad].p;
+                padLine = '<br>Teleporter · not discovered';
+                if (context.model.padDisc(tower.pad)) padLine = '<br>Teleporter · discovered';
+            }
+
             const name = escapeHtml(towerName(tower.t));
             return {
                 towerIndex,
-                x: tower.p[0],
-                y: tower.p[1],
-                z: tower.p[2],
+                x: position[0],
+                y: position[1],
+                z: position[2],
                 activated: tower.active,
-                tip: `<b>${name}</b><br>${tower.solvedNormal} / ${tower.req} solved${activated}`,
+                onPad: tower.pad !== undefined,
+                padFound: tower.pad !== undefined && context.model.padDisc(tower.pad),
+                tip: `<b>${name}</b><br>${tower.solvedNormal} / ${tower.req} solved${activated}${padLine}`,
             };
         })
         .filter((tower) => !progress.towerHidden[tower.towerIndex]);
@@ -203,35 +150,27 @@ export function areaLabels(context: PanelContext): MapLabel[] {
         .map(({ area }): MapLabel => ({ x: area.p[0], y: area.p[1], z: area.p[2], text: areaName(area) }));
 }
 
-// how a level marker is drawn: hidden when the filter leaves it out, its colour, shape and rank
+// how a level marker is drawn: hidden when the filter leaves it out, its pad icon, the role badge of a level in the
+// goal that is not solved yet, and its rank
 export function markerStyle(context: PanelContext, marker: MapMarker): MarkerStyle {
     const levelIndex = marker.levelIndex;
     const progress = context.progress;
-    const markerColor = colorOf(context, levelIndex);
+    const levelState = progress.state[levelIndex];
     const current = levelIndex === context.model.inLevel;
-    const solved = progress.state[levelIndex] === 'solved';
-    const stateColored = markerColor.source === 'state';
-    const rank = drawRank(solved, stateColored, context.entries.get(levelIndex)?.onPlan, current);
+    const entry = context.entries.get(levelIndex);
+    const rank = drawRank(levelState, !!entry?.role, entry?.onPlan, current);
+    const pad = levelPadOf(progress, levelIndex);
 
-    let color: string;
-    let shape: ShapeName;
-    if (markerColor.source === 'state') {
-        color = STATE_COLORS[markerColor.state];
-        shape = 'circle';
-    } else {
-        color = ROLES[markerColor.role][1];
-        shape = ROLE_SHAPES[markerColor.role];
-    }
+    let role: Role | null = null;
+    if (entry?.role && levelState !== 'solved') role = entry.role;
 
     return {
         hidden: !context.match(levelIndex),
         gone: progress.hidden[levelIndex],
-        color,
-        star: solved,
-        shape,
-        ring: context.started(levelIndex),
+        pad: pad.icon,
+        blocked: pad.blocked,
+        role,
         big: context.towerShown(levelIndex),
-        achievement: !!context.levels[levelIndex].a,
         current,
         rank,
     };
@@ -239,7 +178,7 @@ export function markerStyle(context: PanelContext, marker: MapMarker): MarkerSty
 
 function levelNameHtml(context: PanelContext, levelIndex: number): string {
     if (context.progress.hidden[levelIndex]) return FOG_TEXT;
-    return stateDot(context.progress.state[levelIndex]) + escapeHtml(context.levels[levelIndex].n);
+    return levelPadHtml(context.progress, levelIndex) + escapeHtml(context.levels[levelIndex].n);
 }
 
 // overlays: Freezers, signs, MAJOR world pads, gold rooms at their hub endpoints, voice logs, map scrolls, treasure
@@ -277,20 +216,27 @@ function gateOverlay(context: PanelContext, freezerIndex: number): MapOverlay {
         }
     }
 
-    let className = 'gt';
-    if (isOpen) className += ' open';
+    let kind: OverlayKind = 'pods';
+    let icon: IconName = 'ice-cage';
+    if (isDoorway(freezerIndex)) {
+        kind = 'doorways';
+        icon = 'ice-gate';
+    }
+
     return {
         id: 'g' + freezerIndex,
-        attr: ['data-gate', freezerIndex],
+        panel: ['gate', freezerIndex],
         merge: context.iceLevel.get(freezerIndex),
-        kind: 'gates',
+        kind,
+        findKind: kind,
+        state: isOpen ? 'Open' : 'Closed',
         done: isOpen,
         req: roleFor(context.goal, 'g', freezerIndex) !== 'optional',
         layer: FOG_LAYER_KEYS[freezer.l],
         x: freezer.p[0],
         y: freezer.p[1],
-        cls: className,
-        d: OVERLAY_PATHS.gate,
+        position: freezer.p,
+        icon,
         tip,
     };
 }
@@ -302,7 +248,8 @@ function signOverlay(context: PanelContext, signIndex: number): MapOverlay {
     let signState = signStateOf(context.progress, sign);
     if (sign.status && signState === 'ready') signState = 'read';
 
-    let attr: [name: string, value: number] = ['data-sign', signIndex];
+    let panel: PanelKey = ['sign', signIndex];
+    let findKind: FindKind | null = 'signs';
     let status = 'Not yet';
     if (signState === 'read') status = 'Satisfied';
     if (signState === 'ready') status = 'Ready to read';
@@ -313,23 +260,27 @@ function signOverlay(context: PanelContext, signIndex: number): MapOverlay {
         if (tower.active) activated = ' · activated';
         const towerHtml = towerNameHtml(context, sign.tower);
         tip = `<b>Tower sign</b><br>${towerHtml}<br>${tower.solvedNormal} / ${tower.req} solved${activated}`;
-        attr = ['data-gtw', sign.tower];
+        panel = ['tower', sign.tower];
+
+        // a tower status sign is not among the signs that open Freezers, which the Signs row counts
+        findKind = null;
     }
 
-    let className = 'sg';
-    if (sign.status) className += ' status';
-    if (signState === 'read') className += ' ok';
-    if (signState === 'ready') className += ' ready';
+    let accent: MapOverlay['accent'];
+    if (signState === 'ready') accent = 'ready';
     return {
         id: 's' + signIndex,
-        attr,
-        kind: 'gates',
+        panel,
+        kind: 'signs',
+        findKind,
+        state: status,
         done: signState === 'read',
         layer: FOG_LAYER_KEYS[sign.l],
         x: sign.p[0],
         y: sign.p[1],
-        cls: className,
-        d: OVERLAY_PATHS.sign,
+        position: sign.p,
+        icon: 'sign',
+        accent,
         tip,
     };
 }
@@ -339,43 +290,46 @@ function padOverlay(context: PanelContext, teleporterIndex: number): MapOverlay 
     const pad = context.teleporters[teleporterIndex];
     const discovered = context.model.padDisc(teleporterIndex);
     let status = 'Not discovered';
-    let className = 'tp off';
-    if (discovered) {
-        status = 'Discovered';
-        className = 'tp';
-    }
+    if (discovered) status = 'Discovered';
 
     let disabled = ' · disabled';
     if (context.progress.tst[teleporterIndex].en) disabled = '';
     return {
+        id: 'p' + teleporterIndex,
         kind: 'tps',
+        findKind: 'tps',
+        state: status,
         layer: FOG_LAYER_KEYS[pad.l],
         x: pad.p[0],
         y: pad.p[1],
+        position: pad.p,
         done: discovered,
-        cls: className,
-        d: OVERLAY_PATHS.tp,
+        icon: 'teleporter',
+        dimUntilDone: true,
         tip: `<b>Teleporter</b><br>${status}${disabled}`,
     };
 }
 
 // a gold room is visited once its endpoint is discovered, and open once its tower is activated
-function goldRoomState(context: PanelContext, room: GoldRoom): [roomClass: string, label: string] {
+function goldRoomLabel(context: PanelContext, room: GoldRoom): string {
     const states = context.progress.tst;
-    if (states[room.endpoint].disc) return ['done', 'Visited'];
+    if (states[room.endpoint].disc) return 'Visited';
 
     const tower = context.progress.towers[room.tower];
-    if (tower?.active || states[room.pad]?.en || states[room.endpoint].en) return ['unl', 'Open, not visited'];
-    return ['', 'Locked'];
+    if (tower?.active || states[room.pad]?.en || states[room.endpoint].en) return 'Open, not visited';
+    return 'Locked';
 }
 
 function goldRoomOverlay(context: PanelContext, room: GoldRoom): MapOverlay {
     const progress = context.progress;
     const endpoint = context.teleporters[room.endpoint];
     const tower = progress.towers[room.tower];
-    const [roomClass, label] = goldRoomState(context, room);
-    let attr: [name: string, value: number] | undefined;
-    if (tower && !progress.towerHidden[room.tower]) attr = ['data-gtw', room.tower];
+    const label = goldRoomLabel(context, room);
+    const visited = progress.tst[room.endpoint].disc;
+    let accent: MapOverlay['accent'];
+    if (visited) accent = 'gold';
+    let panel: PanelKey | undefined;
+    if (tower && !progress.towerHidden[room.tower]) panel = ['tower', room.tower];
 
     let towerLine = '';
     if (tower) {
@@ -384,15 +338,23 @@ function goldRoomOverlay(context: PanelContext, room: GoldRoom): MapOverlay {
         towerLine = `<br>${towerNameHtml(context, room.tower)}${activated}`;
     }
 
+    let place = 'Antipode';
+    if (tower) place = towerName(tower.t);
+
     return {
-        kind: 'tps',
+        id: 'r' + room.endpoint,
+        kind: 'gold',
+        findKind: 'towerPads',
+        place,
+        state: label,
         layer: FOG_LAYER_KEYS[endpoint.l],
         x: endpoint.p[0],
         y: endpoint.p[1],
-        done: progress.tst[room.endpoint].disc,
-        cls: 'gr ' + roomClass,
-        d: OVERLAY_PATHS.gold,
-        attr,
+        position: endpoint.p,
+        done: visited,
+        icon: 'gold-room',
+        accent,
+        panel,
         tip: `<b>Antipode teleporter</b><br>${label}${towerLine}`,
     };
 }
@@ -400,20 +362,19 @@ function goldRoomOverlay(context: PanelContext, room: GoldRoom): MapOverlay {
 function voiceLogOverlay(context: PanelContext, log: VoiceLog): MapOverlay {
     const heard = context.model.heard(log);
     let status = 'Not heard';
-    let className = 'vl off';
-    if (heard) {
-        status = 'Heard';
-        className = 'vl';
-    }
+    if (heard) status = 'Heard';
 
     return {
+        id: 'l' + log.pid,
         kind: 'logs',
+        findKind: 'logs',
+        state: status,
         layer: FOG_LAYER_KEYS[log.l],
         x: log.p[0],
         y: log.p[1],
+        position: log.p,
         done: heard,
-        cls: className,
-        d: OVERLAY_PATHS.log,
+        icon: 'voice-log',
         tip: `<b>Voice log</b><br>${status}`,
     };
 }
@@ -421,41 +382,43 @@ function voiceLogOverlay(context: PanelContext, log: VoiceLog): MapOverlay {
 function mapScrollOverlay(context: PanelContext, giver: ViewGiver): MapOverlay {
     const taken = context.model.taken(giver);
     let status = 'Not taken';
-    let className = 'vg off';
-    if (taken) {
-        status = 'Taken';
-        className = 'vg';
-    }
+    if (taken) status = 'Taken';
 
     return {
+        id: 'm' + giver.pid,
         kind: 'maps',
+        findKind: 'maps',
+        state: status,
         layer: FOG_LAYER_KEYS[giver.l],
         x: giver.p[0],
         y: giver.p[1],
+        position: giver.p,
         done: taken,
-        cls: className,
-        d: OVERLAY_PATHS.map,
+        icon: 'map-scroll',
         tip: `<b>Map scroll</b><br>${escapeHtml(layerName(FOG_LAYER_KEYS[giver.l]))} · ${status}`,
     };
 }
 
-function treasureOverlay(plinth: TreasureDisplay, acquired: number): MapOverlay {
+function treasureOverlay(context: PanelContext, plinth: TreasureDisplay, acquired: number): MapOverlay {
     const got = acquired > plinth.i;
     let status = 'Empty';
-    let className = 'tr off';
+    let icon: IconName = 'treasure';
     if (got) {
         status = 'Acquired';
-        className = 'tr';
+        icon = 'treasure-taken';
     }
 
     return {
+        id: 't' + plinth.i,
         kind: 'treasures',
+        findKind: 'treasures',
+        state: status,
         layer: mapLayerOf(plinth.p[2]),
         x: plinth.p[0],
         y: plinth.p[1],
+        position: plinth.p,
         done: got,
-        cls: className,
-        d: OVERLAY_PATHS.treasure,
+        icon,
         tip: `<b>Treasure plinth ${plinth.i + 1}</b><br>${status}`,
     };
 }
@@ -472,6 +435,6 @@ export function overlaysOf(context: PanelContext): MapOverlay[] {
         ...model.rooms.map((room) => goldRoomOverlay(context, room)),
         ...model.logs.map((log) => voiceLogOverlay(context, voiceLogs[log])),
         ...model.maps.map((giver) => mapScrollOverlay(context, viewGivers[giver])),
-        ...plinths.map((plinth) => treasureOverlay(plinth, acquired)),
+        ...plinths.map((plinth) => treasureOverlay(context, plinth, acquired)),
     ];
 }

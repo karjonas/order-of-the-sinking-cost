@@ -2,16 +2,13 @@
 // the achievements listed inline, and the picking of a goal for the list and the map (VIEWER.md "The page (viewer)",
 // "Goals (viewer)")
 import { $, escapeHtml } from '../util.ts';
-import { hooks } from '../shared.ts';
+import { hooks, showGoalList } from '../shared.ts';
 import { progressBarHtml } from '../format.ts';
-import { checkIcon } from '../map/icons.ts';
+import { CHEVRON, checkIcon } from '../map/icons.ts';
 import type { GoalView } from '../model/goals-view.ts';
 import type { ProgressModel } from '../model/progress-model.ts';
-import type { Finds } from '../model/totals.ts';
 import { show } from '../view.ts';
-
-// goals with children (the first ending, the towers, the achievements) that are listed open
-const goalsOpen = new Set<string>();
+import { isGoalOpen } from './sections.ts';
 
 // "23 left" for an ending (plan steps left), "1 / 4" for the first ending's Antipode teleporters visited, "teleporter"
 // for a ground tower activated whose teleporter is not visited, "3 / 16" for the rest; a trailing + says more is under
@@ -54,52 +51,63 @@ function goalTip(goal: GoalView): string {
     return parts.join(' · ');
 }
 
-function goalMark(goal: GoalView): string {
+const TODO_MARK = '<span class="mk todo" title="To do">○</span>';
+const NO_MARK = '<span class="mk"></span>';
+
+// a goal's mark, in a column of its own: a check when done, a filled diamond for the current one, else the given one: a
+// top-level goal gets a circle to do; a child goal has a mark only when it is done or current, its name standing under
+// its parent's, after the mark column
+function goalMark(goal: GoalView, otherwise: string): string {
     if (goal.done) return `<span class="mk" title="Done">${checkIcon}</span>`;
     if (goal.active) return '<span class="mk now" title="Your current goal">◆</span>';
-    return '<span class="mk"></span>';
+    return otherwise;
 }
 
+// a goal's row: its mark, name, a chevron after the name on a goal with children, and the count at the right; the
+// current goal has a thin progress bar under it. A child of a single item has no count.
 function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, open: boolean): string {
     const classes = ['plain', 'gl'];
-    if (isChild) classes.push('kid');
     if (goal.done) classes.push('done');
     if (goal.onPlan === false) classes.push('off');
 
     const selected = goal.key === selectedKey;
     if (selected) classes.push('on');
 
-    const expandable = !!goal.children?.length;
+    const childSelected = !!goal.children?.some((child) => child.key === selectedKey);
+    if (childSelected) classes.push('sub');
+
+    let countText = goalCountText(goal);
+    if (isChild && goal.progress?.[1] === 1 && !goal.next) countText = '';
+
     let chevron = '';
     let expanded = '';
-    if (expandable) {
-        let mark = '▸';
-        if (open) mark = '▾';
-        chevron = `<i class="chev" aria-hidden="true">${mark}</i>`;
+    if (goal.children?.length) {
+        chevron = CHEVRON;
         expanded = ` aria-expanded="${open}"`;
-    }
-
-    let progressBar = '';
-    if (goal.progress && !goal.done && goal.progress[1] > 0) {
-        progressBar = progressBarHtml(goal.progress[0], goal.progress[1]);
     }
 
     const key = escapeHtml(goal.key);
     const tip = escapeHtml(goalTip(goal));
     const attributes = `data-goal="${key}" aria-pressed="${selected}"${expanded} title="${tip}"`;
-    const label = `<span class="n">${escapeHtml(goal.label)}</span>`;
-    const count = `<span class="cnt">${goalCountText(goal)}${chevron}</span>`;
-    const content = goalMark(goal) + label + count + progressBar;
-    return `<button class="${classes.join(' ')}" ${attributes}>${content}</button>`;
-}
+    const name = escapeHtml(goal.label);
+    let content = '';
+    if (isChild) {
+        content = `${goalMark(goal, NO_MARK)}<span class="n">${name}</span>`;
+    } else {
+        content = `${goalMark(goal, TODO_MARK)}<span class="n">${name}</span>${chevron}`;
+    }
 
-/** What the row of a totals line says about the things not found yet. */
-export function finderTip(finder: Finds): string {
-    if (finder.ready) return 'Show the ones ready to read, then the rest, on the map';
-    if (finder.open.length) return 'Show the ones not found yet on the map';
-    if (finder.fogged) return 'None left outside the fog';
-    if (finder.off) return 'The rest are not on the map';
-    return 'All found';
+    content += `<span class="cnt">${countText}</span>`;
+    const row = `<button class="${classes.join(' ')}" ${attributes}>${content}</button>`;
+
+    let progressBar = '';
+    if (!isChild && goal.active && goal.progress && goal.progress[1] > 0) {
+        progressBar = progressBarHtml(goal.progress[0], goal.progress[1]);
+    }
+
+    let rowClass = 'gr';
+    if (isChild) rowClass += ' kid';
+    return `<div class="${rowClass}">${row}${progressBar}</div>`;
 }
 
 export function sideGoalsHtml(model: ProgressModel): string {
@@ -110,18 +118,11 @@ export function sideGoalsHtml(model: ProgressModel): string {
     if (!selected) return head;
 
     const rows = model.goals.map((goal) => {
-        const childSelected = goal.children?.some((child) => child.key === selected.key);
-        const open = goalsOpen.has(goal.key) || !!childSelected;
+        const open = isGoalOpen(goal.key);
         let html = goalRowHtml(goal, selected.key, false, open);
         if (open) {
             const kids = (goal.children ?? []).map((child) => goalRowHtml(child, selected.key, true, false)).join('');
-            let details = '';
-            if (goal.kind === 'achievements') {
-                const title = 'Every achievement and what earns it';
-                details = `<button class="plain lnk" id="achBtn" title="${title}">Details</button>`;
-            }
-
-            html += `<div class="kids">${kids}</div>${details}`;
+            html += `<div class="kids">${kids}</div>`;
         }
 
         return html;
@@ -138,20 +139,15 @@ export function refreshSideGoals(): void {
 }
 
 /**
- * Picks a goal for the list and the map; a goal with children opens (or closes, when it was the pick) its list. A tower
- * (a ground tower under the first ending too) also adds its chip and is framed on the map. The active goal is stored as
- * none, so the default follows progress.
+ * Picks a goal for the list and the map; the list of the goal shows in place of a kind of mark's. A tower (a ground tower
+ * under the first ending too) also adds its chip and is framed on the map. The active goal is stored as none, so the
+ * default follows progress.
  */
 export function pickGoal(model: ProgressModel, key: string): void {
     const goal = model.goalByKey(key);
     if (!goal) return;
 
     const filters = model.F;
-    if (goal.children?.length) {
-        if (model.goalFor(filters.goal)?.key === key && goalsOpen.has(key)) goalsOpen.delete(key);
-        else goalsOpen.add(key);
-    }
-
     const isActiveTopLevel = model.goals.some((each) => each === goal && each.active);
     if (isActiveTopLevel) filters.goal = '';
     else filters.goal = key;
@@ -160,6 +156,7 @@ export function pickGoal(model: ProgressModel, key: string): void {
     if (towerIndex != null) filters.tower = String(towerIndex);
     else filters.tower = '';
 
+    showGoalList(filters);
     if (hooks.apply) hooks.apply();
     else show();
 

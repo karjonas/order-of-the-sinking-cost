@@ -191,8 +191,8 @@ function liveFinds(live, room, entry) {
     try {
         const floodState = newFloodState(live.triggers, live.lanes.length, null, true, false, true, false);
 
-        for (const { cell, target } of live.triggers.rocks) {
-            if (target !== undefined || !roomCells.has(cell)) continue;
+        for (const { cell, target, skips } of live.triggers.rocks) {
+            if (target !== undefined || skips || !roomCells.has(cell)) continue;
 
             const waterCells = new Set();
             sinkOf(live, floodState, cell, newMiss(), (waterCell) => {

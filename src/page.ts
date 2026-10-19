@@ -16,7 +16,7 @@ type FocusPath = [id: string, path: number[]];
 
 // a redraw of the same campaign keeps these scroll positions and the focused element (by id, else by its child-index
 // path from the nearest element with an id)
-const KEEP_SCROLL = ['#sidebar', '#sideAreas', '#pgRows', '#pgMap .sel'];
+const KEEP_SCROLL = ['#sidebar', '#sideAreas', '#pgRows', '#pgSel'];
 
 function focusPath(start: Element | null): FocusPath | null {
     if (!start || start === document.body) return null;

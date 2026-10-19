@@ -187,6 +187,12 @@ function closeWith(
     return null;
 }
 
+/** Whether the Rock can sink as a link of a chain: it can still sink, and it is no skipping stone, which skips on. */
+function chainable(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
+    if (walkGrid.triggers.rocks[rockIndex].skips) return false;
+    return rockFree(walkGrid, floodState, rockIndex);
+}
+
 /** How many TELEPORT swaps have put an object in the cell of one of the Rocks `rockIndices`. */
 function swapsOfRocks(walkGrid: WalkGrid, floodState: FloodState, rockIndices: number[]): number {
     let count = 0;
@@ -211,13 +217,13 @@ export function sinkChained(walkGrid: WalkGrid, floodState: FloodState): boolean
     let sank = false;
 
     for (const rockIndex of rocksDue) {
-        if (!rockFree(walkGrid, floodState, rockIndex)) continue;
+        if (!chainable(walkGrid, floodState, rockIndex)) continue;
 
         const known = chainMisses[rockIndex];
         if (known && known.due === rocksDue.length && !missChanged(walkGrid, floodState, known.miss, swaps)) continue;
 
         const miss: PressMiss = { inputs: pressInputs(floodState) + swaps, pushCells: [], wallStops: [] };
-        const available = rocksDue.filter((candidate) => rockFree(walkGrid, floodState, candidate));
+        const available = rocksDue.filter((candidate) => chainable(walkGrid, floodState, candidate));
         const chain = closeGap(walkGrid, floodState, rockIndex, available, [], miss);
 
         if (!chain) {

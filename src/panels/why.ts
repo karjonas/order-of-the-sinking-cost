@@ -3,7 +3,7 @@
 // achievement) (VIEWER.md "Pockets, leads and why", "The spoiler model (viewer)")
 import { hasAchievement } from '../model/achievements.ts';
 import { freezerNoun, freezersNoun } from '../model/freezer-names.ts';
-import { layerName } from '../model/layers.ts';
+import { layerName, wayTo } from '../model/layers.ts';
 import type { PanelContext } from './context.ts';
 
 /**
@@ -65,7 +65,7 @@ export function whyParts(context: PanelContext, levelIndex: number): WhyParts {
     // a layer the walk has not reached, named once its way onto it shows as a plan step
     let layerText = '';
     if (layer && context.model.stepShown({ t: 'a', id: layer })) {
-        layerText = `needs the way onto the ${layerName(layer)}`;
+        layerText = `needs ${wayTo(layer)}`;
     }
 
     // a drop from a sky ledge leads into the level's pocket; named once the sky shows
@@ -91,7 +91,7 @@ export function whyText(context: PanelContext, levelIndex: number): string {
     const parts = whyParts(context, levelIndex);
     const text = [parts.gate, parts.mech, parts.layer].filter(Boolean).join(' · ');
     if (text) return text;
-    if (parts.none && parts.fromSky) return `from the ${layerName('sky')}`;
+    if (parts.none && parts.fromSky) return `from ${layerName('sky')}`;
     if (parts.none) return 'no known route';
     return 'not reachable from where you have been';
 }

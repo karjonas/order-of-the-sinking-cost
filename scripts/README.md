@@ -26,6 +26,13 @@ Game folder: `--game DIR`, else `$SOKO_GAME`, else the Steam install. Saves: `$S
 | 8 | `build-walk.js` | `data/progress.json` (hashes `data/world.json` too) | `data/walk.json` | `npm run data:walk` |
 | 9 | `vite.config.js` | `src/`, `public/assets/`, `data/schema.json`, `data/progress.json`, `data/walk.json` | `dist/viewer.html`, `dist/viewer.js`, `dist/viewer.css`, `dist/viewer.js.map`, `dist/assets/` | `npm run build` |
 
+`build-icons.js` stands alone, like the map images: `npm run icons` renders the marker icons from the game's 3D models
+into `public/assets/icons/` (committed, not part of `npm run data`). It reads the game's render assets, the overworld
+entities in `data/levels.package` and `data/schema.json`, and needs ImageMagick (`magick`, with AVIF support) on the
+PATH or in WSL to write the AVIFs. `--only <name,...>` renders some icons, `--png <dir>` writes PNG previews to a folder
+instead (no ImageMagick needed, `public/` untouched) and `--size <px>` sets the preview size. See
+[The marker icons](../docs/DATAFILES.md#the-marker-icons).
+
 `npm run data` runs steps 2 to 8 in order. `build-fog.js` also takes a campaign folder and then prints a report on
 that save: `npm run data:fog -- "<campaign folder>"`.
 
@@ -65,5 +72,3 @@ streams in `world.json` and `progress.json` differ between zlib implementations,
   `tests/walk-exact.test.js` does the same for the fresh campaign and two small changes of it against hashes in
   `tests/walk-exact.expected.json`; regenerate them with `UPDATE_WALK_EXPECTED=1 npx vp test run
   tests/walk-exact.test.js` after an intended change of the walk or new game data.
-- `npm run trace -- <line:col>` (or a pasted stack on stdin): the source position of a position in the minified build,
-  from `dist/viewer.js.map`.

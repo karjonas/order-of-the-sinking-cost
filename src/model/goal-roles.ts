@@ -36,14 +36,15 @@ function askers(graph: Graph, parents: number[][], id: number): number[] {
 }
 
 /**
- * The routes of a requirement: its parts that have a plan that does not run back through it (a rank's ASCEND needs the
- * way onto the sky, which needs that rank).
+ * The routes of a requirement: its parts, but for those whose plan runs back through it (a rank's ASCEND needs the way
+ * onto the sky, which needs that rank). A part with no plan (it waits in a cycle of requirements) is still a route: the
+ * requirement needs one of its parts whether or not a plan finds the way.
  */
 export function goalRoutes(plans: Plans, id: number): number[] {
     const { G: graph, steps, settled, parents } = plans;
     const through = askers(graph, parents, id);
     return graph.parts[id].filter((part) => {
-        if (settled[part] < 0) return false;
+        if (settled[part] < 0) return true;
         return !through.some((asker) => steps[part]!.has(asker));
     });
 }

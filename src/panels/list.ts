@@ -1,21 +1,18 @@
-// The results list: the goal's levels in groups, the chips that narrow it, its count, and showing a level in it
-// (VIEWER.md "The page (viewer)")
-import { $, countBy, escapeHtml } from '../util.ts';
-import { clearNarrowing, listAllLayers } from '../shared.ts';
-import { percent, progressBarHtml } from '../format.ts';
+// The results list: the goal's levels in groups or a search's matches, the chips that narrow it, its count, and showing a
+// level in it (VIEWER.md "The page (viewer)")
+import { $, escapeHtml } from '../util.ts';
+import { clearNarrowing } from '../shared.ts';
 import { roleDot, ROLES } from '../map/icons.ts';
 import { areaName } from '../model/areas.ts';
-import { AREA_LAYERS, layerName } from '../model/layers.ts';
 import { stateLabel } from '../model/progress.ts';
 import { towerName } from '../model/towers.ts';
 import type { TowerProgress } from '../model/towers.ts';
 import type { Area } from '../types.ts';
 import { refreshSideAreas, syncSide } from '../sidebar.ts';
 import { refreshSideGoals } from '../sidebar/goals.ts';
-import { chipOfState, STATE_CHIPS } from './context.ts';
 import type { ListedLevel, PanelContext } from './context.ts';
-import { keyHtml } from './markers.ts';
-import { stateDot, wrappable } from './plan-chips.ts';
+import { drawFindList } from './find-list.ts';
+import { layerTagHtml, levelPadHtml, wrappable } from './plan-chips.ts';
 import { approxTip, whyText } from './why.ts';
 
 type ListGroup = ListedLevel['group'];
@@ -26,7 +23,7 @@ interface RowBlock {
     shown: number[];
 }
 
-// the list's groups in order, as the model groups its levels; solved levels follow when their chip is on
+// the list's groups in order, as the model groups its levels; the solved ones show with the Solved toggle on
 const GROUP_ORDER: ListGroup[] = ['playable', 'blocked', 'locked', 'solved'];
 
 const GROUP_HEADS: Record<ListGroup, string> = {
@@ -38,24 +35,15 @@ const GROUP_HEADS: Record<ListGroup, string> = {
 
 export const NEAR = '<span class="muted" title="Outside every area box; grouped with the nearest area">≈ </span>';
 
-// solved levels out of the levels not under fog, with the partially solved ones in the bar
-function stripHtml(context: PanelContext): string {
-    const progress = context.progress;
-    const notHidden = context.levels.length - context.hiddenCount();
-    const partial = progress.state.filter(
-        (levelState, levelIndex) => levelState === 'partial' && !progress.hidden[levelIndex],
-    ).length;
-
-    const solvedPercent = percent(progress.solved, notHidden);
-    const bar = progressBarHtml(progress.solved, notHidden, partial);
-    const label = `${solvedPercent} <span class="lb">solved</span>`;
-    return `<span class="pc" title="of levels not under fog">${label}</span>${bar}`;
-}
-
+// a search row is the level alone; a goal row also tells the level's role and where it leads
 function rowHtml(context: PanelContext, levelIndex: number, tab: boolean): string {
     const level = context.levels[levelIndex];
-    const entry = context.entryOf(levelIndex);
     const levelState = context.progress.state[levelIndex];
+    let entry: ListedLevel | undefined;
+    if (!context.searching()) entry = context.entries.get(levelIndex);
+
+    const role = entry?.role ?? null;
+    const leadsTo = entry?.leadsTo ?? '';
     const areaIndex = context.areaOf(levelIndex);
     let area = '';
     if (areaIndex != null) area = areaName(context.areas[areaIndex]);
@@ -68,30 +56,30 @@ function rowHtml(context: PanelContext, levelIndex: number, tab: boolean): strin
 
     let layerTag = '';
     if (context.mapLayer && !context.inView(levelIndex)) {
-        layerTag = `<span class="lt">${escapeHtml(layerName(context.layerOf(levelIndex)))}</span>`;
+        layerTag = layerTagHtml(context.layerOf(levelIndex));
     }
 
     // the level's own area is left off when the text already ends with it
     let line = where;
-    if (entry.leadsTo) {
-        line = escapeHtml(entry.leadsTo);
-        if (where && !entry.leadsTo.endsWith(area)) line += ' · ' + where;
+    if (leadsTo) {
+        line = escapeHtml(leadsTo);
+        if (where && !leadsTo.endsWith(area)) line += ' · ' + where;
     }
 
     let why = '';
-    if (entry.group === 'blocked') why = whyText(context, levelIndex);
+    if (entry?.group === 'blocked') why = whyText(context, levelIndex);
 
     let roleText = '';
-    if (entry.role) roleText = ROLES[entry.role][0];
+    if (role) roleText = ROLES[role][0];
 
     let leadsText = '';
-    if (entry.leadsTo) leadsText = '→ ' + entry.leadsTo;
+    if (leadsTo) leadsText = '→ ' + leadsTo;
 
     const stateText = stateLabel(context.progress, levelState);
     const tip = [stateText, roleText, leadsText, why, area].filter(Boolean).join(' · ');
 
     const classes = ['plain', 'rr'];
-    if (!entry.role) classes.push('nr');
+    if (!role) classes.push('nr');
     if (context.selected === levelIndex) classes.push('on');
 
     let tabIndex = -1;
@@ -99,25 +87,10 @@ function rowHtml(context: PanelContext, levelIndex: number, tab: boolean): strin
 
     const title = escapeHtml(tip);
     const attributes = `id="pg-${levelIndex}" data-sel="${levelIndex}" tabindex="${tabIndex}" title="${title}"`;
-    const dots = stateDot(levelState) + roleDot(entry.role);
+    const dots = levelPadHtml(context.progress, levelIndex) + roleDot(role);
     const name = `<span class="nm">${wrappable(level.n)}</span>`;
     const areaLine = `<span class="ar">${layerTag}${line}</span>`;
     return `<button class="${classes.join(' ')}" ${attributes}>${dots}${name}${areaLine}</button>`;
-}
-
-// matches on the map's other layers, as "3 more on Sky · 1 on Underworld"
-function moreHtml(context: PanelContext): string {
-    const byLayer = countBy(context.others, (levelIndex) => context.layerOf(levelIndex));
-    const parts = AREA_LAYERS.filter((key) => byLayer.has(key)).map((key, index) => {
-        let more = '';
-        if (!index) more = 'more ';
-
-        const name = escapeHtml(layerName(key));
-        return `<button class="plain lnk" data-layer-go="${key}">${byLayer.get(key)} ${more}on ${name}</button>`;
-    });
-
-    if (!parts.length) return '';
-    return `<div class="foot muted">${parts.join(' · ')}</div>`;
 }
 
 // the listed levels per group: the ones on the goal's cheapest plans first, then the one-of levels that could stand in
@@ -158,26 +131,16 @@ function emptyHtml(context: PanelContext): string {
     const goal = context.goal;
     if (!goal) return '<div class="none muted">Working out the goals…</div>';
 
-    if (context.narrowed()) {
-        let everything = '';
-        const everyState = context.filters.states.length === STATE_CHIPS.length;
-        if (context.filters.q && (goal.kind !== 'completionist' || !everyState)) {
-            everything = ' <button data-all-levels>Search every level</button>';
-        }
-
-        const clearButton = '<button data-clear>Clear filters</button>';
-        return `<div class="none"><span class="muted">No levels match.</span> ${clearButton}${everything}</div>`;
-    }
-
+    if (context.searching() || context.narrowed()) return '<div class="none muted">No levels match</div>';
+    if (context.filters.solved) return '<div class="none muted">No solved levels yet.</div>';
     if (goal.done) return `<div class="none muted">${escapeHtml(goal.label)} is done.</div>`;
-    if (context.matched.length) return '<div class="none muted">No more on this layer.</div>';
     if (goal.fogged) return '<div class="none muted">Nothing to show yet; more is under fog.</div>';
     return `<div class="none muted">No levels left for ${escapeHtml(goal.label)}.</div>`;
 }
 
-// the chips above the list: the tower and area chips, removable, then the state chips, which narrow the list
+// the chips above the list: the tower and area chips, removable; a search ignores them and hides them
 function chipsHtml(context: PanelContext): string {
-    if (!context.goal) return '';
+    if (!context.goal || context.searching()) return '';
 
     const filters = context.filters;
     let area: Area | undefined;
@@ -186,11 +149,6 @@ function chipsHtml(context: PanelContext): string {
     let tower: TowerProgress | undefined;
     if (filters.tower !== '') tower = context.progress.towers[Number(filters.tower)];
 
-    const counted = context.goalIds.filter(
-        (levelIndex) =>
-            context.keptByNarrowing(levelIndex) && (context.listsEveryLayer() || context.inView(levelIndex)),
-    );
-    const counts = countBy(counted, (levelIndex) => chipOfState(context.progress.state[levelIndex]));
     const closeMark = '<span aria-hidden="true">×</span>';
     let html = '';
     if (tower) {
@@ -205,68 +163,85 @@ function chipsHtml(context: PanelContext): string {
         html += `<button class="plain chip rm" ${attributes}>${name} ${closeMark}</button>`;
     }
 
-    for (const [key, label] of STATE_CHIPS) {
-        if (key === 'blocked' && !context.progress.reach) continue;
-
-        const pressed = filters.states.includes(key);
-        const count = counts.get(key) || 0;
-        let pressedClass = '';
-        if (pressed) pressedClass = ' on';
-        let disabled = '';
-        if (!pressed && !count) disabled = ' disabled';
-
-        const attributes = `id="pgst-${key}" data-state="${key}" aria-pressed="${pressed}"${disabled}`;
-        const countSpan = `<span class="n">${count}</span>`;
-        html += `<button class="plain chip st${pressedClass}" ${attributes}>${label} ${countSpan}</button>`;
-    }
-
     return html;
 }
 
+// the heading above the list: the search's count, or the goal with what is left of it or solved, and the To do | Solved
+// toggle (a search lists every level, so it has no toggle)
 function countHtml(context: PanelContext): string {
     const goal = context.goal;
     if (!goal) return '';
 
-    const total = context.goalIds.filter(
-        (levelIndex) =>
-            context.entryOf(levelIndex).group !== 'solved' && (context.listsEveryLayer() || context.inView(levelIndex)),
-    ).length;
-
-    let outOf = '';
-    if (context.narrowed() && context.list.length !== total) outOf = ` <span class="muted">of ${total}</span>`;
-
-    let allLayers = '';
-    if (context.map && context.map.layers.length > 1) {
-        let onClass = '';
-        if (listAllLayers) onClass = 'on';
-
-        const title = "List the levels of every layer, not only the map's";
-        const pressed = `aria-pressed="${listAllLayers}"`;
-        const attributes = `id="pgAll" class="${onClass}" ${pressed} data-alllayers title="${title}"`;
-        allLayers = `<button ${attributes}>All layers</button>`;
+    const count = context.list.length;
+    if (context.searching()) {
+        let noun = 'levels';
+        if (count === 1) noun = 'level';
+        return `<span>${count} ${noun}</span>`;
     }
 
-    return `<span><b>${escapeHtml(goal.label)}</b> · ${context.list.length}${outOf}</span>${allLayers}`;
+    const solvedShown = context.filters.solved;
+    let quantity = `${count} left`;
+    if (solvedShown) quantity = `${count} solved`;
+
+    const toggle = (id: string, solved: boolean, label: string): string => {
+        let onClass = '';
+        if (solved === solvedShown) onClass = ' class="on"';
+        const attributes = `id="${id}" data-solved="${solved}" aria-pressed="${solved === solvedShown}"`;
+        return `<button${onClass} ${attributes}>${label}</button>`;
+    };
+
+    const todoButton = toggle('pgTodo', false, 'To do');
+    const solvedButton = toggle('pgSolved', true, 'Solved');
+    const keys = `<span class="keys">${todoButton}${solvedButton}</span>`;
+    return `<span><b>${escapeHtml(goal.label)}</b> · ${quantity}</span>${keys}`;
 }
 
-function drawList(context: PanelContext): void {
-    const active = document.activeElement;
-    let refocus: string | null = null;
-    if (active?.id && (active.closest('#pgRows') || active.closest('#pgChips') || active.id === 'pgAll')) {
-        refocus = active.id;
+// the levels in the rows, with the count and the chips that narrow them: a search lists the matches by name, the goal
+// lists its levels by group
+function drawGoalList(context: PanelContext): void {
+    let blocks: RowBlock[] = [];
+    let visible = context.list;
+    if (!context.searching()) {
+        blocks = layoutRows(context);
+        visible = blocks.flatMap((block) => block.shown);
     }
 
-    const blocks = layoutRows(context);
-    const visible = blocks.flatMap((block) => block.shown);
     let tab: number | undefined = visible[0];
     if (context.selected !== null && visible.includes(context.selected)) tab = context.selected;
 
-    let foot = '';
-    if (context.hiddenCount()) foot = `<div class="foot muted">More levels under fog</div>`;
+    let rows = '';
+    if (context.searching()) {
+        const matchRows = visible.map((levelIndex) => rowHtml(context, levelIndex, levelIndex === tab));
+        rows = matchRows.join('');
+    } else {
+        rows = rowsHtml(context, blocks, tab);
+    }
 
-    $('#pgRows').innerHTML = (rowsHtml(context, blocks, tab) || emptyHtml(context)) + foot + moreHtml(context);
+    let foot = '';
+    if (context.model.hiddenLevelCount) foot = `<div class="foot muted">More levels under fog</div>`;
+
+    $('#pgRows').innerHTML = (rows || emptyHtml(context)) + foot;
     $('#pgCount').innerHTML = countHtml(context);
     $('#pgChips').innerHTML = chipsHtml(context);
+}
+
+// the list shows the goal's levels, or the items of the kind of mark the sidebar named
+function drawList(context: PanelContext): void {
+    const active = document.activeElement;
+    let refocus: string | null = null;
+    if (active?.id && (active.closest('#pgRows') || active.closest('#pgChips') || active.closest('#pgCount'))) {
+        refocus = active.id;
+    }
+
+    const kind = context.filters.find;
+    if (kind === '') {
+        $('#pgList').dataset.mode = 'goal';
+        drawGoalList(context);
+    } else {
+        $('#pgList').dataset.mode = 'find';
+        drawFindList(context, kind);
+    }
+
     if (refocus) document.getElementById(refocus)?.focus({ preventScroll: true });
 }
 
@@ -288,34 +263,21 @@ export function markSelected(context: PanelContext, levelIndex: number | null): 
     }
 }
 
-/** The filter changed: the goal, the list, the strip and the map's key and markers follow. */
+/** The filter changed: the goal, the list and the map's markers follow. */
 export function applyFilters(context: PanelContext, redraw = true): void {
     const before = context.goal?.key;
     context.loadGoal();
     const goalChanged = context.goal?.key !== before;
 
     context.computeMatches();
-    context.matched = context.goalIds.filter((levelIndex) => context.match(levelIndex));
-    if (context.listsEveryLayer()) context.list = context.matched;
-    else context.list = context.matched.filter((levelIndex) => context.inView(levelIndex));
-
-    const layers = context.map ? context.map.layers : AREA_LAYERS;
-    if (context.listsEveryLayer() || !context.mapLayer) {
-        context.others = [];
-    } else {
-        context.others = context.matched.filter(
-            (levelIndex) => !context.inView(levelIndex) && layers.includes(context.layerOf(levelIndex)),
-        );
-    }
+    context.list = context.listedLevels();
 
     syncSide(context.filters);
     drawList(context);
-    $('.strip').innerHTML = stripHtml(context);
 
     const map = context.map;
     if (map) {
         if (goalChanged && context.mapOptions) context.mapOptions.overlays = context.overlays();
-        map.setKey(keyHtml(context));
         if (redraw) map.redraw();
     }
 
@@ -332,11 +294,11 @@ export function layerChanged(context: PanelContext, layerKey: string): void {
     if (context.selected !== null) markSelected(context, context.selected);
 }
 
-// shows a level the list does not keep: the chips go, the solved chip comes on for a solved level, and a level the goal
-// has no use for brings in Completionist, which lists every level
+// shows a level the list does not keep: the search and the chips go, the toggle follows the level's being solved, and a
+// level the goal has no use for brings in Completionist, which lists every level
 function showInList(context: PanelContext, levelIndex: number): void {
     clearNarrowing(context.filters);
-    if (context.progress.state[levelIndex] === 'solved') context.filters.states = ['solved'];
+    context.filters.solved = context.progress.state[levelIndex] === 'solved';
     applyFilters(context);
     if (context.match(levelIndex)) return;
 
@@ -346,14 +308,12 @@ function showInList(context: PanelContext, levelIndex: number): void {
 }
 
 /**
- * Shows a level in the list: marks and flashes its row; toList (the list was asked for) first clears the chips that
- * hide it and also brings the list into the page view (it sits above the map in narrow windows) and focuses the row.
+ * Shows a level in the list: marks and flashes its row; toList (the list was asked for) first clears the search and the
+ * chips that hide it and also brings the list into the page view (it sits above the map in narrow windows) and
+ * focuses the row.
  */
 export function showLevelRow(context: PanelContext, id: number | string, toList?: boolean): void {
     const levelIndex = Number(id);
-    const map = context.map;
-    if (map && !context.listsEveryLayer() && !context.inView(levelIndex)) map.setLayer(context.layerOf(levelIndex));
-
     if (!context.match(levelIndex)) {
         if (!toList) {
             markSelected(context, null);

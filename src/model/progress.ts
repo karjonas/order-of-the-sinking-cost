@@ -26,13 +26,13 @@ import type { LevelUnlocks, WhyBlocked } from './way-in.ts';
 
 export const RANKS = ['Visitor', 'Egressant', 'Pusher', 'Arranger', 'Intrepid', 'Sokoban'];
 
-export const STATES: Record<LevelState, [label: string, tone: string]> = {
-    solved: ['Solved', 'good'],
-    partial: ['Partially solved', 'warn'],
-    visited: ['Entered', 'acc'],
-    unlocked: ['Reachable', ''],
-    blocked: ['Blocked', ''],
-    locked: ['Locked', 'bad'],
+export const STATE_LABELS: Record<LevelState, string> = {
+    solved: 'Solved',
+    partial: 'Partially solved',
+    visited: 'Entered',
+    unlocked: 'Reachable',
+    blocked: 'Blocked',
+    locked: 'Locked',
 };
 
 /** The parts of a status the progress is worked out from. */
@@ -89,7 +89,7 @@ export type ShownProgress = CampaignProgress & { hidden: boolean[]; towerHidden:
 /** The label of a level state; without a reachability model an open level is only known to be not entered yet. */
 export const stateLabel = (progress: { reach: Reachability | null }, state: LevelState): string => {
     if (state === 'unlocked' && !progress.reach) return 'Not entered';
-    return STATES[state][0];
+    return STATE_LABELS[state];
 };
 
 // per status: the history, the progress, the ROLE it was computed under and how to redo progress.wayIn under another

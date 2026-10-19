@@ -1,10 +1,10 @@
-// The sidebar's area list: the areas by layer with their solved counts, the map's layer first and open
+// The sidebar's area list: the areas by layer with their solved counts, the map's layer first
 // (VIEWER.md "The page (viewer)", "Level areas (viewer)")
 import { PROG } from '../data.ts';
 import { escapeHtml } from '../util.ts';
 import { readPreference, setPreference } from '../shared.ts';
-import { progressBarHtml } from '../format.ts';
-import { checkIcon } from '../map/icons.ts';
+import { areaListOpen } from './sections.ts';
+import { CHEVRON, checkIcon } from '../map/icons.ts';
 import { viewLayer } from '../map/map-html.ts';
 import { areaName } from '../model/areas.ts';
 import { AREA_LAYERS, layerName } from '../model/layers.ts';
@@ -17,30 +17,23 @@ interface AreaCount {
     solved: number;
 }
 
-// layer groups of the area list that were opened by hand (the map's layer is always open)
-const groupsOpen = new Set<string>();
+// layer groups of the area list that were opened or closed by hand; the others follow the map's layer
+const groupChoices = new Map<string, boolean>();
 
-// whether the area list is open, and the finished areas under each layer's open ones
-let areasOpen = readPreference('areasOpen') === '1';
-
+// whether the finished areas are listed under each layer's open ones
 let finishedOpen = readPreference('finishedOpen') === '1';
 
-// the mark of a section that is open or closed
-const chevronOf = (open: boolean): string => {
-    if (open) return '▾';
-    return '▸';
-};
+// a layer group not toggled by hand is open when it is the map's layer, or when the map shows every layer
+function layerGroupOpen(layerKey: string): boolean {
+    const chosen = groupChoices.get(layerKey);
+    if (chosen !== undefined) return chosen;
 
-export const areaListOpen = (): boolean => areasOpen;
-
-export function toggleAreaList(): void {
-    areasOpen = !areasOpen;
-    setPreference('areasOpen', areasOpen ? '1' : '0');
+    const mapLayer = viewLayer();
+    return !mapLayer || layerKey === mapLayer;
 }
 
-export function toggleLayerGroup(groupKey: string): void {
-    if (groupsOpen.has(groupKey)) groupsOpen.delete(groupKey);
-    else groupsOpen.add(groupKey);
+export function toggleLayerGroup(layerKey: string): void {
+    groupChoices.set(layerKey, !layerGroupOpen(layerKey));
 }
 
 export function toggleFinished(): void {
@@ -55,25 +48,17 @@ function layerFirst(layerKeys: string[]): string[] {
     return [mapLayer, ...layerKeys.filter((key) => key !== mapLayer)];
 }
 
-// a layer's header, a button that opens and closes it unless it is the map's layer; its rows follow while open
+// a layer's header, a button that opens and closes it; its rows follow while open
 function layerGroupHtml(layerKey: string, count: string, inner: string): string {
-    const mapLayer = viewLayer();
-    const fixed = !mapLayer || layerKey === mapLayer;
-    const groupKey = 'areas:' + layerKey;
-    const open = fixed || groupsOpen.has(groupKey);
-    let toggle = '';
-    let chevron = '';
-    if (!fixed) {
-        toggle = ` data-grp="${groupKey}" role="button" tabindex="0" aria-expanded="${open}"`;
-        chevron = `<i class="chev" aria-hidden="true">${chevronOf(open)}</i>`;
-    }
+    const open = layerGroupOpen(layerKey);
+    const toggle = ` data-grp="${layerKey}" role="button" tabindex="0" aria-expanded="${open}"`;
 
     const name = escapeHtml(layerName(layerKey));
     const nameHtml = `<span class="gn">${name}</span>`;
-    const countHtml = `<span class="cnt">${count}${chevron}</span>`;
-    const header = `<div class="lh"${toggle}>${nameHtml}${countHtml}</div>`;
+    const countHtml = `<span class="cnt">${count}</span>`;
+    const header = `<div class="lh"${toggle}>${nameHtml}${CHEVRON}${countHtml}</div>`;
     if (!open) return header;
-    return header + inner;
+    return `${header}<div class="kids">${inner}</div>`;
 }
 
 // per area, its levels not under fog and how many of them are solved
@@ -102,11 +87,11 @@ export function sideAreasHtml(model: ProgressModel): string {
         .filter((areaIndex) => counts[areaIndex].all && model.areaShown(areaIndex))
         .toSorted((first, second) => (areas[first].order ?? 1e9) - (areas[second].order ?? 1e9));
     const finishedTotal = `${listed.filter(finished).length} / ${listed.length}`;
-    const headChevron = `<i class="chev" aria-hidden="true">${chevronOf(areasOpen)}</i>`;
-    const count = `<span class="cnt" title="Areas with every level solved">${finishedTotal}${headChevron}</span>`;
-    const headContent = `<span class="sh">Areas</span>${count}`;
-    const head = `<button class="plain ah" data-areas aria-expanded="${areasOpen}">${headContent}</button>`;
-    if (!areasOpen) return head;
+    const count = `<span class="cnt" title="Areas with every level solved">${finishedTotal}</span>`;
+    const headContent = `<span class="sh">Areas</span>${CHEVRON}${count}`;
+    const open = areaListOpen();
+    const head = `<button class="plain fold" data-areas aria-expanded="${open}">${headContent}</button>`;
+    if (!open) return head;
 
     const listedLayers = new Set(listed.map((areaIndex) => layerOfArea(areas[areaIndex])));
     const extraLayers = [...listedLayers].filter((key) => !AREA_LAYERS.includes(key));
@@ -120,26 +105,24 @@ export function sideAreasHtml(model: ProgressModel): string {
         const name = escapeHtml(areaName(areas[areaIndex]));
         let doneClass = '';
         let check = '';
-        let progressBar = '';
         if (done) {
             doneClass = ' done';
-            check = `<span title="All levels solved">${checkIcon}</span>`;
-        } else {
-            progressBar = progressBarHtml(solved, all);
+            check = checkIcon;
         }
 
         const attributes = `data-area="${areaIndex}" aria-pressed="false" title="${name}"`;
+        const markHtml = `<span class="mk" title="All levels solved">${check}</span>`;
         const nameHtml = `<span class="n">${name}</span>`;
-        const countHtml = `<span class="cnt">${check}${solved} / ${all}</span>`;
-        return `<button class="plain${doneClass}" ${attributes}>${nameHtml}${countHtml}${progressBar}</button>`;
+        const countHtml = `<span class="cnt">${solved} / ${all}</span>`;
+        return `<button class="plain${doneClass}" ${attributes}>${markHtml}${nameHtml}${countHtml}</button>`;
     };
 
     // finished areas fold into one row under the open ones
     const finishedRowHtml = (layerKey: string, finishedCount: number): string => {
         const attributes = `data-fin="${layerKey}" role="button" tabindex="0" aria-expanded="${finishedOpen}"`;
-        const chevron = `<i class="chev" aria-hidden="true">${chevronOf(finishedOpen)}</i>`;
         const title = 'title="Areas with every level solved"';
-        return `<div class="fin" ${attributes} ${title}><span>${finishedCount} finished</span>${chevron}</div>`;
+        const label = `<span>${finishedCount} finished</span>`;
+        return `<div class="fin" ${attributes} ${title}><span class="mk"></span>${label}${CHEVRON}</div>`;
     };
 
     const layerHtml = (layerKey: string): string => {

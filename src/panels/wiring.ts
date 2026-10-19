@@ -1,18 +1,19 @@
 // The progress view's events: clicks in the list, the chips and the panels, the sidebar's hooks into the view (open a
 // level, frame a tower, an area or a totals row, name a revealed level), the list's arrow keys and the panel the
 // address names (VIEWER.md "The page (viewer)")
-import { $, countBy } from '../util.ts';
-import { clearNarrowing, hooks, listAllLayers, setListAllLayers, setPreference } from '../shared.ts';
-import type { FindKind, PanelKey, PanelKind } from '../shared.ts';
-import type { OverlayKind } from '../map/map-html.ts';
+import { $ } from '../util.ts';
+import { hooks } from '../shared.ts';
+import type { PanelKey, PanelKind } from '../shared.ts';
+import { overlayOn } from '../map/map-html.ts';
 import type { SelectHow } from '../map/map-view.ts';
 import { mapLayerOf } from '../model/layers.ts';
 import { syncSide } from '../sidebar.ts';
-import { refreshSideGoals } from '../sidebar/goals.ts';
-import { STATE_CHIPS } from './context.ts';
+import { findListShown } from '../sidebar/find.ts';
 import type { PanelContext } from './context.ts';
+import { findItemOf } from './find-list.ts';
+import type { FindItem } from './find-list.ts';
 import { hashDone, markHashDone, panelKeep, setHash } from './hash.ts';
-import { applyFilters, showLevelRow } from './list.ts';
+import { applyFilters, markSelected, showLevelRow } from './list.ts';
 
 // the chips in a panel that open another panel: data attribute, node kind
 const PANEL_CHIPS: Array<[attribute: string, kind: PanelKind]> = [
@@ -22,58 +23,50 @@ const PANEL_CHIPS: Array<[attribute: string, kind: PanelKind]> = [
     ['pick', 'level'],
 ];
 
-// a totals row's marker class (a selector for the marks to pulse) and the overlay that shows its kind; the tower
-// status signs share the signs' marks but are no part of the Signs row
-const FIND_MARKS: Record<FindKind, [markerClass: string, overlay: OverlayKind]> = {
-    signs: ['sg:not(.status)', 'gates'],
-    tps: ['tp', 'tps'],
-    logs: ['vl', 'logs'],
-};
-
 const isPanelKind = (value: string): value is PanelKind =>
     value === 'level' || value === 'tower' || value === 'gate' || value === 'sign';
 
 /**
- * Clicks in the map's panel: a layer note frames its steps there, a chip opens its node's panel, which Back leaves again.
+ * Clicks in the details panel: a layer note frames its steps on the map, a chip opens its node's panel, which Previous
+ * leaves again.
  */
 export function wireMapPanels(context: PanelContext): void {
     const map = context.map;
     if (!map) return;
 
-    $('#pgMap')
-        .querySelector('.sel')
-        ?.addEventListener('click', (event) => {
-            const target = event.target;
-            if (!(target instanceof Element)) return;
+    $('#pgSel').addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
 
-            const layerNote = target.closest<HTMLElement>('[data-clayer]');
-            if (layerNote) {
-                const layerPoints = context.chainPoints.filter(
-                    (point) => mapLayerOf(point[2]) === layerNote.dataset.clayer,
-                );
-                map.fitPoints(layerPoints);
+        const layerNote = target.closest<HTMLElement>('[data-clayer]');
+        if (layerNote) {
+            const layerPoints = context.chainPoints.filter(
+                (point) => mapLayerOf(point[2]) === layerNote.dataset.clayer,
+            );
+            map.fitPoints(layerPoints);
+            return;
+        }
+
+        for (const [attribute, kind] of PANEL_CHIPS) {
+            const chip = target.closest<HTMLElement>(`[data-${attribute}]`);
+            if (chip) {
+                if (context.current) context.back.push(context.current);
+                context.selectors[kind](Number(chip.dataset[attribute]));
                 return;
             }
+        }
 
-            for (const [attribute, kind] of PANEL_CHIPS) {
-                const chip = target.closest<HTMLElement>(`[data-${attribute}]`);
-                if (chip) {
-                    if (context.current) context.back.push(context.current);
-                    context.selectors[kind](Number(chip.dataset[attribute]));
-                    return;
-                }
-            }
-
-            if (target.closest('[data-back]')) {
-                const previous = context.back.pop();
-                if (previous) context.open(previous);
-            }
-        });
+        if (target.closest('[data-back]')) {
+            const previous = context.back.pop();
+            if (previous) context.open(previous);
+        }
+    });
 
     // a panel opened from the map starts a new panel history
     const openFresh = (kind: PanelKind) => (id: number) => {
         context.back.length = 0;
         context.selectors[kind](id);
+        scrollToDetail();
     };
 
     map.onPick = openFresh('level');
@@ -82,57 +75,19 @@ export function wireMapPanels(context: PanelContext): void {
     map.onSign = openFresh('sign');
 }
 
+// in narrow windows the results column sits above the map and the page scrolls: a framed tower brings the map into
+// view, an opened panel brings its column into view
 const scrollToMap = (): void => $('#pgMap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+function scrollToDetail(): void {
+    $('#pgDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
 function showOnMap(context: PanelContext, kind: PanelKind, id: number, how?: SelectHow): void {
     if (!context.map) return;
 
     context.selectors[kind](id, how);
-    scrollToMap();
-}
-
-// a totals row frames the things of its kind not found yet that are not under fog, on the layer the map shows when it
-// has any, else the one with most; a second click goes back to the view and overlays from before
-function findOnMap(context: PanelContext, kind: FindKind): void {
-    const map = context.map;
-    const filters = context.filters;
-    if (!map) return;
-
-    if (filters.find === kind) {
-        for (const overlay of context.findBack?.turned || []) map.setOverlay(overlay, false);
-        if (context.findBack) map.setView(context.findBack.view);
-        context.findBack = null;
-        filters.find = '';
-        syncSide(filters);
-        return;
-    }
-
-    const finds = context.model.finds[kind];
-    const points = finds.open;
-    if (!points.length) return;
-
-    // the ones ready to be found choose the layer, as they are what the player has missed
-    let layerPoints = points;
-    if (finds.ready) layerPoints = points.slice(0, finds.ready);
-
-    if (!filters.find) context.findBack = { view: map.getView(), turned: new Set() };
-    const [markerClass, overlay] = FIND_MARKS[kind];
-    if (!map.setOverlay(overlay, true)) context.findBack?.turned.add(overlay);
-
-    const perLayer = countBy(layerPoints, (point) => mapLayerOf(point[2]));
-    let target = map.layer;
-    if (!perLayer.has(map.layer)) {
-        const byCount = [...perLayer].toSorted((first, second) => second[1] - first[1]);
-        target = byCount[0][0];
-    }
-
-    filters.find = kind;
-    syncSide(filters);
-
-    const onTarget = (point: [number, number, number]): number => Number(mapLayerOf(point[2]) === target);
-    map.fitPoints(points.toSorted((first, second) => onTarget(second) - onTarget(first)));
-    map.flash(markerClass);
-    scrollToMap();
+    scrollToDetail();
 }
 
 // a revealed level gets its name everywhere: list, tooltips and the open panel
@@ -141,14 +96,18 @@ function revealed(context: PanelContext): void {
     applyFilters(context);
     if (!context.current || !context.map?.open) return;
 
-    const inPanel = $('#pgMap .sel').contains(document.activeElement);
+    const inPanel = $('#pgSel').contains(document.activeElement);
     context.open(context.current, { still: true });
-    if (inPanel || document.activeElement === document.body) $('#pgMap .sel .hd b')?.focus({ preventScroll: true });
+    if (inPanel || document.activeElement === document.body) $('#pgSel .hd b')?.focus({ preventScroll: true });
 }
 
 function wireHooks(context: PanelContext): void {
     const filters = context.filters;
-    hooks.tower = (towerIndex) => showOnMap(context, 'tower', towerIndex);
+    // a tower goal frames its tower, leaving the list of its levels in the column
+    hooks.tower = (towerIndex) => {
+        context.map?.fitPoints([context.progress.towers[towerIndex].p]);
+        scrollToMap();
+    };
     hooks.open = (levelIndex) => {
         showLevelRow(context, levelIndex);
         showOnMap(context, 'level', levelIndex);
@@ -166,7 +125,25 @@ function wireHooks(context: PanelContext): void {
         if (context.map && points.length) context.map.fitPoints(points);
     };
 
-    hooks.find = (kind) => findOnMap(context, kind);
+    hooks.hero = () => context.map?.showHero();
+    hooks.overlay = (kind) => {
+        context.map?.setOverlay(kind, !overlayOn[kind]);
+        syncSide(filters);
+    };
+
+    hooks.list = () => context.map?.select(null);
+
+    // naming the listed kind again goes back to the goal's levels; while a panel covers the list, it only closes the panel
+    hooks.find = (kind) => {
+        const covered = filters.find === kind && !findListShown(filters, kind);
+        context.map?.select(null);
+        if (covered) return;
+
+        if (filters.find === kind) filters.find = '';
+        else filters.find = kind;
+        applyFilters(context, false);
+    };
+
     hooks.reveal = () => revealed(context);
 }
 
@@ -209,16 +186,35 @@ function wireRowKeys(): void {
     });
 }
 
+// centres the map on a listed item and opens its panel; a kind without a panel only highlights the mark, whose tooltip
+// shows on hover
+function openFindItem(context: PanelContext, item: FindItem): void {
+    const map = context.map;
+    if (!map) return;
+
+    // a mark on the fast-travel screen has no layer and nothing to centre on
+    if (item.layer) map.frameAt(item.layer, item.x, item.y);
+    context.back.length = 0;
+    if (item.panel) {
+        const [kind, id] = item.panel;
+        context.selectors[kind](id, { still: true });
+        return;
+    }
+
+    markSelected(context, null);
+    context.forget();
+    map.select({ levels: new Set(), overlays: new Set([item.id]) }, { still: true });
+}
+
 const CLICK_TARGET_ATTRIBUTES = [
     'data-goto',
+    'data-find-item',
+    'data-find-back',
+    'data-find-done',
     'data-sel',
-    'data-clear',
-    'data-all-levels',
     'data-clear-area',
     'data-clear-tower',
-    'data-state',
-    'data-layer-go',
-    'data-alllayers',
+    'data-solved',
 ];
 const CLICK_TARGETS = CLICK_TARGET_ATTRIBUTES.map((attribute) => `[${attribute}]`).join(',');
 
@@ -232,19 +228,24 @@ function onPageClick(context: PanelContext, event: Event): void {
     const filters = context.filters;
     const data = target.dataset;
     if (data.goto != null) {
+        context.map?.select(null);
         showLevelRow(context, data.goto, true);
+    } else if (data.findItem != null) {
+        const kind = filters.find;
+        if (kind === '') return;
+
+        const item = findItemOf(context, kind, data.findItem);
+        if (item) openFindItem(context, item);
+    } else if (data.findBack != null) {
+        filters.find = '';
+        applyFilters(context, false);
+    } else if (data.findDone != null) {
+        filters.findDone = !filters.findDone;
+        applyFilters(context, false);
     } else if (data.sel != null) {
         showOnMap(context, 'level', Number(data.sel), { keepFocus: true });
-    } else if (data.layerGo != null) {
-        context.map?.setLayer(data.layerGo);
-    } else if (data.alllayers != null) {
-        setListAllLayers(!listAllLayers);
-        setPreference('listAllLayers', listAllLayers ? '1' : '0');
-        applyFilters(context, false);
-    } else if (data.state != null) {
-        const key = data.state;
-        if (filters.states.includes(key)) filters.states = filters.states.filter((each) => each !== key);
-        else filters.states = [...filters.states, key];
+    } else if (data.solved != null) {
+        filters.solved = data.solved === 'true';
         applyFilters(context);
     } else if (data.clearArea != null) {
         filters.area = '';
@@ -254,22 +255,30 @@ function onPageClick(context: PanelContext, event: Event): void {
         filters.tower = '';
         applyFilters(context);
         $('#pgRows .rr[tabindex="0"]')?.focus({ preventScroll: true });
-    } else if (data.allLevels != null) {
-        filters.goal = 'completionist';
-        filters.states = STATE_CHIPS.map(([key]) => key);
-        applyFilters(context);
-        refreshSideGoals();
-    } else if (data.clear != null) {
-        const inList = !!target.closest('#pgRows');
-        clearNarrowing(filters);
-        applyFilters(context);
-        if (inList) $('#pgRows .rr')?.focus({ preventScroll: true });
     }
+}
+
+// the search box applies its text once typing pauses
+let searchTimer = 0;
+
+function wireSearch(context: PanelContext): void {
+    $('#fQ').addEventListener('input', (event) => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) return;
+
+        const query = input.value.toLowerCase().trim();
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            context.filters.q = query;
+            applyFilters(context);
+        }, 120);
+    });
 }
 
 export function wirePage(context: PanelContext): void {
     wireHooks(context);
     wireRowKeys();
+    wireSearch(context);
 
     const onClick = (event: Event): void => onPageClick(context, event);
 
@@ -336,7 +345,7 @@ function fromAddress(context: PanelContext): void {
 
     const openers = { level: map.onPick, tower: map.onTower, gate: map.onGate, sign: map.onSign };
     openers[kind]?.(id);
-    scrollToMap();
+    scrollToDetail();
 }
 
 /** The panel kept for the campaign opens again; on the first draw of a save, the one the address names. */

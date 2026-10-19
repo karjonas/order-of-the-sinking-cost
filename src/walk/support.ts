@@ -108,19 +108,18 @@ function supported(walkGrid: WalkGrid, floodState: FloodState, cell: number): bo
 
     const layerCells = walkGrid.layerCells;
     const z = Math.floor(cell / layerCells) - Z_BIAS;
-    const column = cell % layerCells;
     const doubled =
         (marks & POWER_MARK && walkGrid.doubleBeams.has(cell)) ||
         (marks & OPTION_MARK && walkGrid.optionalPowers.doubleBeams.has(cell));
     if (doubled) {
-        const waterZ = waterAt(walkGrid, column, z);
+        const waterZ = waterAt(walkGrid, cell % layerCells, z);
         if (waterZ != null && Math.abs(z - waterZ) < 0.6) return true;
     }
 
-    if (layerOf(walkGrid, z) !== 0 || z > 0) return false;
+    if (z > 0 || layerOf(walkGrid, z) !== 0) return false;
     if (z < 0) return true;
     // at z 0 the ground floor holds the hero unless water lies over it
-    return waterAt(walkGrid, column, z) == null;
+    return waterAt(walkGrid, cell % layerCells, z) == null;
 }
 
 /** Whether the hero can stand in `cell`: inside the grid, not blocked and held up. */
@@ -150,14 +149,19 @@ export function land(walkGrid: WalkGrid, floodState: FloodState, cell: number, u
  * pushed over it.
  */
 export function holdsStone(walkGrid: WalkGrid, floodState: FloodState, cell: number, z: number): boolean {
-    const { grid, layerCells } = walkGrid;
-    const below = cell - layerCells;
+    const { grid, marks, layerCells } = walkGrid;
     if (grid[cell] & FLOOR) return true;
-    if (floodState.bridged.has(cell)) return true;
-    if (cell >= layerCells && grid[below] & SUPPORT) return true;
-    if (cell >= layerCells && walkGrid.marks[below] & FROZEN_MARK) return true;
-    if (cell >= layerCells && heldByEntity(walkGrid, floodState, below)) return true;
-    if (floodState.latchedShut.size && floodState.latchedShut.has(below)) return true;
+    if (floodState.bridged.size !== 0 && floodState.bridged.has(cell)) return true;
+
+    if (cell >= layerCells) {
+        const below = cell - layerCells;
+        const belowBits = grid[below];
+        if (belowBits & SUPPORT) return true;
+        if (marks[below] & FROZEN_MARK) return true;
+        if (belowBits & (MONSTER | MOVABLE) && heldByEntity(walkGrid, floodState, below)) return true;
+        if (floodState.latchedShut.size !== 0 && floodState.latchedShut.has(below)) return true;
+    }
+
     return z <= 0 && layerOf(walkGrid, z) === 0 && waterAt(walkGrid, cell % layerCells, z) == null;
 }
 

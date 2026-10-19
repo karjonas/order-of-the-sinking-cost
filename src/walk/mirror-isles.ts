@@ -407,3 +407,18 @@ export function magicMirrorHops(walkGrid: WalkGrid): MirrorHops {
 
     return { hops: hopsByCell, driftHops: drifting, switchHops, pairHops, pairArms };
 }
+
+/** Per landing cell, the arm cells of the single and paired hops that land on it. */
+export function hopSourcesOf(hops: Map<number, number[]>, pairArms: Map<number, number[]>): Map<number, number[]> {
+    const sources = new Map<number, number[]>();
+
+    for (const [armCell, landings] of hops) {
+        for (const landing of landings) addTo(sources, landing, armCell);
+    }
+
+    for (const [landing, armCells] of pairArms) {
+        for (const armCell of armCells) addTo(sources, landing, armCell);
+    }
+
+    return sources;
+}

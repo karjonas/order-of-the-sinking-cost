@@ -15,6 +15,12 @@ export interface TowerProgress extends Tower {
     gold: boolean;
 }
 
+/** The levels solved over the levels needed; while some of the tower's levels are under fog, over those shown and "+". */
+export function towerLevelCount(tower: TowerProgress, shownLevels: number): string {
+    if (shownLevels < tower.normal.length) return `${tower.solvedNormal} / ${shownLevels}+`;
+    return `${tower.solvedNormal} / ${tower.req}`;
+}
+
 /** Bit, save enum letter, name, letter in tower pair names, name in the sky tower names (as Steam's "High Mirrors"). */
 export const WORLDS: Array<[bit: number, saveLetter: string, name: string, pairLetter: string, skyName: string]> = [
     [1, 'H', 'Heroes', 'H', 'Heroes'],

@@ -1,20 +1,22 @@
-// The map's markup before it is drawn (VIEWER.md "The page (viewer)"): the layer images, the fog and hatch groups, the
-// repeated copies, the layer, overlay and zoom controls; the overlay switches and the view kept per campaign
+// The map's markup before it is drawn (VIEWER.md "The page (viewer)"): the holder of the layer images under the svg, the
+// fog and hatch groups, the repeated copies, the buttons over the map; the overlay switches and the view kept per campaign
 import { PROG } from '../data.ts';
 import type { Fog } from '../fog.ts';
-import { capitalized, freezersNoun } from '../model/freezer-names.ts';
-import { AREA_LAYERS } from '../model/layers.ts';
+import { AREA_LAYERS, layerName } from '../model/layers.ts';
 import { ZOOM_STEP } from '../panzoom.ts';
 import type { PanZoomKeep } from '../panzoom.ts';
 import { readPreference, state } from '../shared.ts';
 import type { MapLayer } from '../types.ts';
 import { escapeHtml } from '../util.ts';
-import { HERO_PATH, ICON_STROKE, OVERLAY_ICONS, svgIcon } from './icons.ts';
-import { layerThumbnail } from './layer-images.ts';
+import { ICON_NAMES, iconUrl, OVERLAY_ICONS, ROLE_NAMES, ROLE_SHAPES, ROLES, SHAPES } from './icons.ts';
+import type { MapOverlay } from './map-view.ts';
 import { wrapCopies } from './torus.ts';
 
-/** The overlays of the map that the viewer can switch off. */
-export type OverlayKind = 'gates' | 'tps' | 'logs' | 'reach';
+/**
+ * The kinds of mark the viewer can switch off: each has a row in the sidebar's Find on the map, and Reachable is the
+ * toolbar's. The Tower pads switch also shows the gold rooms' Antipode endpoints.
+ */
+export type OverlayKind = 'pods' | 'doorways' | 'signs' | 'tps' | 'towerPads' | 'logs' | 'maps' | 'treasures' | 'reach';
 
 /** What survives a redraw of one map: its view, the layer shown and the campaign it was for. */
 export interface MapKeep extends PanZoomKeep {
@@ -24,42 +26,44 @@ export interface MapKeep extends PanZoomKeep {
 
 const WATER_RGB = [51, 104, 139];
 
-const EVERY_FREEZER = capitalized(freezersNoun(PROG.freezers.map((_freezer, index) => index)));
+const REACH_TITLE = 'Where the walk model says you can go from where you have been (approximate)';
 
-// map overlays the viewer can switch off, remembered per browser; treasure plinths and map scrolls are always drawn
-const OVERLAYS: Array<[kind: OverlayKind, label: string, title: string]> = [
-    ['gates', 'Ice', `${EVERY_FREEZER}, and the signs that open them`],
-    ['tps', 'Teleporters', 'Teleporters, and the Antipode teleporters'],
-    ['logs', 'Logs', 'Voice logs'],
-    ['reach', 'Reachable', 'Where the walk model says you can go from where you have been (approximate)'],
-];
+// whether each kind of mark the viewer can switch off is shown, remembered per browser
+export const overlayOn: Record<OverlayKind, boolean> = {
+    pods: true,
+    doorways: true,
+    signs: true,
+    tps: true,
+    towerPads: true,
+    logs: true,
+    maps: true,
+    treasures: true,
+    reach: true,
+};
 
-const OVERLAY_KINDS: OverlayKind[] = ['gates', 'tps', 'logs', 'reach'];
-export const overlayOn: Record<OverlayKind, boolean> = { gates: true, tps: true, logs: true, reach: true };
 export const isOverlayKind = (kind: string): kind is OverlayKind => kind in overlayOn;
+
+/** The switch that shows or hides a mark: the one of its Find kind, else of its own kind. */
+export function switchOf(overlay: Pick<MapOverlay, 'kind' | 'findKind'>): OverlayKind | null {
+    if (overlay.findKind !== null) return overlay.findKind;
+    if (isOverlayKind(overlay.kind)) return overlay.kind;
+    return null;
+}
 
 try {
     const saved: Partial<Record<OverlayKind, unknown>> = JSON.parse(readPreference('mapOverlays') || '{}');
-    for (const kind of OVERLAY_KINDS) {
+    for (const kind of Object.keys(overlayOn)) {
+        if (!isOverlayKind(kind)) continue;
+
         const value = saved[kind];
         if (typeof value === 'boolean') overlayOn[kind] = value;
     }
 } catch {}
 
-// the terrain group: the layer images, the changed water, the Reachable images and the fog, clipped to the map
+// the terrain group: the changed water, the Reachable images and the fog, clipped to the map
 function terrainHtml(id: string, layers: MapLayer[], reach: boolean): string {
     const [width, height] = PROG.map.size;
     const size = `width="${width}" height="${height}"`;
-
-    // each layer's full image has no href until the layer is shown; its thumbnail lies under it
-    let images = '';
-    for (const layer of layers) {
-        const thumbnail = layerThumbnail(layer.key);
-        if (thumbnail) {
-            images += `<image class="thumb" data-layer="${layer.key}" x="0" y="0" ${size} href="${thumbnail}"/>`;
-        }
-        images += `<image class="full" data-layer="${layer.key}" x="0" y="0" ${size}/>`;
-    }
 
     let reachImages = '';
     let hatch = '';
@@ -84,29 +88,45 @@ function terrainHtml(id: string, layers: MapLayer[], reach: boolean): string {
     const fogGroups = `${cloudGroup}<g class="fogc"></g><g class="rfog" fill="url(#${id}-hatch)"></g>`;
     const fog = `${clip}<g clip-path="url(#${id}-clip)">${fogGroups}</g>`;
     const waterGroup = `<g class="wtr" fill="rgb(${WATER_RGB.join(',')})" shape-rendering="crispEdges"></g>`;
-    return `<g id="${id}-w" class="mw">${images}${waterGroup}${reachImages}<defs>${cloud}${hatch}</defs>${fog}</g>`;
+    return `<g id="${id}-w" class="mw">${waterGroup}${reachImages}<defs>${cloud}${hatch}</defs>${fog}</g>`;
 }
 
-// the layer buttons in area order, the overlay switches and the hero and zoom buttons
+// the buttons floating over the map: the layers as one segmented pill in area order, the Reachable switch and the zoom
+// pill
 function controlsHtml(layers: MapLayer[]): string {
     const layerButtons = layers
         .toSorted((first, second) => AREA_LAYERS.indexOf(first.key) - AREA_LAYERS.indexOf(second.key))
-        .map((layer) => `<button data-layer="${layer.key}">${escapeHtml(layer.name)}</button>`)
+        .map((layer) => `<button data-layer="${layer.key}">${escapeHtml(layerName(layer.key))}</button>`)
         .join('');
-    const overlayButtons = OVERLAYS.map(([kind, label, title]) => {
-        const icon = OVERLAY_ICONS[kind];
-        return `<button data-ov="${kind}" title="${escapeHtml(title)}">${icon}${escapeHtml(label)}</button>`;
-    }).join('');
-    const heroIcon = svgIcon(HERO_PATH, '#fff', ICON_STROKE);
-    const hero = `<button data-hero title="Show the hero" aria-label="Show the hero">${heroIcon}</button>`;
+    const reachAttributes = `data-ov="reach" title="${REACH_TITLE}"`;
+    const reachButton = `<button ${reachAttributes}>${OVERLAY_ICONS.reach}Reachable</button>`;
     const zoomIn = `<button data-z="${1 / ZOOM_STEP}" title="Zoom in">+</button>`;
     const zoomOut = `<button data-z="${ZOOM_STEP}" title="Zoom out">−</button>`;
     const layersHidden = layers.length < 2 ? ' hidden' : '';
 
-    const layerGroup = `<span class="seg" data-role="layers"${layersHidden}>${layerButtons}</span>`;
-    const overlayGroup = `<span class="seg ovl" data-role="ovl" hidden>${overlayButtons}</span>`;
-    const zoomGroup = `<span class="seg zoom">${hero}${zoomIn}${zoomOut}</span>`;
-    return `<div class="ctl">${layerGroup}${overlayGroup}${zoomGroup}</div>`;
+    const layerGroup = `<span class="keys" data-role="layers"${layersHidden}>${layerButtons}</span>`;
+    const reachGroup = `<span class="seg ovl" data-role="ovl" hidden>${reachButton}</span>`;
+    const zoomGroup = `<span class="keys zoom">${zoomIn}${zoomOut}</span>`;
+    return `<div class="ctl">${layerGroup}${reachGroup}${zoomGroup}</div>`;
+}
+
+/** The id of the symbol that draws an icon or a role badge on the map `id`. */
+export const symbolId = (id: string, name: string): string => `${id}-ic-${name}`;
+
+// the icons and role badges the marks draw with use elements, each defined once outside the repeated overlay group
+function symbolsHtml(id: string): string {
+    const icons = ICON_NAMES.map((name) => {
+        const image = `<image href="${iconUrl(name)}" x="-64" y="-64" width="128" height="128"/>`;
+        return `<symbol id="${symbolId(id, name)}" viewBox="-64 -64 128 128">${image}</symbol>`;
+    });
+
+    const roles = ROLE_NAMES.map((role) => {
+        const shape = SHAPES[ROLE_SHAPES[role]].path(5);
+        const paint = `fill="${ROLES[role][1]}" stroke="#0b1218" stroke-width="1.6" stroke-linejoin="round"`;
+        return `<symbol id="${symbolId(id, role)}" viewBox="-8 -8 16 16"><path d="${shape}" ${paint}/></symbol>`;
+    });
+
+    return `<defs>${icons.join('')}${roles.join('')}</defs>`;
 }
 
 /**
@@ -121,10 +141,10 @@ export function mapHtml(id: string, fog: Fog | null | undefined, reach: boolean)
     const terrain = `${terrainHtml(id, layers, reach)}${wrapCopies(id, 'w', width, height)}`;
     const overlay = `<g id="${id}-o" class="mw"><g class="ov"></g></g>${wrapCopies(id, 'o', width, height)}`;
     const svgOpen = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`;
-    const svg = `${svgOpen}${terrain}${overlay}<g class="mw lbl"></g></svg>`;
+    const svg = `${svgOpen}${symbolsHtml(id)}${terrain}${overlay}<g class="mw lbl"></g></svg>`;
 
-    const readouts = '<div class="key"></div><div class="sel"></div><div class="tip"></div>';
-    return `<div class="mapbox" id="${id}">${svg}\n    ${controlsHtml(layers)}\n    ${readouts}</div>`;
+    const terrainImages = '<div class="terrain"></div>';
+    return `<div class="mapbox" id="${id}">${controlsHtml(layers)}\n    ${terrainImages}${svg}\n    <div class="tip"></div></div>`;
 }
 
 /** The view and layer of each map, by map id. */

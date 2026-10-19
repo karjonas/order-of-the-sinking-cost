@@ -1,38 +1,17 @@
 // The state of one drawn progress view, shared by its parts: the model's data, the goal the list and the map show with
 // its levels, the list filter, the map and the open panel (VIEWER.md "The page (viewer)")
 import type { Fog } from '../fog.ts';
-import type { MapView, MapOptions, MapOverlay, MapViewState, SelectHow } from '../map/map-view.ts';
-import type { OverlayKind } from '../map/map-html.ts';
+import type { MapView, MapOptions, MapOverlay, SelectHow } from '../map/map-view.ts';
 import { PROG } from '../data.ts';
-import { listAllLayers, state } from '../shared.ts';
+import { state } from '../shared.ts';
+import { compareText } from '../util.ts';
 import type { PanelKey, PanelKind, ProgressFilters } from '../shared.ts';
 import { FOG_LAYER_KEYS, mapLayerOf } from '../model/layers.ts';
 import type { GoalLevel, GoalView } from '../model/goals-view.ts';
 import type { ProgressModel } from '../model/progress-model.ts';
 import type { ShownProgress } from '../model/progress.ts';
-import type { LevelState } from '../model/unlocking.ts';
 import type { Area, Freezer, Position, ProgressLevel, Sign, Teleporter } from '../types.ts';
 import { panelKeep, setHash } from './hash.ts';
-
-/** The key of a state chip of the list. */
-export type StateChip = 'playable' | 'partial' | 'blocked' | 'locked' | 'solved';
-
-/** The state chips of the list: key, label and the level states each one keeps. */
-export const STATE_CHIPS: Array<[key: StateChip, label: string, states: LevelState[]]> = [
-    ['playable', 'Playable', ['unlocked', 'visited']],
-    ['partial', 'Partially solved', ['partial']],
-    ['blocked', 'Not reachable', ['blocked']],
-    ['locked', 'Locked', ['locked']],
-    ['solved', 'Solved', ['solved']],
-];
-
-export function chipOfState(levelState: LevelState): StateChip {
-    for (const [key, , states] of STATE_CHIPS) {
-        if (states.includes(levelState)) return key;
-    }
-
-    throw new Error(`No state chip keeps ${levelState}`);
-}
 
 /** A level of the goal as the list shows it: the goal's levels by group, and the solved ones. */
 export interface ListedLevel {
@@ -41,12 +20,6 @@ export interface ListedLevel {
     role: GoalLevel['role'];
     leadsTo: string;
     onPlan: boolean;
-}
-
-/** The view and the overlays a totals row turned on, which a second click on it goes back to. */
-export interface FindBack {
-    view: MapViewState;
-    turned: Set<OverlayKind>;
 }
 
 /** Shows the panel of a level, tower, Freezer or sign. */
@@ -84,7 +57,7 @@ export class PanelContext {
     lowNames: string[];
 
     // The goal the list and the map show, and its levels: the unsolved ones in the model's order, then the solved
-    // ones, which the list keeps only while the Solved chip is on
+    // ones, which the list keeps only while the Solved toggle is on
     goal: GoalView | null = null;
 
     entries = new Map<number, ListedLevel>();
@@ -93,13 +66,10 @@ export class PanelContext {
     // whether the list filter keeps each level, as of the last apply
     matches = new Uint8Array(0);
 
-    // the goal's levels the filter keeps; the ones the list shows; the ones on the map's other layers
-    matched: number[] = [];
-
+    // the levels the filter keeps, on every layer: the ones the list shows
     list: number[] = [];
-    others: number[] = [];
 
-    // the list shows the levels on the map's layer; a search, or the All layers switch, shows every layer
+    // the layer the map shows; a row names its layer when it is another
     mapLayer: string | null = null;
 
     // the level marked in the list
@@ -113,9 +83,6 @@ export class PanelContext {
 
     back: PanelKey[] = [];
     chainPoints: Position[] = [];
-
-    // the view and the overlays a totals row turned on, which a second click on it goes back to
-    findBack: FindBack | null = null;
 
     // the map's overlays, and the panel of each node kind (both set with the map)
     overlays: () => MapOverlay[] = () => [];
@@ -158,10 +125,6 @@ export class PanelContext {
         this.lowNames = this.levels.map((level) => level.n.toLowerCase());
     }
 
-    hiddenCount(): number {
-        return this.progress.hidden.filter(Boolean).length;
-    }
-
     // a level names its area (the model's per-save pick; the nearest one outside every area box) only while that area
     // is shown
     areaOf(levelIndex: number): number | null {
@@ -170,7 +133,7 @@ export class PanelContext {
         return area;
     }
 
-    // a Freezer is named by the area it stands in while that area is shown, else by its position
+    // the area a Freezer stands in while that area is shown
     gateArea(freezerIndex: number): string | null {
         let area = this.gateAreas.get(freezerIndex);
         if (area === undefined) {
@@ -179,15 +142,6 @@ export class PanelContext {
         }
 
         return area;
-    }
-
-    gateAt(freezerIndex: number): string {
-        const position = this.freezers[freezerIndex].p;
-        return `${position[0]}, ${position[1]}`;
-    }
-
-    gateName(freezerIndex: number): string {
-        return this.gateArea(freezerIndex) ?? this.gateAt(freezerIndex);
     }
 
     gateShown(freezer: Freezer): boolean {
@@ -202,33 +156,28 @@ export class PanelContext {
         return !this.mapLayer || this.layerOf(levelIndex) === this.mapLayer;
     }
 
-    listsEveryLayer(): boolean {
-        return listAllLayers || !!this.filters.q;
+    // a search text lists every level not under fog, whatever the goal, layer, state and chips say
+    searching(): boolean {
+        return !!this.filters.q;
     }
 
+    // whether the tower or area chip is on
     narrowed(): boolean {
-        const filters = this.filters;
-        return !!filters.q || filters.states.length > 0 || filters.tower !== '' || filters.area !== '';
+        return this.filters.tower !== '' || this.filters.area !== '';
     }
 
-    // whether the search and the tower and area chips keep a level
-    keptByNarrowing(levelIndex: number): boolean {
+    // a level is listed when it is one of the goal's, the tower and area chips keep it and it is unsolved (or solved, with
+    // the Solved toggle on); a search lists by name alone
+    matchNow(levelIndex: number): boolean {
+        if (this.progress.hidden[levelIndex]) return false;
+        if (this.filters.q) return this.lowNames[levelIndex].includes(this.filters.q);
+        if (!this.entries.has(levelIndex)) return false;
+
         const level = this.levels[levelIndex];
         const filters = this.filters;
-        if (this.progress.hidden[levelIndex]) return false;
-        if (filters.q && !this.lowNames[levelIndex].includes(filters.q)) return false;
         if (filters.tower !== '' && level.t !== this.progress.towers[Number(filters.tower)]?.t) return false;
         if (filters.area !== '' && String(this.model.levelArea[levelIndex] ?? '') !== filters.area) return false;
-        return true;
-    }
-
-    // a level is listed when it is one of the goal's and the chips keep it; with no state chip on, the solved are left out
-    matchNow(levelIndex: number): boolean {
-        if (!this.entries.has(levelIndex) || !this.keptByNarrowing(levelIndex)) return false;
-
-        const chip = chipOfState(this.progress.state[levelIndex]);
-        if (this.filters.states.length) return this.filters.states.includes(chip);
-        return chip !== 'solved';
+        return (this.progress.state[levelIndex] === 'solved') === filters.solved;
     }
 
     computeMatches(): void {
@@ -237,6 +186,18 @@ export class PanelContext {
 
     match(levelIndex: number): boolean {
         return this.matches[levelIndex] === 1;
+    }
+
+    // the levels the filter keeps, on every layer: a goal's in the model's order, a search's by name
+    listedLevels(): number[] {
+        if (!this.searching()) return this.goalIds.filter((levelIndex) => this.match(levelIndex));
+
+        const found: number[] = [];
+        this.levels.forEach((_level, levelIndex) => {
+            if (this.match(levelIndex)) found.push(levelIndex);
+        });
+
+        return found.toSorted((first, second) => compareText(this.levels[first].n, this.levels[second].n));
     }
 
     // a level of the goal, which the list shows
@@ -265,11 +226,6 @@ export class PanelContext {
         return entry.role === 'one' && !entry.onPlan;
     }
 
-    started(levelIndex: number): boolean {
-        const levelState = this.progress.state[levelIndex];
-        return levelState === 'visited' || levelState === 'partial';
-    }
-
     towerOf(levelIndex: number): number {
         const towerName = this.levels[levelIndex].t;
         if (!towerName) return -1;
@@ -294,5 +250,13 @@ export class PanelContext {
 
     open([kind, id]: PanelKey, how?: SelectHow): void {
         this.selectors[kind](id, how);
+    }
+
+    // the panel is closed: nothing is kept for the campaign or named in the address
+    forget(): void {
+        this.current = null;
+        this.back.length = 0;
+        delete panelKeep[this.camp];
+        setHash('');
     }
 }

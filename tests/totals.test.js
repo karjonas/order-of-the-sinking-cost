@@ -44,6 +44,7 @@ beforeAll(async () => {
 function totalsAtRank(rank, shownAt, known, readPids = []) {
     const progress = {
         gateOpen: PROG.freezers.map(() => false),
+        towers: [],
         tst: PROG.teleporters.map(() => ({ disc: false })),
         lt: null,
         signOk: (rule) => signRuleMet(rule, { rank }, [], 0),
@@ -60,9 +61,7 @@ describe('the Signs row', () => {
         const totals = totalsAtRank(0, everywhere, null);
         expect(openingSigns().length).toBeLessThan(PROG.signs.length);
         expect(totals.stats.signs).toEqual([0, 17]);
-        expect(totals.stats.by.signs).toBe('Ground 0 / 8 · Sky 0 / 8 · Underworld 0 / 1');
-        expect(totals.finds.signs.open.length).toBe(17);
-        expect(totals.finds.signs.fogged).toBe(0);
+        expect(totals.stats.by.signs).toBe('Overworld 0 / 8 · High 0 / 8 · Low 0 / 1');
     });
 
     test('at rank 1 the rank 1 Signs are ready to read, not found', () => {
@@ -71,13 +70,7 @@ describe('the Signs row', () => {
         expect(rankOneSigns.length).toBe(5);
         expect(totals.stats.signs).toEqual([0, 17]);
         expect(totals.stats.signsReady).toBe(5);
-        expect(totals.stats.by.signs).toBe('Ground 0 / 8 · Sky 0 / 8 · Underworld 0 / 1');
-
-        // the find action frames the 5 ready Signs first, then the 12 others
-        const finds = totals.finds.signs;
-        expect(finds.open.length).toBe(17);
-        expect(finds.ready).toBe(5);
-        expect(finds.open.slice(0, 5)).toEqual(rankOneSigns.map((sign) => sign.p));
+        expect(totals.stats.by.signs).toBe('Overworld 0 / 8 · High 0 / 8 · Low 0 / 1');
     });
 
     test('a read Sign is found whatever its rule says', () => {
@@ -86,8 +79,6 @@ describe('the Signs row', () => {
         const totals = totalsAtRank(1, () => true, null, readPids);
         expect(totals.stats.signs).toEqual([5, 17]);
         expect(totals.stats.signsReady).toBe(0);
-        expect(totals.finds.signs.open.length).toBe(12);
-        expect(totals.finds.signs.ready).toBe(0);
     });
 
     test('a read Sign with its rule not holding counts as found', () => {
@@ -97,14 +88,12 @@ describe('the Signs row', () => {
         expect(totals.stats.signsReady).toBe(0);
     });
 
-    test('a Sign under fog is left out of the count and the split, and the find action counts it as fogged', () => {
+    test('a Sign under fog is left out of the count and the split', () => {
         const notSky = (layer) => layer !== 'sky';
         const totals = totalsAtRank(1, notSky, ['ground', 'underworld']);
         expect(totals.stats.signs).toEqual([0, 9]);
         expect(totals.stats.signsReady).toBe(5);
-        expect(totals.stats.by.signs).toBe('Ground 0 / 8 · Underworld 0 / 1');
-        expect(totals.finds.signs.open.length).toBe(9);
-        expect(totals.finds.signs.fogged).toBe(8);
+        expect(totals.stats.by.signs).toBe('Overworld 0 / 8 · Low 0 / 1');
     });
 
     test('nothing is listed while every Sign is under fog', () => {
@@ -112,8 +101,6 @@ describe('the Signs row', () => {
         const totals = totalsAtRank(1, nowhere, []);
         expect(totals.stats.signs).toEqual([0, 0]);
         expect(totals.stats.by.signs).toBe('');
-        expect(totals.finds.signs.open).toEqual([]);
-        expect(totals.finds.signs.fogged).toBe(17);
     });
 
     test('the demo with spoilers hidden has no fog data, so every Sign is under fog', () => {
@@ -134,11 +121,5 @@ describe('the Signs row', () => {
         const ready = shownSigns.filter((sign) => !model.progress.signRead(sign.pid) && model.progress.signOk(sign));
         expect(model.stats.signs).toEqual([read.length, shownSigns.length]);
         expect(model.stats.signsReady).toBe(ready.length);
-
-        // the rest of the Signs, framed on the map, are the ones shown and not read, the ready ones first
-        const unread = shownSigns.filter((sign) => !model.progress.signRead(sign.pid));
-        const unreadNotReady = unread.filter((sign) => !ready.includes(sign));
-        expect(model.finds.signs.open).toEqual([...ready, ...unreadNotReady].map((sign) => sign.p));
-        expect(model.finds.signs.ready).toBe(ready.length);
     });
 });

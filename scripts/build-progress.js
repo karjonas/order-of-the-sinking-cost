@@ -7,7 +7,7 @@
 //
 // Usage: node scripts/build-progress.js [--game DIR]
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { get } from './lib/fields.js';
+import { get, refOf } from './lib/fields.js';
 import { modulo, roundTo } from './lib/math.js';
 import { writeJsonAtomic } from './lib/output.js';
 import { Package } from './lib/package.js';
@@ -26,6 +26,17 @@ const LOW = 32;
 const GOLD_RANK = 4;
 // Each layer's crossroads hub: areas are ordered by distance from it
 const HUBS = { ground: 'area_g_crossroads', sky: 'area_s_upper_crossroads', underworld: 'area_u_crossroads_low' };
+// Level_Entry glow groups by the hue (degrees) of `color_active`; a hue below `below` and not below an earlier one is in
+// the group, and the rest (reds above all) fall to orange
+const GLOW_GROUPS = [
+    { name: 'orange', below: 40 },
+    { name: 'yellow', below: 70 },
+    { name: 'green', below: 160 },
+    { name: 'blue', below: 250 },
+    { name: 'purple', below: 340 },
+];
+// The Level_Entry `style` of the pads drawn as a 16-point star: the tower levels' (and the end1 level's)
+const TOWER_PAD_STYLE = 'SIXTEEN_POINTS';
 const LAYER_OF_PREFIX = { g: 'ground', s: 'sky', u: 'underworld' };
 const LAYER_RANK = ['ground', 'sky', 'underworld'];
 
@@ -48,7 +59,7 @@ function positionOf(fields) {
 
 // The pids a gate's id fields name (the ones that are set)
 function gateIds(fields, keys) {
-    return keys.map((key) => (fields[key] || [null, 0])[1]).filter(Boolean);
+    return keys.map((key) => refOf(fields[key])).filter(Boolean);
 }
 
 // The first decoded value of a field in a level's entities of one type, as the type's default (the old value)
@@ -72,6 +83,35 @@ function packageEntities(pkg, raw, typeName) {
     return entities;
 }
 
+function hueOf(red, green, blue) {
+    const largest = Math.max(red, green, blue);
+    const smallest = Math.min(red, green, blue);
+    const spread = largest - smallest;
+    let sector;
+    if (largest === red) {
+        sector = ((green - blue) / spread) % 6;
+    } else if (largest === green) {
+        sector = (blue - red) / spread + 2;
+    } else {
+        sector = (red - green) / spread + 4;
+    }
+    return modulo(sector * 60, 360);
+}
+
+// The glow group of a Level_Entry: the one its `color_active` hue is nearest to (reds count as orange, cyans as blue,
+// magentas as purple)
+function glowGroupOf(fields) {
+    const hue = hueOf(
+        get(fields, 'color_active.x', 0),
+        get(fields, 'color_active.y', 0),
+        get(fields, 'color_active.z', 0),
+    );
+    for (const group of GLOW_GROUPS) {
+        if (hue < group.below) return group.name;
+    }
+    return 'orange';
+}
+
 function buildLevels(overworld) {
     const entries = overworld.Level_Entry.filter(
         (entry) => !entry.fields.currently_broken && !entry.fields.currently_disfavored,
@@ -89,6 +129,8 @@ function buildLevels(overworld) {
         // the game evaluates a gate only while enabled_t_target is 0, so an enabled gated level is open from the start
         if (level.req.length && fields.enabled_t_target === 1) level.en = 1;
         if (fields.tower_flags) level.t = flagsValue(fields.tower_flags);
+        level.glow = glowGroupOf(fields);
+        if (fields.style === TOWER_PAD_STYLE) level.tower = 1;
         if (fields.dropdown) level.d = 1;
         if (fields.achievement) level.a = fields.achievement;
         return level;
@@ -106,6 +148,19 @@ function buildTowers(pkg, raw, overworld) {
         p: positionOf(tower.fields),
     }));
     return towers.toSorted(towerOrder);
+}
+
+// A Tower whose `teleporter_id` is a MINOR pad gets `pad`, the pad's index in `teleporters`: the ground and low towers'
+// pads stand on or next to the tower, while a high tower's is a MAJOR pad elsewhere on the map
+function addTowerPads(overworld, towers, teleporters) {
+    for (const entity of overworld.Tower) {
+        const padPid = refOf(entity.fields.teleporter_id);
+        const padIndex = teleporters.findIndex((pad) => pad.pid === padPid);
+        if (padIndex < 0 || teleporters[padIndex].major) continue;
+
+        const tower = towers.find((candidate) => candidate.pid === entity.pid);
+        tower.pad = padIndex;
+    }
 }
 
 // Plain towers first, then the high ones, then the low ones; by their flags within each
@@ -426,6 +481,7 @@ function main() {
     if (existsSync(worldPath)) {
         const world = readJson(worldPath);
         for (const room of world.gold_rooms) room.tower = towers.findIndex((tower) => tower.pid === room.tower);
+        addTowerPads(overworld, towers, world.teleporters);
         Object.assign(out, world);
     }
     const progressPath = paths.data('progress.json');

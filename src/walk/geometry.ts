@@ -4,8 +4,8 @@ import { PROG, WORLD } from '../data.ts';
 import type { WorldCells } from '../data.ts';
 import type { ExistenceGroup, Freezer, SpawnRow, Teleporter, World } from '../types.ts';
 import { roomOf } from './beams.ts';
-import { BEAMSTOP, cellOf, keyOf, mod, SOLID, SUPPORT, Z_BIAS } from './cells.ts';
-import type { GridShape } from './cells.ts';
+import { BEAMSTOP, cellOf, keyOf, mod, sideColumnsOf, SOLID, SUPPORT, Z_BIAS } from './cells.ts';
+import type { GridDimensions, GridShape } from './cells.ts';
 import { levelElevators } from './elevator.ts';
 import type { ElevatorFrames } from './elevator.ts';
 import { levelWaterColumns, oceanIndexOfPid } from './ocean.ts';
@@ -137,7 +137,7 @@ function gridShapeOf(world: World): GridShape {
         boxRow = mod(fastTravel.corner[1] - cornerY, height);
     }
 
-    return {
+    const dimensions: GridDimensions = {
         cornerX,
         cornerY,
         width,
@@ -151,6 +151,8 @@ function gridShapeOf(world: World): GridShape {
         boxColumn,
         boxRow,
     };
+
+    return { ...dimensions, sideColumns: sideColumnsOf(dimensions) };
 }
 
 /** The static solid voxels, and the level data's beam stops, per cell of the grid. */

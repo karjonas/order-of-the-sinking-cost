@@ -4,10 +4,13 @@ import { rawU16 } from '../save.ts';
 import { cellOnSide, DIRS, KICK_MARK, neighbourOf, PUSH, SOLID, Z_BIAS } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { freeze, thaw } from './freezers.ts';
+import { walled } from './gates.ts';
 import { exists } from './groups.ts';
 import { kickRide, lilyRide } from './lilies-and-rivers.ts';
 import { deep, levelWater, waterAt } from './ocean.ts';
 import { push, requeue, visitReached } from './queue.ts';
+import { landingOf } from './rock-turns.ts';
+import type { Landing } from './rock-turns.ts';
 import { doorIn, doorOut, WIZARD } from './skills.ts';
 import { blocked, heldFromBelow, holdsStone, standable } from './support.ts';
 import type { WalkGrid } from './walker.ts';
@@ -23,7 +26,7 @@ const LANE_READY = LANE_PUSH | LANE_NEAR | LANE_FROM;
 const SKIPPABLE = 2;
 const FLIPPING_TARGET = 8;
 
-// how many cells a stone is pushed to over dry land, at most, while its launches are looked for
+// how many cells a charmed stone lands on, at most, while its launches are looked for
 const MAX_PUSH_POSITIONS = 200;
 
 /**
@@ -75,21 +78,22 @@ function skippableNow(properties: Uint8Array | undefined): boolean {
     return (bits & SKIPPABLE) !== 0 && (bits & FLIPPING_TARGET) === 0;
 }
 
-/** The launches of the stone in `stoneCell` at height z from the cells it is pushed to over dry land. */
+/**
+ * The launches of the stone in `stoneCell` at height z from the cells it is pushed to over dry land, nearest first. The
+ * hero may push it from the cell it started in once it has left.
+ */
 function launchesOf(walkGrid: WalkGrid, stoneCell: number, z: number): Launch[] {
     const { grid, noFlood } = walkGrid;
     const positions = new Set([stoneCell]);
     const todo = [stoneCell];
     const launches: Launch[] = [];
 
-    while (todo.length > 0 && positions.size < MAX_PUSH_POSITIONS) {
-        const position = todo.pop();
-        if (position === undefined) break;
+    for (let index = 0; index < todo.length; index++) {
+        const position = todo[index];
 
         for (let side = 0; side < 4; side++) {
             const pushCell = cellOnSide(walkGrid, position, (side + 2) % 4);
             const into = cellOnSide(walkGrid, position, side);
-            if (pushCell === stoneCell) continue;
             if (blocked(walkGrid, noFlood, pushCell) || !standable(walkGrid, noFlood, pushCell)) continue;
             if (fenced(walkGrid, pushCell, side, position) || fenced(walkGrid, position, side, into)) continue;
             if (into !== stoneCell && (blocked(walkGrid, noFlood, into) || grid[into] & PUSH)) continue;
@@ -284,7 +288,7 @@ function freezersOnRide(walkGrid: WalkGrid, candidates: LaneFreezer[], landing: 
  * The existing SKIPPABLE Rocks that have not sunk and are not under water: each one's cell (where the save last left
  * it), z and pid.
  */
-function skippingStones(walkGrid: WalkGrid): Array<[stoneCell: number, z: number, pid: number]> {
+export function skippingStones(walkGrid: WalkGrid): Array<[stoneCell: number, z: number, pid: number]> {
     const { world, latest, layerCells } = walkGrid;
     const stones: Array<[number, number, number]> = [];
     const skippable = new Set(world.skippable || []);
@@ -515,6 +519,52 @@ export function landingsOf(
     }
 
     return landings;
+}
+
+/**
+ * Where a skipping stone ends when pushed from `from` on side `side`, for a flood that has reached the push cell: into
+ * a cell that holds it, it rests there; into level water it skips on over water level with its height and rests on the
+ * first cell that holds it, or sinks in place, in the last water cell, against a fence, a blocked cell or a pushable.
+ * Cells of a Lily's drift it crosses are passed over (the lanes cover a stone that stops on a Lily). A stone that sinks
+ * in a river cell is left out, since the sunk stone would stop the current. Elsewhere it moves as any pushed object
+ * (landingOf). null where it never rests or sinks.
+ */
+export function stoneLandingOf(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    from: number,
+    side: number,
+    z: number,
+): Landing | null {
+    const { grid, driftCells, flowSide } = walkGrid;
+    const firstWater = cellOnSide(walkGrid, from, side);
+    const pushableInto = (grid[firstWater] & PUSH) !== 0;
+    const entersWater =
+        !walled(walkGrid, floodState, firstWater) &&
+        !pushableInto &&
+        !holdsStone(walkGrid, floodState, firstWater, z) &&
+        levelWater(walkGrid, firstWater, z);
+    if (!entersWater) return landingOf(walkGrid, floodState, from, side);
+
+    let current = firstWater;
+
+    for (let stepsOut = 0; stepsOut < walkGrid.width + walkGrid.height; stepsOut++) {
+        const next = cellOnSide(walkGrid, current, side);
+
+        const pushableAhead = (grid[next] & PUSH) !== 0;
+        if (fenced(walkGrid, current, side, next) || blocked(walkGrid, floodState, next) || pushableAhead) {
+            if (flowSide.has(current)) return null;
+            return { cell: current, sinks: true };
+        }
+
+        const drifting = driftCells.has(next) && levelWater(walkGrid, next, z);
+        if (!drifting && holdsStone(walkGrid, floodState, next, z)) return { cell: next, sinks: false };
+        if (!drifting && !levelWater(walkGrid, next, z)) return null;
+
+        current = next;
+    }
+
+    return null;
 }
 
 // The TELEPORT swap onto a skipping stone, in the order the skills allow: the stone is pushed and launched (layer 0,

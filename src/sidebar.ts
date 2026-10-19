@@ -1,24 +1,30 @@
-// The sidebar: the campaign, No spoilers and the search, the goals, the totals to find on the map, the areas and the
-// save's stats (VIEWER.md "The page (viewer)")
+// The sidebar: the save with its progress, No spoilers and where the hero is, the goals, the areas, the kinds of mark to
+// find on the map and the save's stats (VIEWER.md "The page (viewer)")
 import { PROG } from './data.ts';
 import { $, apolloDate, apolloSeconds, duration, escapeHtml, setButtonPressed } from './util.ts';
-import { hooks, isFindKind, revealedOf, setPreference, setSpoilersHidden, spoilersHidden, state } from './shared.ts';
+import { hooks, revealedOf, setPreference, setSpoilersHidden, showGoalList, spoilersHidden, state } from './shared.ts';
 import type { ProgressFilters } from './shared.ts';
 import { baseName, campaignOf, campaigns, campaignLabel, realFiles, statusEntry } from './files.ts';
-import { capitalized, modelNoun } from './model/freezer-names.ts';
+import { isFindKind } from './model/find-kinds.ts';
 import { RANKS } from './model/progress.ts';
 import type { ProgressModel } from './model/progress-model.ts';
-import type { FoundOfTotal } from './model/totals.ts';
-import { checkIcon, eyeIcon, STATE_ICONS } from './map/icons.ts';
+import { CHEVRON } from './map/icons.ts';
+import { isOverlayKind, overlayOn } from './map/map-html.ts';
 import type { DemoStatus, Status } from './status-file.ts';
 import { show } from './view.ts';
-import { dirHandle, dropsLive, pickFolder, refresh, timeAgo } from './folder.ts';
-import { achievementsHtml, inLevelHtml, statsHtml } from './sidebar/summary.ts';
-import { finderTip, pickGoal, sideGoalsHtml } from './sidebar/goals.ts';
-import { areaListOpen, sideAreasHtml, toggleAreaList, toggleFinished, toggleLayerGroup } from './sidebar/areas.ts';
-
-/** The totals the sidebar counts: found and total per kind. */
-type TotalKind = 'pods' | 'doorways' | 'signs' | 'tps' | 'logs';
+import { dirHandle, dropsLive, pickFolder, refresh, savedTitle } from './folder.ts';
+import { inLevelHtml, solvedHtml, statsHtml } from './sidebar/summary.ts';
+import { pickGoal, refreshSideGoals, sideGoalsHtml } from './sidebar/goals.ts';
+import { sideAreasHtml, toggleFinished, toggleLayerGroup } from './sidebar/areas.ts';
+import { findListShown, overlayActionText, sideFindHtml } from './sidebar/find.ts';
+import {
+    areaListOpen,
+    findSectionOpen,
+    isGoalOpen,
+    setAreaListOpen,
+    setFindSectionOpen,
+    setOpenGoal,
+} from './sidebar/sections.ts';
 
 /**
  * A fogged level the viewer clicked open stays shown for the rest of the visit; everything naming it is drawn again.
@@ -32,9 +38,6 @@ export function revealLevel(level: number): void {
     model.progress.hidden[level] = false;
     hooks.reveal?.();
     renderSide(model);
-
-    const dialog = $('#achDlg');
-    if (dialog instanceof HTMLDialogElement && dialog.open) $('#achBody').innerHTML = achievementsHtml(model);
 }
 
 const OPEN_OTHER = '\u0001open';
@@ -55,19 +58,34 @@ function fileErrorsHtml(): string {
 // whether a status is a saved one, which tells when it was written; the example's is not
 const isSavedStatus = (status: Status | DemoStatus): status is Status => status.savedLo !== undefined;
 
-// rank, play time and when the save was last written
+// rank and play time; the tooltip tells when the save was last written
 function saveMetaHtml(status: Status): string {
-    const saved = apolloDate(status.savedLo, status.savedHi);
-    const savedTime = saved.getTime();
+    const savedTime = apolloDate(status.savedLo, status.savedHi).getTime();
     const rank = escapeHtml(RANKS[status.rank] ?? status.rank);
     const playTime = duration(apolloSeconds(status.playLo, status.playHi));
-    const savedTitle = escapeHtml(saved.toLocaleString());
 
-    const rankHtml = `<span title="Rank">${rank}</span>`;
-    const playTimeHtml = `<span title="Play time">${playTime}</span>`;
-    const savedAttributes = `id="savedAgo" data-t="${savedTime}" title="Saved ${savedTitle}"`;
-    const savedHtml = `<span ${savedAttributes}>${timeAgo(savedTime)}</span>`;
-    return `<div class="muted meta">${rankHtml} · ${playTimeHtml} · ${savedHtml}</div>`;
+    const attributes = `id="saveMeta" data-t="${savedTime}" title="${escapeHtml(savedTitle(savedTime))}"`;
+    return `<div class="muted meta" ${attributes}>${rank} · ${playTime}</div>`;
+}
+
+// the solved bar and the No spoilers switch, with a note when the build has no fog data to hide things by
+function progressHtml(model: ProgressModel | null | undefined): string {
+    if (!model) return '';
+
+    const spoilTitle =
+        'On: levels, areas, towers and achievements still under fog are left out. Off: everything is shown';
+    const spoilSwitch = `<button class="spoil" id="pgSpoil" title="${spoilTitle}"><span class="knob"></span>No spoilers</button>`;
+
+    let fogNote = '';
+    if (model.noFog) {
+        let message = 'This build has no fog data';
+        if (PROG.fog) message = 'Fog needs overworld.history';
+        let onlyEntered = '';
+        if (model.hide) onlyEntered = '; only entered levels are shown';
+        fogNote = `<div class="muted">${message}${onlyEntered}</div>`;
+    }
+
+    return `${solvedHtml(model)}${spoilSwitch}${fogNote}`;
 }
 
 // the campaign block: the example's note, or the campaign list with the refresh button and the save's summary
@@ -75,12 +93,13 @@ function campaignHtml(model: ProgressModel | null | undefined, campaignList: str
     const entry = state.camp === null ? undefined : statusEntry(state.camp);
     const status = entry?.parsed;
     const errors = fileErrorsHtml();
+    const progress = progressHtml(model);
 
     // with saves open the campaign list takes the open button's place; its last entry opens another folder
     const opened = realFiles().length > 0;
     if (!opened) {
         const note = '<div class="muted meta">Example: a new game</div>';
-        return `<div class="camp empty">${note}${inLevelHtml()}</div>${errors}`;
+        return `<div class="camp empty">${note}${progress}${inLevelHtml()}</div>${errors}`;
     }
 
     // a connected folder gets the refresh button, its dot showing the folder is watched
@@ -89,147 +108,110 @@ function campaignHtml(model: ProgressModel | null | undefined, campaignList: str
         const folderName = escapeHtml(dirHandle.name);
         const watched = '(it is re-read every few seconds while this page is visible)';
         const title = `Re-read the save folder “${folderName}” ${watched}`;
-        const attributes = `id="refreshBtn" class="live" title="${title}" aria-label="Re-read the save folder"`;
+        const attributes = `id="refreshBtn" class="plain live" title="${title}" aria-label="Re-read the save folder"`;
         live = `<button ${attributes}><span class="dot"></span>↻</button>`;
     }
 
     // saves read once say so, and how to make them live
-    let snapshot = '';
     if (!dirHandle) {
         let howToKeepLive = '';
         if (dropsLive) howToKeepLive = ' · drop the folder here to keep it live';
 
-        const title = 'These files were read once; new progress shows after the folder is opened again';
-        snapshot = `<div class="muted meta snap" title="${title}">Snapshot${howToKeepLive}</div>`;
+        const title = `These files were read once; new progress shows after the folder is opened again${howToKeepLive}`;
+        live = `<span class="muted snap" title="${title}">snapshot</span>`;
     }
-
-    const options = campaignList
-        .map((camp) => {
-            let selected = '';
-            if (camp === state.camp) selected = ' selected';
-            return `<option value="${escapeHtml(camp)}"${selected}>${escapeHtml(campaignLabel(camp))}</option>`;
-        })
-        .join('');
 
     let meta = '';
     if (status && isSavedStatus(status) && !entry?.demo) meta = saveMetaHtml(status);
 
-    const openOtherOption = `<option value="${OPEN_OTHER}">Open another folder…</option>`;
-    const openOther = `<optgroup label="──────────">${openOtherOption}</optgroup>`;
-    const select = `<select id="campSel" aria-label="Campaign">${options}${openOther}</select>`;
     const inLevel = inLevelHtml(status, model);
-    return `<div class="camp"><div class="cr">${select}${live}</div>${meta}${snapshot}${inLevel}</div>${errors}`;
+    const campaign = `<div class="cr">${campaignPickerHtml(campaignList)}${live}</div>`;
+    return `<div class="camp">${campaign}${meta}${progress}${inLevel}</div>${errors}`;
 }
 
-// a totals row: its icon, label and found / total; a button when it frames the ones not found yet on the map
-function totalsRowHtml(
-    icon: string,
-    label: string,
-    [found, total]: FoundOfTotal,
-    tag = 'div',
-    tip = '',
-    attributes = '',
-    note = '',
-): string {
-    const done = total > 0 && found >= total;
-    let titleAttribute = '';
-    if (tip) titleAttribute = ` title="${escapeHtml(tip)}"`;
+// the campaign's name as a quiet button that opens the menu of campaigns, whose last entry opens another folder
+function campaignPickerHtml(campaignList: string[]): string {
+    const items = campaignList
+        .map((camp) => {
+            let current = '';
+            if (camp === state.camp) current = ' aria-current="true"';
+            return `<button class="plain"${current} role="menuitem" data-camp="${escapeHtml(camp)}">${escapeHtml(campaignLabel(camp))}</button>`;
+        })
+        .join('');
 
-    let className = 'sr';
-    if (tag === 'button') className = 'plain ' + className;
-    if (done) className += ' done';
+    const openOther = `<button class="plain" role="menuitem" data-camp="${OPEN_OTHER}">Open another folder…</button>`;
+    const menu = `<div class="cmenu" id="campMenu" role="menu" hidden>${items}<hr>${openOther}</div>`;
 
-    let check = '';
-    if (done) check = checkIcon;
-    const count = `<span class="cnt">${check}${found} / ${total}${note}</span>`;
-    return `<${tag}${attributes}${titleAttribute} class="${className}">${icon}<span>${label}</span>${count}</${tag}>`;
+    const name = escapeHtml(campaignLabel(state.camp ?? ''));
+    const attributes = 'id="campBtn" aria-haspopup="menu" aria-expanded="false" title="Switch campaign"';
+    const button = `<button class="plain" ${attributes}><span class="n">${name}</span>${CHEVRON}</button>`;
+    return `<div class="cpick">${button}${menu}</div>`;
 }
 
-const FINDERS: Array<[kind: TotalKind, label: string]> = [
-    ['pods', capitalized(modelNoun(false))],
-    ['doorways', capitalized(modelNoun(true))],
-    ['signs', 'Signs'],
-    ['tps', 'Teleporters'],
-    ['logs', 'Voice logs'],
-];
+function setCampaignMenuOpen(open: boolean): void {
+    const button = $('#campBtn');
+    const menu = $('#campMenu');
+    if (!button || !menu) return;
 
-function findOnMapHtml(model: ProgressModel): string {
-    const stats = model.stats;
-    const rows: string[] = [];
-
-    for (const [kind, label] of FINDERS) {
-        if (stats[kind][1] <= 0) continue;
-
-        if (!isFindKind(kind)) {
-            rows.push(totalsRowHtml(STATE_ICONS[kind], label, stats[kind], 'div', stats.by[kind]));
-            continue;
-        }
-
-        const tip = [stats.by[kind], finderTip(model.finds[kind])].filter(Boolean).join(' · ');
-        let note = '';
-        if (kind === 'signs' && stats.signsReady > 0) note = ` · ${stats.signsReady} to read`;
-        rows.push(
-            totalsRowHtml(
-                STATE_ICONS[kind],
-                label,
-                stats[kind],
-                'button',
-                tip,
-                ` data-find="${kind}" aria-pressed="false"`,
-                note,
-            ),
-        );
-    }
-
-    // treasures are picked up inside a level, so their row only counts the plinths that show one
-    if (stats.treasures[1] > 0) {
-        rows.push(totalsRowHtml(STATE_ICONS.treasures, 'Treasures', stats.treasures, 'div', stats.by.treasures));
-    }
-
-    if (!rows.length) return '';
-    return `<div class="np stats"><div class="sh">Find on the map</div>${rows.join('')}</div>`;
+    menu.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
 }
 
-// the panels under the campaign: No spoilers and the search, the goals, the totals, the areas and the stats
-function panelsHtml(model: ProgressModel): string {
-    const spoilTitle =
-        'On: levels, areas, towers and achievements still under fog are left out. Off: everything is shown';
-    const spoilButton = `<button class="spoil" id="pgSpoil" title="${spoilTitle}">${eyeIcon}No spoilers</button>`;
-    let html = `<div class="np">${spoilButton}`;
-    if (model.noFog) {
-        let fogNote = 'This build has no fog data';
-        if (PROG.fog) fogNote = 'Fog needs overworld.history';
-        let onlyEntered = '';
-        if (model.hide) onlyEntered = '; only entered levels are shown';
-        html += `<div class="muted">${fogNote}${onlyEntered}</div>`;
-    }
+function onCampaignMenuClick(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
 
-    const searchInput = '<input type="search" id="fQ" placeholder="Search levels…" aria-label="Search levels">';
-    html += `<div class="fl">${searchInput}</div></div>`;
-    html += `<div class="np goals" id="sideGoals">${sideGoalsHtml(model)}</div>`;
-    html += findOnMapHtml(model);
+    const item = target.closest<HTMLElement>('[data-camp]');
+    if (!item) return;
 
-    let areasOpenClass = '';
-    if (areaListOpen()) areasOpenClass = ' open';
-    html += `<div class="np alist${areasOpenClass}" id="sideAreas">${sideAreasHtml(model)}</div>`;
-
-    if (!model.demo) html += statsHtml(model);
-    return html;
-}
-
-function onCampaignPicked(event: Event): void {
-    const select = event.target;
-    if (!(select instanceof HTMLSelectElement)) return;
-
-    if (select.value === OPEN_OTHER) {
-        select.value = state.camp ?? '';
+    setCampaignMenuOpen(false);
+    const camp = item.dataset.camp ?? '';
+    if (camp === OPEN_OTHER) {
         void pickFolder();
         return;
     }
 
-    state.camp = select.value;
+    if (camp === state.camp) return;
+
+    state.camp = camp;
     state.campPicked = true;
     show();
+}
+
+// a click anywhere else, or Escape, closes the campaign menu
+document.addEventListener('click', (event) => {
+    if (event.target instanceof Element && !event.target.closest('.cpick')) setCampaignMenuOpen(false);
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || $('#campMenu')?.hidden !== false) return;
+
+    // the key is spent on the menu: the page's other Escape handlers see it as handled
+    event.preventDefault();
+    setCampaignMenuOpen(false);
+});
+
+// the section of the kinds of mark to find, with the class of an open one
+function findSectionHtml(model: ProgressModel): string {
+    const rows = sideFindHtml(model);
+    if (!rows) return '';
+
+    let openClass = '';
+    if (findSectionOpen()) openClass = ' open';
+    return `<div class="np find${openClass}" id="sideFind">${rows}</div>`;
+}
+
+// the panels under the campaign: the goals, the areas, the kinds of mark to find and the stats
+function panelsHtml(model: ProgressModel): string {
+    let html = `<div class="np goals" id="sideGoals">${sideGoalsHtml(model)}</div>`;
+
+    let areasOpenClass = '';
+    if (areaListOpen()) areasOpenClass = ' open';
+    html += `<div class="np alist${areasOpenClass}" id="sideAreas">${sideAreasHtml(model)}</div>`;
+    html += findSectionHtml(model);
+
+    if (!model.demo) html += statsHtml(model);
+    return html;
 }
 
 function onStatsToggle(event: Event): void {
@@ -239,34 +221,59 @@ function onStatsToggle(event: Event): void {
     const open = button.getAttribute('aria-expanded') !== 'true';
     button.setAttribute('aria-expanded', String(open));
 
-    const chevron = button.querySelector('.chev');
-    if (chevron) chevron.textContent = open ? '▾' : '▴';
     $('#statsRows').hidden = !open;
     $('#sideStats').classList.toggle('open', open);
     setPreference('statsOpen', open ? '1' : '0');
+}
+
+// a change of the open sections (see sections.ts) draws the sections again
+function refreshSections(): void {
+    refreshSideGoals();
+    refreshSideAreas();
+    refreshSideFind();
 }
 
 function onGoalsClick(event: Event, model: ProgressModel): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
 
-    const find = target.closest<HTMLElement>('[data-find]');
-    if (find) {
-        const kind = find.dataset.find;
-        if (kind !== undefined && isFindKind(kind)) hooks.find?.(kind);
-        return;
-    }
-
-    if (target.closest('#achBtn')) {
-        $('#achBody').innerHTML = achievementsHtml(model);
-
-        const dialog = $('#achDlg');
-        if (dialog instanceof HTMLDialogElement) dialog.showModal();
-        return;
-    }
-
     const goalKey = target.closest<HTMLElement>('[data-goal]')?.dataset.goal;
-    if (goalKey !== undefined) pickGoal(model, goalKey);
+    if (goalKey === undefined) return;
+
+    // a goal with children opens its list, and closes it when it was the pick and its list was open
+    if (model.goalByKey(goalKey)?.children?.length) {
+        const wasPicked = model.goalFor(model.F.goal)?.key === goalKey;
+        if (!isGoalOpen(goalKey)) {
+            setOpenGoal(goalKey);
+            refreshSections();
+        } else if (wasPicked) {
+            setOpenGoal(null);
+            refreshSections();
+        }
+    }
+
+    pickGoal(model, goalKey);
+}
+
+function onFindClick(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    if (target.closest('[data-fold]')) {
+        setFindSectionOpen(!findSectionOpen());
+        refreshSections();
+        $('#sideFind [data-fold]')?.focus({ preventScroll: true });
+        return;
+    }
+
+    const overlayKind = target.closest<HTMLElement>('[data-overlay]')?.dataset.overlay;
+    if (overlayKind !== undefined && isOverlayKind(overlayKind)) {
+        hooks.overlay?.(overlayKind);
+        return;
+    }
+
+    const findKind = target.closest<HTMLElement>('[data-find]')?.dataset.find;
+    if (findKind !== undefined && isFindKind(findKind)) hooks.find?.(findKind);
 }
 
 function onAreasClick(event: Event, filters: ProgressFilters, changed: () => void): void {
@@ -274,18 +281,18 @@ function onAreasClick(event: Event, filters: ProgressFilters, changed: () => voi
     if (!(target instanceof Element)) return;
 
     if (target.closest('[data-areas]')) {
-        toggleAreaList();
-        refreshSideAreas();
+        setAreaListOpen(!areaListOpen());
+        refreshSections();
         $('#sideAreas [data-areas]')?.focus({ preventScroll: true });
         return;
     }
 
     const group = target.closest<HTMLElement>('[data-grp]');
     if (group) {
-        const groupKey = group.dataset.grp ?? '';
-        toggleLayerGroup(groupKey);
+        const layerKey = group.dataset.grp ?? '';
+        toggleLayerGroup(layerKey);
         refreshSideAreas();
-        $(`#sideAreas [data-grp="${groupKey}"]`)?.focus({ preventScroll: true });
+        $(`#sideAreas [data-grp="${layerKey}"]`)?.focus({ preventScroll: true });
         return;
     }
 
@@ -303,12 +310,10 @@ function onAreasClick(event: Event, filters: ProgressFilters, changed: () => voi
     const picked = area.dataset.area ?? '';
     if (filters.area === picked) filters.area = '';
     else filters.area = picked;
+    showGoalList(filters);
     changed();
     if (filters.area !== '') hooks.area?.();
 }
-
-// the search box applies its text once typing pauses
-let searchTimer = 0;
 
 export function renderSide(model?: ProgressModel | null): void {
     const side = $('#sidePanels');
@@ -328,7 +333,8 @@ export function renderSide(model?: ProgressModel | null): void {
     if (model) html = panelsHtml(model);
     side.innerHTML = html;
 
-    $('#campSel')?.addEventListener('change', onCampaignPicked);
+    $('#campBtn')?.addEventListener('click', () => setCampaignMenuOpen($('#campMenu').hidden === true));
+    $('#campMenu')?.addEventListener('click', onCampaignMenuClick);
     $('#refreshBtn')?.addEventListener('click', () => void refresh(true));
     if (!model) return;
 
@@ -337,23 +343,13 @@ export function renderSide(model?: ProgressModel | null): void {
         if (inLevel !== null) hooks.open?.(inLevel);
     });
 
+    $('#heroLine')?.addEventListener('click', () => hooks.hero?.());
+
     const filters = model.F;
     const changed = (): void => {
         if (hooks.apply) hooks.apply();
         else show();
     };
-
-    $('#fQ').addEventListener('input', (event) => {
-        const input = event.target;
-        if (!(input instanceof HTMLInputElement)) return;
-
-        const query = input.value.toLowerCase().trim();
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => {
-            filters.q = query;
-            changed();
-        }, 120);
-    });
 
     hooks.side = model;
     setButtonPressed($('#pgSpoil'), model.hide);
@@ -365,14 +361,7 @@ export function renderSide(model?: ProgressModel | null): void {
 
     $('#statsTog')?.addEventListener('click', onStatsToggle);
     $('#sideGoals').addEventListener('click', (event) => onGoalsClick(event, model));
-    $('.side .stats')?.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-
-        const kind = target.closest<HTMLElement>('[data-find]')?.dataset.find;
-        if (kind !== undefined && isFindKind(kind)) hooks.find?.(kind);
-    });
-
+    $('#sideFind')?.addEventListener('click', onFindClick);
     $('#sideAreas')?.addEventListener('click', (event) => onAreasClick(event, filters, changed));
     syncSide(filters);
 }
@@ -386,15 +375,40 @@ export function refreshSideAreas(): void {
     syncSide(hooks.side.F);
 }
 
-/** The sidebar's controls show the filters: the search text, the totals row framed on the map and the picked area. */
+function refreshSideFind(): void {
+    const element = $('#sideFind');
+    if (!element || !hooks.side) return;
+
+    element.innerHTML = sideFindHtml(hooks.side);
+    element.classList.toggle('open', findSectionOpen());
+    syncSide(hooks.side.F);
+}
+
+/**
+ * The page's controls show the filters and switches: the search text, the Find on the map rows (the kinds shown on the
+ * map, the one listed) and the picked area.
+ */
 export function syncSide(filters: ProgressFilters): void {
     const search = $('#fQ');
-    if (!search) return;
-
     if (document.activeElement !== search && search instanceof HTMLInputElement) search.value = filters.q;
+
+    $('#sidebar')
+        .querySelectorAll<HTMLElement>('[data-overlay]')
+        .forEach((button) => {
+            const kind = button.dataset.overlay;
+            if (kind === undefined || !isOverlayKind(kind)) return;
+
+            setButtonPressed(button, overlayOn[kind]);
+            button.closest('.sr')?.classList.toggle('on', overlayOn[kind]);
+            if (isFindKind(kind)) {
+                const action = overlayActionText(kind, overlayOn[kind]);
+                button.setAttribute('aria-label', action);
+                button.title = action;
+            }
+        });
     $('#sidebar')
         .querySelectorAll<HTMLElement>('[data-find]')
-        .forEach((button) => setButtonPressed(button, button.dataset.find === filters.find));
+        .forEach((button) => setButtonPressed(button, findListShown(filters, button.dataset.find ?? '')));
     $('#sideAreas')
         ?.querySelectorAll<HTMLElement>('[data-area]')
         .forEach((area) => setButtonPressed(area, area.dataset.area === filters.area));

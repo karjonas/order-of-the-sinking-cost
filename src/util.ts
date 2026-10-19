@@ -5,6 +5,9 @@
 export const $ = (selector: string, root: ParentNode = document): HTMLElement =>
     root.querySelector<HTMLElement>(selector)!;
 
+/** Orders two texts the way the user's language does; sorts use it in place of localeCompare, which builds a collator per call. */
+export const compareText = new Intl.Collator().compare;
+
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 
 /** The text with the characters that are special in HTML escaped. */

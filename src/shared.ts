@@ -1,5 +1,7 @@
 // State shared across modules; the ones other modules change have setters
 import type { SaveEntry } from './files.ts';
+import type { OverlayKind } from './map/map-html.ts';
+import type { FindKind } from './model/find-kinds.ts';
 import type { ProgressModel } from './model/progress-model.ts';
 
 /** A remembered setting in localStorage (or the Storage named by `store`); null when storage is unavailable. */
@@ -43,24 +45,21 @@ export interface PageState {
 /** The page's state. */
 export const state: PageState = { files: new Map(), camp: null, rendered: null, pickerHelp: false };
 
-/** The totals rows of the sidebar that frame the things not found yet on the map. */
-export type FindKind = 'signs' | 'tps' | 'logs';
-
-export const isFindKind = (value: string): value is FindKind =>
-    value === 'signs' || value === 'tps' || value === 'logs';
-
 /**
  * The narrowing of the list and the map of one campaign. goal: the key of the goal the list and the map show, '' for the
- * active one; states: the state chips that narrow the list; tower and area: the chips of a tower and an area; find: the
- * totals row (signs, tps, logs) whose missing things the map is framed on.
+ * active one; q: the search text, which lists every level not under fog; solved: whether the list shows the solved levels
+ * in place of the ones left to do; tower and area: the chips of a tower and an area; find: the kind of mark whose items
+ * the list shows in place of the goal's levels ('' for the goal's); findDone: whether that list also shows the items
+ * already done.
  */
 export interface ProgressFilters {
     q: string;
     goal: string;
-    states: string[];
+    solved: boolean;
     tower: string;
     area: string;
     find: FindKind | '';
+    findDone: boolean;
 }
 
 /** The narrowing of each campaign, by campaign name. */
@@ -71,13 +70,6 @@ export type PanelKind = 'level' | 'tower' | 'gate' | 'sign';
 
 /** An open panel: its kind and the index of its level, tower, Freezer or sign. */
 export type PanelKey = [kind: PanelKind, id: number];
-
-/** The results list follows the map's layer unless this is on. */
-export let listAllLayers = readPreference('listAllLayers') === '1';
-
-export const setListAllLayers = (value: boolean): void => {
-    listAllLayers = value;
-};
 
 /** The fogged levels the viewer clicked open, by campaign name. */
 export const revealed: Record<string, Set<number>> = {};
@@ -97,16 +89,16 @@ export function revealedOf(camp: string): Set<number> {
 export function filtersOf(camp: string): ProgressFilters {
     let filters = progressFilters[camp];
     if (!filters) {
-        filters = { q: '', goal: '', states: [], tower: '', area: '', find: '' };
+        filters = { q: '', goal: '', solved: false, tower: '', area: '', find: '', findDone: false };
         progressFilters[camp] = filters;
     }
 
     return filters;
 }
 
-/** Drops the search text and the state, tower and area chips; the goal and the totals row stay. */
+/** Drops the search text and the tower and area chips; the goal and the Solved toggle stay. */
 export function clearNarrowing(filters: ProgressFilters): void {
-    Object.assign(filters, { q: '', states: [], tower: '', area: '' });
+    Object.assign(filters, { q: '', tower: '', area: '' });
 }
 
 /** Whether spoilers are hidden; the page hides them until the viewer turns them on. */
@@ -118,40 +110,52 @@ export const setSpoilersHidden = (value: boolean): void => {
 
 /**
  * Hooks into the last drawn progress view, which sets the ones it has: apply (the list filter changed), open(level),
- * tower(i), area() and find(totals row) frame them on the map, reveal() names a revealed level everywhere, side: the
- * model the sidebar shows, hash() opens the panel the address names (#level=<name>, #tower=<i>, #gate=<i> or #sign=<i>).
+ * tower(i) and area() frame them on the map, hero() frames the hero, overlay(kind) shows or hides a kind of mark,
+ * find(kind) lists the items of a kind of mark, list() closes the open panel so that the list shows, panelOpen() tells
+ * whether a panel covers the list, reveal() names a revealed level everywhere, side: the model the sidebar shows, hash() opens the panel the address names (#level=<name>, #tower=<i>, #gate=<i> or #sign=<i>).
  */
 export interface Hooks {
     apply: ((redraw?: boolean) => void) | null;
     open: ((level: number) => void) | null;
     tower: ((tower: number) => void) | null;
     area: (() => void) | null;
+    hero: (() => void) | null;
+    overlay: ((kind: OverlayKind) => void) | null;
     find: ((kind: FindKind) => void) | null;
+    list: (() => void) | null;
+    panelOpen: (() => boolean) | null;
     reveal: (() => void) | null;
     side: ProgressModel | null;
     hash: (() => void) | null;
 }
 
+function emptyHooks(): Hooks {
+    return {
+        apply: null,
+        open: null,
+        tower: null,
+        area: null,
+        hero: null,
+        overlay: null,
+        find: null,
+        list: null,
+        panelOpen: null,
+        reveal: null,
+        side: null,
+        hash: null,
+    };
+}
+
 /** The hooks into the last drawn progress view. */
-export const hooks: Hooks = {
-    apply: null,
-    open: null,
-    tower: null,
-    area: null,
-    find: null,
-    reveal: null,
-    side: null,
-    hash: null,
-};
+export const hooks: Hooks = emptyHooks();
 
 /** A redraw drops the hooks into the last drawn progress view. */
 export function resetHooks(): void {
-    hooks.apply = null;
-    hooks.open = null;
-    hooks.tower = null;
-    hooks.area = null;
-    hooks.find = null;
-    hooks.reveal = null;
-    hooks.side = null;
-    hooks.hash = null;
+    Object.assign(hooks, emptyHooks());
+}
+
+/** Leaves Find mode: the list shows the goal's levels again, with no panel open. */
+export function showGoalList(filters: ProgressFilters): void {
+    filters.find = '';
+    hooks.list?.();
 }

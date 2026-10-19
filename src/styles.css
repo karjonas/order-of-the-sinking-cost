@@ -1,39 +1,55 @@
 :root {
     --text: #ece3cd;
     --hi: #f5d84a;
-    --muted: #a9a08b;
-    --title: #f7efda;
-    --bg: #0f1c24;
-    --panel: #14232c;
-    --panel2: rgba(255, 244, 214, 0.06);
+    --muted: #b2aa94;
+    --title: #f1e6c4;
+    --bg: #0a2234;
+    --panel: #040c12;
+    --panel2: rgba(255, 244, 214, 0.07);
     --hover: rgba(255, 244, 214, 0.09);
-    --line: rgba(255, 236, 200, 0.16);
-    --cap: #141b2a;
-    --cap2: #1e2740;
-    --frame: #8a7440;
+    --line: rgba(159, 126, 38, 0.55);
+    --cap: #16233b;
+    --cap2: #2a3550;
+    --frame: #9f7e26;
     --frame-hi: #f2d16b;
+    --bevel-hi: #c3a354;
+    --bevel-lo: #9c8644;
     --gold: #f5d84a;
     --amber: #e8963a;
-    --good: #a4dc84;
+    --good: #96dc7e;
     --warn: #ffb07a;
     --entered: #8fd6f0;
     --bad: #ff9478;
-    --sel-bg: rgba(245, 216, 74, 0.1);
+    --sel-bg: rgba(245, 216, 74, 0.12);
     --sel-ring: rgba(245, 216, 74, 0.5);
-    --water: #1f4d73;
+    --water: #0f4f74;
     --ink: #0b1218;
+    --glass: rgba(4, 12, 18, 0.9);
+    --glass-hover: rgba(36, 52, 66, 0.94);
+    --glass-on: rgba(78, 64, 18, 0.96);
+    --glass-edge: rgba(255, 244, 214, 0.14);
+    --ctl-h: 30px;
     --hi-line: rgba(245, 216, 74, 0.45);
     --fog: #efe4c8;
-    --ach: #e8c547;
-    --locked: #7c8590;
+    --locked: #98a2ae;
     --open: #efe6cf;
-    --ov-gate: #a8e4ff;
-    --ov-tp: #e88ff0;
-    --ov-plinth: #7fe0c0;
-    --ov-log: #ff9bb0;
-    --ov-scroll: #f2e2b6;
+    --disc: rgba(11, 18, 24, 0.86);
+    --rim-width: 1;
+    --rim-level: #c4ccd6;
+    --rim-cage: #8fe3ff;
+    --rim-gate: #6d9bff;
+    --rim-sign: #e8e2d0;
+    --rim-teleporter: #ff7bd5;
+    --rim-tower-pad: #ff9f43;
+    --rim-gold-room: #b794ff;
+    --rim-log: #ff6b7f;
+    --rim-scroll: #c8e86a;
+    --rim-plinth: #4fe3b5;
+    --rim-done: #7d8794;
+    --rim-ready: #ffb347;
     --reach: #5fd49c;
     --reach-edge: #7fe0b0;
+    --serif: Georgia, 'Times New Roman', serif;
     --ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
     --s1: 4px;
@@ -47,8 +63,17 @@
     --r3: 8px;
     --r4: 12px;
     --gut: var(--s4);
-    --side-w: 280px;
+    --side-w: 300px;
+    --side-pad: var(--s3);
+    --mark-w: 24px;
+    --row-gap: var(--s2);
+    --side-text: 15px;
+    --side-head: 17px;
+    --side-count: 14px;
     --ic: 16px;
+    /* how far a panel's content keeps from its border: clear of the inset rule and its leaf corners */
+    --frame-pad: 20px;
+    --ico: 24px;
     color-scheme: dark;
 }
 * {
@@ -67,9 +92,9 @@ body {
 input,
 textarea,
 .rr .nm,
-.mapbox .sel .hd b,
-.mapbox .sel .chip,
-.banner code,
+.detail .hd b,
+.detail .chip,
+.banner .bptext,
 .err,
 pre {
     user-select: text;
@@ -77,6 +102,7 @@ pre {
 }
 body {
     height: 100%;
+    min-width: 1024px;
     margin: 0;
     color: var(--text);
     font: 15px/1.5 var(--ui);
@@ -89,9 +115,10 @@ main,
 #results,
 .side .goals,
 .side .alist,
+.side .find,
 .rlist .rows,
-.mapbox .sel,
-.dlg {
+.detail .sel,
+.sidein {
     scrollbar-width: thin;
     scrollbar-color: rgba(236, 227, 205, 0.25) transparent;
 }
@@ -110,13 +137,14 @@ a:hover {
 .side .alist button:focus-visible {
     outline-offset: -2px;
 }
-/* buttons are key caps: dark navy tile, thin bevelled gold frame, bold yellow label */
+/* buttons are key caps: navy glass inside a double gold bevel and a black outline, bold yellow label; on and primary
+   light the glass gold */
 button {
     font: 700 15px var(--ui);
     color: var(--hi);
     background: linear-gradient(var(--cap2), var(--cap));
-    border: 1px solid var(--frame);
-    border-radius: var(--r1);
+    border: 1px solid #000;
+    border-radius: 5px;
     height: var(--s6);
     padding: 0 var(--s3);
     display: inline-flex;
@@ -126,25 +154,25 @@ button {
     white-space: nowrap;
     cursor: pointer;
     box-shadow:
-        inset 0 0 0 1px rgba(0, 0, 0, 0.55),
-        inset 0 1px 0 1px rgba(255, 226, 150, 0.16),
-        0 1px 3px rgba(0, 0, 0, 0.45);
+        inset 0 0 0 1px var(--bevel-hi),
+        inset 0 0 0 3px var(--bevel-lo),
+        inset 0 0 0 4px rgba(0, 0, 0, 0.7);
 }
-button:hover {
-    border-color: #c9a85a;
+button:not(.plain):hover {
+    background: linear-gradient(#34426a, #1d2b48);
 }
 button:disabled {
     opacity: 0.55;
     cursor: default;
 }
-button.on,
+button.on:not(.plain),
 button.primary {
-    border-color: var(--frame-hi);
-    background: linear-gradient(#2a3452, #18203a);
+    background: linear-gradient(#6d5a22, #3a3112);
     box-shadow:
-        inset 0 0 0 1px rgba(0, 0, 0, 0.5),
-        inset 0 0 0 2px rgba(245, 215, 110, 0.3),
-        0 0 9px rgba(245, 215, 110, 0.3);
+        inset 0 0 0 1px var(--bevel-hi),
+        inset 0 0 0 3px var(--bevel-lo),
+        inset 0 0 0 4px rgba(0, 0, 0, 0.7),
+        0 0 8px rgba(245, 215, 110, 0.25);
 }
 /* rows and links that act as buttons keep the look of the text they hold */
 .plain {
@@ -170,15 +198,12 @@ button.primary {
 .plain.lnk:hover {
     text-decoration-color: currentColor;
 }
-.mapbox [data-role='layers'] button:not(.on) {
-    color: var(--muted);
-}
 input[type='search'],
 select {
     font: 15px var(--ui);
     height: var(--s6);
     padding: 0 var(--s3);
-    border: 1px solid rgba(138, 116, 64, 0.8);
+    border: 1px solid var(--frame);
     border-radius: var(--r1);
     background: var(--cap);
     color: var(--text);
@@ -209,26 +234,76 @@ select:focus {
     display: inline-block;
     vertical-align: -3px;
 }
+/* the rendered icons of the sidebar and the lists, larger than the small shape icons */
+.ico {
+    width: var(--ico);
+    height: var(--ico);
+    flex: none;
+    display: inline-block;
+    vertical-align: middle;
+    object-fit: contain;
+}
+.ico.dn {
+    filter: grayscale(1);
+    opacity: 0.55;
+}
+.ico.dim {
+    opacity: 0.55;
+}
 /* three columns: the sidebar panels, the map, the completion strip over the results list; the sidebar sits inside the
    page gutter, as far from the map as the map is from the list */
 .page {
     height: 100%;
     display: grid;
     grid-template-columns: var(--side-w) minmax(0, 1fr) clamp(240px, 24vw, 440px);
-    grid-template-areas: 'side banner banner' 'side main results';
+    grid-template-areas: 'side banner results' 'side main results';
     grid-template-rows: auto minmax(0, 1fr);
     column-gap: var(--s3);
     padding-right: var(--gut);
 }
+/* a panel is the game's sign border: a gold ring round a dark fill, and an inset gold rule with leaf corners
+   (corner-shape where the browser has it, plain rounded corners otherwise) */
+.side,
+.rlist,
+.mapbox {
+    position: relative;
+    background: var(--panel);
+    border: 3px solid var(--frame);
+    border-radius: 12px;
+}
+.side::before,
+.rlist::before,
+.mapbox::before {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border: 2px solid var(--frame);
+    border-radius: 8px;
+    opacity: 0.65;
+    pointer-events: none;
+    z-index: 4;
+}
+@supports (corner-shape: scoop) {
+    .side::before,
+    .rlist::before,
+    .mapbox::before {
+        border-radius: 16px;
+        corner-shape: scoop;
+    }
+}
 .side {
     grid-area: side;
+    margin: var(--gut) 0 var(--gut) var(--gut);
+    min-height: 0;
+    overflow: hidden;
+}
+/* the sidebar never scrolls: the sections share its height and the one open list scrolls inside */
+.sidein {
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: var(--s3);
-    padding: var(--gut) 0 var(--gut) var(--gut);
-    /* only a window too short for every panel's minimum scrolls the sidebar itself */
-    overflow: auto;
-    min-height: 0;
+    overflow: hidden;
+    padding: var(--s3) var(--s3) var(--s2);
 }
 .np {
     flex: none;
@@ -236,26 +311,37 @@ select:focus {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--s2);
     min-width: 0;
-    padding: var(--s3);
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--r4);
+    padding: var(--s3) 0;
+}
+.np + .np,
+#sidePanels > .np {
+    border-top: 1px solid var(--line);
 }
 .side .brand {
-    font: 600 17px/1.25 var(--ui);
+    padding: 0 var(--side-pad);
+    font: 600 15px/1.25 var(--serif);
+    font-variant-caps: small-caps;
+    letter-spacing: 0.06em;
     color: var(--title);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+.side .camp {
+    display: grid;
+    gap: var(--s2);
+    padding: 0 var(--side-pad);
 }
 .side .sidefoot {
     flex: none;
+    margin-top: auto;
     display: grid;
     justify-items: center;
     gap: var(--s1);
     padding: 0 var(--s3);
     color: var(--muted);
     text-align: center;
+}
+.sidein:has(.sstats) .sidefoot {
+    margin-top: var(--s2);
 }
 .side .sidefoot .gh {
     display: inline-flex;
@@ -282,18 +368,80 @@ select:focus {
 .side .camp .cr {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--s2);
     min-height: var(--s5);
 }
-.side .camp .cr select {
-    flex: 1 1 0;
-    width: 0;
+.side .cpick {
+    position: relative;
     min-width: 0;
+}
+.side .cpick > button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s2);
+    max-width: 100%;
+    color: var(--text);
+    font: 600 15px var(--ui);
+}
+.side .cpick > button:hover {
+    color: var(--hi);
+}
+.side .cpick > button .n {
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.side .cmenu {
+    position: absolute;
+    top: calc(100% + var(--s1));
+    left: calc(-1 * var(--s1));
+    z-index: 6;
+    min-width: 180px;
+    max-width: calc(var(--side-w) - 2 * var(--side-pad));
+    padding: var(--s1);
+    background: var(--panel);
+    border: 1px solid var(--frame);
+    border-radius: var(--r2);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.side .cmenu button {
+    display: block;
+    width: 100%;
+    padding: var(--s1) var(--s2);
+    border-radius: var(--r1);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.side .cmenu button:hover {
+    background: var(--hover);
+}
+.side .cmenu button[aria-current='true'] {
+    color: var(--hi);
+    font-weight: 600;
+}
+.side .cmenu hr {
+    margin: var(--s1) 0;
+    border: 0;
+    border-top: 1px solid var(--line);
 }
 .side .camp .live {
     flex: none;
-    padding: 0 var(--s2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: var(--s5);
+    height: var(--s5);
+    border-radius: var(--r1);
+    color: var(--muted);
+}
+.side .camp .live:hover {
+    color: var(--hi);
+    background: var(--hover);
 }
 .side .camp .live .dot {
     width: 6px;
@@ -302,7 +450,10 @@ select:focus {
     background: var(--gold);
     box-shadow: 0 0 4px rgba(245, 216, 74, 0.7);
 }
-.key button,
+.side .camp .snap {
+    flex: none;
+    font-size: 13px;
+}
 .none button {
     height: var(--s5);
     padding: 0 var(--s2);
@@ -318,17 +469,51 @@ select:focus {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.side .camp .meta.snap {
-    white-space: normal;
-}
 .side .camp .inlv {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
     width: 100%;
-    min-height: 1.5em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    min-height: var(--s5);
     color: var(--text);
+}
+.side .camp .inlv .n {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.side .camp .inlv .ico {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--frame);
+    object-fit: cover;
+    object-position: top;
+}
+.side .camp .solved {
+    display: grid;
+    gap: var(--s1);
+}
+.side .camp .solved .pc {
+    font: 600 22px/1.2 var(--ui);
+    color: var(--hi);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.side .camp .solved .pc .lb {
+    font: 400 15px var(--ui);
+    color: var(--muted);
+}
+.side .camp .solved .bar {
+    height: 10px;
+    border-radius: 5px;
+}
+.side .camp .solved .bar > i {
+    background: var(--gold);
+}
+.side .camp .solved .bar > i.part {
+    background: var(--sel-ring);
 }
 .side .camp .inlv.muted {
     color: var(--muted);
@@ -337,71 +522,109 @@ select:focus {
     text-decoration: underline;
     text-decoration-color: rgba(236, 227, 205, 0.45);
 }
-.side .fl {
-    display: grid;
-    gap: var(--s2);
-}
-/* the sidebar fits the window: the open area list, then the goals, give up height and scroll inside, under sticky
-   headers, so their scrollbars sit at their inner edge */
-.side .goals,
-.side .alist.open {
+/* the sections share the sidebar's height. The goals give up height first and scroll inside, under their sticky heading,
+   so their scrollbar sits at its inner edge; the open area list takes what is left */
+.side .goals {
     flex: 0 1 auto;
-    min-height: 120px;
-    overflow: auto;
+    min-height: 72px;
+    overflow: hidden auto;
+    scrollbar-gutter: stable;
+    align-content: start;
+    gap: 2px;
+}
+/* a scrolling section has no padding above its sticky heading, or rows would show through it */
+.side .goals,
+.side .alist,
+.side .find {
+    padding-top: 0;
 }
 .side .alist.open {
-    flex-shrink: 1000;
+    flex: 1 0 96px;
+    overflow: hidden auto;
 }
 .side .alist {
     display: block;
-    padding: 0 var(--s1) var(--s1);
+    overflow: hidden auto;
+    scrollbar-gutter: stable;
 }
-.side .alist .ah {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    width: 100%;
-    background: var(--panel);
-    padding: var(--s3) var(--s1) var(--s2);
+.side .find {
+    flex: 0 1 auto;
+    min-height: 72px;
+    overflow: hidden auto;
+    scrollbar-gutter: stable;
 }
 .side .sh {
     color: var(--title);
-    font: 600 15px var(--ui);
-    text-transform: uppercase;
+    font: 600 var(--side-head) var(--serif);
+    font-variant-caps: small-caps;
     letter-spacing: 0.08em;
-}
-.side .goals,
-.side .stats {
-    gap: var(--s1);
-}
-.side .goals {
-    align-content: start;
-    padding: 0 var(--s1) var(--s2);
 }
 .side .goals .sh {
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--panel);
-    padding: var(--s3) var(--s1) var(--s1);
-}
-.side .stats .sh {
-    padding: 0 var(--s1) var(--s1);
-}
-/* the goals ladder: a mark (done, current), the label, its progress; a goal with children opens a list of them */
-.side .goals .gl {
-    display: grid;
-    width: 100%;
-    grid-template-columns: var(--ic) minmax(0, 1fr) auto;
+    display: flex;
     align-items: center;
-    column-gap: var(--s1);
-    row-gap: var(--s1);
-    padding: var(--s1);
-    border-radius: var(--r3);
+    background: var(--panel);
+    padding: calc(var(--s3) + var(--s2)) var(--side-pad) var(--s1);
+}
+/* the sidebar's lists are quiet: every row is a mark column, a name, a chevron where it folds and a count at the right,
+   with one left and one right padding in every section, so the marks, names and counts line up; the selected row has
+   gold text and a thin accent at its edge */
+.side .fold {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--row-gap);
+    width: 100%;
+    background: var(--panel);
+    padding: calc(var(--s3) + var(--s2)) var(--side-pad) var(--s1);
+}
+.side .fold:hover .sh {
+    color: var(--hi);
+}
+.side .fold .sh {
+    white-space: nowrap;
+}
+.side .fold .cnt {
+    margin-left: auto;
+}
+.side .chev {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    margin: 0 3px 0 0;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    color: var(--muted);
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease-out;
+}
+.side [aria-expanded='true'] > .chev {
+    transform: rotate(45deg);
+}
+.side button:hover > .chev,
+.side [aria-expanded='true'] > .chev,
+.side .lh:hover > .chev,
+.side .fin:hover > .chev {
+    color: var(--hi);
+}
+.side .kids {
+    margin: 0 0 var(--s1);
+}
+.side .goals .gr {
+    display: block;
+}
+.side .goals .gl {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: var(--row-gap);
+    padding: 3px var(--side-pad);
     color: var(--text);
+    font-size: var(--side-text);
 }
 .side .goals button.gl:hover {
     background: var(--hover);
@@ -410,23 +633,31 @@ select:focus {
     outline-offset: -2px;
 }
 .side .goals .gl.on {
-    background: var(--sel-bg);
-    box-shadow: inset 0 0 0 1px var(--sel-ring);
+    box-shadow: inset 2px 0 0 var(--hi);
+}
+.side .goals .gl.on .n,
+.side .goals .gl.sub .n {
+    color: var(--hi);
 }
 .side .goals .gl .mk {
+    flex: none;
     display: inline-flex;
     justify-content: center;
+    width: var(--mark-w);
     color: var(--hi);
-    font-size: 11px;
+}
+.side .goals .gl .mk.todo {
+    color: var(--muted);
 }
 .side .goals .gl .mk .ic {
     vertical-align: 0;
 }
 .side .goals .gl .n {
-    overflow-wrap: break-word;
-}
-.side .goals .gl.on .n {
-    color: var(--hi);
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 .side .goals .gl.done .n {
     color: var(--muted);
@@ -435,106 +666,82 @@ select:focus {
     color: var(--hi);
 }
 .side .goals .gl .cnt {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s1);
+    flex: none;
+    margin-left: auto;
     color: var(--muted);
+    font-size: var(--side-count);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 .side .goals .gl.done .cnt {
     color: var(--gold);
 }
-.side .goals .gl .chev {
-    width: 1em;
-    font-style: normal;
-    color: var(--muted);
-}
-.side .goals .gl .bar {
-    grid-column: 2 / -1;
-    min-width: 0;
+/* only the current goal has a progress bar, under its name */
+.side .goals .gr > .bar {
     height: 3px;
+    margin: 0 var(--side-pad) 2px calc(var(--side-pad) + var(--mark-w) + var(--row-gap));
     border-radius: 2px;
     background: rgba(236, 227, 205, 0.3);
     box-shadow: none;
+    min-width: 0;
 }
-.side .goals .gl .bar > i {
-    background: rgba(236, 227, 205, 0.55);
-}
-.side .goals .gl.on .bar > i {
+.side .goals .gr > .bar > i {
     background: var(--hi);
 }
 /* a ground tower off the first ending's cheapest plan */
 .side .goals .gl.off:not(.on) .n {
     color: var(--muted);
 }
-.side .goals .kids {
-    margin: 0 0 var(--s1) var(--s3);
-    border-left: 1px solid var(--line);
-}
-.side .goals .gl.kid {
-    padding-top: 2px;
-    padding-bottom: 2px;
-}
-.side .goals #achBtn {
-    margin: 0 0 var(--s1) calc(var(--s3) + var(--s2));
-    justify-self: start;
-}
 /* a layer's subhead, when the list has more than one layer */
 .side .alist .lh {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-top: var(--s2);
-    padding: var(--s1);
-    border-radius: var(--r3);
+    align-items: center;
+    gap: var(--row-gap);
+    margin-top: var(--s1);
+    padding: 2px var(--side-pad);
     color: var(--muted);
-    font: 600 12px var(--ui);
-    text-transform: uppercase;
+    font: 600 13px var(--ui);
+    font-variant-caps: all-small-caps;
     letter-spacing: 0.08em;
 }
 .side .alist .lh .cnt {
+    margin-left: auto;
     font-weight: 400;
-    letter-spacing: 0;
-}
-.side .alist .chev {
-    display: inline-block;
-    width: 1em;
-    font-style: normal;
-    color: var(--muted);
-    text-transform: none;
     letter-spacing: 0;
 }
 .side .alist [data-grp] {
     cursor: pointer;
 }
 .side .alist [data-grp]:hover {
-    background: var(--hover);
     color: var(--title);
 }
 .side .alist [data-grp]:focus-visible {
     outline-offset: -2px;
 }
-.side .alist button:not(.ah) {
-    display: grid;
-    width: 100%;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto 3px;
+.side .alist button:not(.fold) {
+    display: flex;
     align-items: center;
-    gap: 3px var(--s2);
-    padding: var(--s1);
-    border-radius: var(--r3);
+    gap: var(--row-gap);
+    width: 100%;
+    padding: 3px var(--side-pad);
     color: var(--text);
+    font-size: var(--side-text);
 }
-.side .alist button:not(.ah):hover {
+.side .alist .mk {
+    flex: none;
+    display: inline-flex;
+    justify-content: center;
+    width: var(--mark-w);
+    color: var(--gold);
+}
+.side .alist .mk .ic {
+    vertical-align: 0;
+}
+.side .alist button:not(.fold):hover {
     background: var(--hover);
 }
-.side .alist .ah:hover .sh {
-    color: var(--hi);
-}
 .side .alist button.on {
-    background: var(--sel-bg);
-    box-shadow: inset 0 0 0 1px var(--sel-ring);
+    box-shadow: inset 2px 0 0 var(--hi);
 }
 .side .alist button.on .n {
     color: var(--hi);
@@ -549,6 +756,8 @@ select:focus {
     color: var(--gold);
 }
 .side .alist .n {
+    flex: 0 1 auto;
+    min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -556,52 +765,33 @@ select:focus {
 .side .alist .fin {
     display: flex;
     align-items: center;
-    gap: var(--s1);
-    padding: var(--s1);
-    border-radius: var(--r3);
+    gap: var(--row-gap);
+    padding: 3px var(--side-pad);
     color: var(--muted);
+    font-size: var(--side-text);
     cursor: pointer;
 }
 .side .alist .fin:hover {
-    background: var(--hover);
     color: var(--title);
 }
 .side .alist .fin:focus-visible {
     outline-offset: -2px;
 }
-.side .alist .fin .chev {
-    width: auto;
-}
 .side .alist .cnt,
-.side .stats .cnt {
+.side .find .cnt {
     display: inline-flex;
     align-items: center;
+    flex: none;
+    margin-left: auto;
     gap: var(--s1);
     color: var(--muted);
+    font-size: var(--side-count);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
-.side .alist .cnt {
-    text-align: right;
-}
 .side .alist .cnt .ic,
-.side .stats .cnt .ic {
+.side .find .cnt .ic {
     vertical-align: 0;
-}
-.side .alist .bar {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-width: 0;
-    height: 3px;
-    border-radius: 2px;
-    background: rgba(236, 227, 205, 0.3);
-    box-shadow: none;
-}
-.side .alist .bar > i {
-    background: rgba(236, 227, 205, 0.55);
-}
-.side .alist button.on .bar > i {
-    background: var(--hi);
 }
 .side .err,
 .side .fwarn {
@@ -620,8 +810,9 @@ main {
     grid-column: main-start / results-end;
 }
 h2 {
-    font: 600 30px/1.15 var(--ui);
-    letter-spacing: 0.02em;
+    font: 600 30px/1.15 var(--serif);
+    font-variant-caps: small-caps;
+    letter-spacing: 0.04em;
     color: var(--title);
     margin: 0 0 var(--s2);
 }
@@ -636,64 +827,72 @@ h2 {
 #banner:empty {
     display: none;
 }
-.page:has(.banner) main,
-.page:has(.banner) #results {
+.page:has(.banner) main {
     padding-top: var(--s3);
+}
+.page:has(#results:empty) #banner {
+    grid-column: banner-start / results-end;
 }
 .banner {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--s2) var(--s3);
-    padding: var(--s2) var(--s3);
+    gap: var(--s1) var(--s3);
+    padding: var(--s2) var(--frame-pad);
     background: var(--panel);
-    border: 1px solid var(--frame);
-    border-radius: var(--r4);
+    border: 2px solid var(--frame);
+    border-radius: 12px;
 }
 .banner + .banner {
     margin-top: var(--s2);
 }
 .banner .bt {
-    flex: 1 1 240px;
+    flex: 1 1 100%;
     color: var(--title);
     font-weight: 600;
 }
-.banner code {
+/* the path is one line that shortens with an ellipsis, leaving room for the banner's button on the same line */
+.bpath {
     flex: 0 1 auto;
     min-width: 0;
-    font: 15px var(--mono);
-    color: var(--muted);
-    background: var(--panel2);
-    padding: var(--s1) var(--s2);
-    border-radius: var(--r1);
-    overflow-wrap: anywhere;
-}
-/* one line above the results list: completion with its bar filling the free space */
-.strip {
-    flex: none;
-    display: flex;
-    flex-wrap: wrap;
+    max-width: calc(100% - 160px);
+    display: inline-flex;
     align-items: center;
-    gap: var(--s1) var(--s4);
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--r4);
-    padding: var(--s2) var(--s3);
-}
-.strip:empty {
-    display: none;
-}
-.strip .pc {
-    font: 600 20px/1.25 var(--ui);
-    color: var(--hi);
-    font-variant-numeric: tabular-nums;
-}
-.strip .pc .lb {
-    font: 400 15px var(--ui);
+    gap: var(--s2);
+    padding: var(--s1) var(--s2);
     color: var(--muted);
+    font-weight: 400;
+    border-radius: var(--r1);
 }
-.strip .bar {
-    flex: 1 1 120px;
+.bpath:hover,
+.bpath.done {
+    color: var(--hi);
+    background: var(--panel2);
+}
+.bptext {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.banner .primary {
+    flex: none;
+}
+.copyicon {
+    flex: none;
+    min-width: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+}
+.copyicon svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
 }
 .mono {
     font-family: var(--mono);
@@ -711,28 +910,25 @@ h2 {
     border: 1px solid var(--line);
     white-space: nowrap;
 }
-.chip .ic {
+.chip .ic,
+.chip .ico {
     margin-right: var(--s1);
 }
+.chip.good::before,
+.chip.warn::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: var(--s1);
+    border-radius: 50%;
+    background: var(--chip-dot);
+}
 .chip.good {
-    background: rgba(164, 220, 132, 0.16);
-    color: var(--good);
-    border-color: transparent;
+    --chip-dot: var(--good);
 }
 .chip.warn {
-    background: rgba(255, 176, 122, 0.16);
-    color: var(--warn);
-    border-color: transparent;
-}
-.chip.acc {
-    background: rgba(143, 214, 240, 0.16);
-    color: var(--entered);
-    border-color: transparent;
-}
-.chip.bad {
-    background: rgba(224, 105, 79, 0.16);
-    color: var(--bad);
-    border-color: transparent;
+    --chip-dot: var(--warn);
 }
 .chip[data-goto],
 .chip[data-pick],
@@ -747,6 +943,7 @@ h2 {
 .chip[data-psign]:hover,
 .chip[data-ptower]:hover {
     border-color: var(--hi);
+    background: var(--hover);
 }
 #dropOverlay {
     position: fixed;
@@ -817,30 +1014,6 @@ summary {
     flex-wrap: wrap;
     gap: var(--s1);
 }
-.ach {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--s2);
-}
-.ach > div {
-    border: 1px solid var(--line);
-    border-radius: var(--r3);
-    padding: var(--s2) var(--s3);
-    background: var(--panel);
-}
-.ach > div.got {
-    border-color: rgba(245, 216, 74, 0.45);
-    background: rgba(245, 216, 74, 0.08);
-}
-.ach b {
-    display: block;
-    font: 600 15px var(--ui);
-    letter-spacing: 0.02em;
-    color: var(--title);
-}
-.ach .got b {
-    color: var(--gold);
-}
 .chip.spoiler {
     color: var(--muted);
     font-style: italic;
@@ -850,29 +1023,39 @@ main > .mapbox {
     flex: 1 1 auto;
     min-height: 420px;
 }
-/* the results list takes the rest of the column's height and scrolls */
+/* the results list takes the column's height and scrolls; the details panel lies over it in the same cell, the list
+   hidden but laid out, so it keeps its scroll position */
 #results {
     grid-area: results;
     padding: var(--gut) 0;
     min-width: 0;
     min-height: 0;
     overflow: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--s3);
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
 #results:empty {
     display: none;
 }
+#results > .rlist {
+    grid-area: 1 / 1;
+}
+#results[data-panel] > #pgList {
+    visibility: hidden;
+}
+#results:not([data-panel]) > .detail {
+    display: none;
+}
 .rlist {
-    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     min-height: 320px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--r4);
     overflow: hidden;
+    padding: var(--frame-pad) var(--frame-pad) var(--s4);
+}
+.rlist .rs {
+    flex: none;
+    padding-bottom: var(--s2);
 }
 .rlist .rh {
     flex: none;
@@ -880,7 +1063,7 @@ main > .mapbox {
     justify-content: space-between;
     align-items: baseline;
     gap: var(--s2);
-    padding: var(--s2) var(--s3);
+    padding: var(--s2) 0;
     border-bottom: 1px solid var(--line);
 }
 .rlist .rows {
@@ -895,7 +1078,7 @@ main > .mapbox {
 .rr {
     display: grid;
     width: 100%;
-    grid-template-columns: var(--ic) var(--ic) minmax(0, 1fr);
+    grid-template-columns: var(--ico) var(--ic) minmax(0, 1fr);
     grid-template-rows: auto auto;
     column-gap: var(--s2);
     padding: var(--s1) var(--s2);
@@ -918,6 +1101,10 @@ main > .mapbox {
     margin-top: 3px;
     vertical-align: 0;
 }
+.rr .ico {
+    align-self: start;
+    margin-top: -1px;
+}
 .rr .nm {
     overflow-wrap: anywhere;
 }
@@ -929,10 +1116,27 @@ main > .mapbox {
     white-space: nowrap;
 }
 .rr.nr {
-    grid-template-columns: var(--ic) minmax(0, 1fr);
+    grid-template-columns: var(--ico) minmax(0, 1fr);
 }
 .rr.nr .ar {
     grid-column: 2;
+}
+/* a list of one kind of mark replaces the search box and the goal's heading; each item is its icon and one line */
+#pgList[data-mode='find'] .rs {
+    display: none;
+}
+.rlist .rh .fh {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s3);
+}
+.rr.fi {
+    grid-template-columns: var(--ico) minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: center;
+}
+.rr.fi .ico {
+    margin-top: 0;
 }
 .rlist .none {
     padding: var(--s2);
@@ -943,10 +1147,6 @@ main > .mapbox {
 .rlist .rh .plain {
     margin-left: var(--s1);
 }
-.rlist .rh button[data-alllayers] {
-    height: var(--s5);
-    padding: 0 var(--s2);
-}
 .rr .lt {
     display: inline-block;
     padding: 0 var(--s1);
@@ -954,10 +1154,10 @@ main > .mapbox {
     border: 1px solid var(--line);
     border-radius: var(--r1);
 }
-.mapbox .sel .pth {
+.detail .pth {
     margin: var(--s1) 0;
 }
-.mapbox .sel .stp {
+.detail .stp {
     display: inline-block;
     min-width: 1.4em;
     margin-right: var(--s1);
@@ -977,13 +1177,13 @@ main > .mapbox {
 .rlist .rg .c {
     font-weight: 400;
 }
-/* the chips above the list: the removable tower and area chips, then the state chips that narrow the list */
+/* the chips above the list: the removable tower and area chips that narrow it, and the done items' chip of a find list */
 .rlist .fc {
     flex: none;
     display: flex;
     flex-wrap: wrap;
     gap: var(--s1);
-    padding: var(--s2) var(--s3);
+    padding: var(--s2) 0;
     border-bottom: 1px solid var(--line);
 }
 .rlist .fc:empty {
@@ -1014,16 +1214,44 @@ main > .mapbox {
     opacity: 0.45;
     cursor: default;
 }
+/* the map is a panel with its buttons floating over the image; the ocean shows past the image's edge */
 .mapbox {
-    position: relative;
+    display: flex;
+    flex-direction: column;
     background: var(--water);
-    border: 1px solid var(--line);
-    border-radius: var(--r4);
     overflow: hidden;
 }
+/* the layer images lie in a holder under the svg, which is transparent over them; each is placed by a transform, so the
+   browser composites it instead of redrawing it as the view changes */
+.mapbox > .terrain {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+.mapbox > .terrain img {
+    position: absolute;
+    left: 0;
+    top: 0;
+    max-width: none;
+    transform-origin: 0 0;
+    will-change: transform;
+    user-select: none;
+}
+.mapbox > .terrain img.pending {
+    visibility: hidden;
+}
+.mapbox > .terrain img.thumb,
+.mapbox > .terrain.crisp img {
+    image-rendering: pixelated;
+}
 .mapbox > svg {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-height: 0;
     width: 100%;
-    height: 100%;
     display: block;
     touch-action: none;
     cursor: grab;
@@ -1034,13 +1262,13 @@ main > .mapbox {
 }
 .mapbox .ctl {
     position: absolute;
-    top: var(--s3);
-    left: var(--s3);
-    right: var(--s3);
+    top: var(--frame-pad);
+    left: var(--frame-pad);
+    right: var(--frame-pad);
+    z-index: 2;
     display: flex;
-    flex-wrap: wrap;
+    align-items: flex-start;
     gap: var(--s2);
-    justify-content: space-between;
     pointer-events: none;
 }
 .mapbox .ctl > * {
@@ -1048,6 +1276,90 @@ main > .mapbox {
 }
 .mapbox .ctl .zoom {
     margin-left: auto;
+}
+.mapbox .ctl .seg {
+    flex-wrap: nowrap;
+}
+/* the map's buttons are dark glass in a thin gold border: the layer switch and the zoom are pills with a divider between
+   their segments, Reachable a pill of one; the glass is dark enough, and the shadow soft enough, to read over the cream
+   fog, the ocean and the land alike */
+.mapbox .ctl button {
+    height: var(--ctl-h);
+    color: var(--text);
+    background: var(--glass);
+    border: 1px solid var(--frame);
+    border-radius: var(--r2);
+    box-shadow:
+        inset 0 1px 0 var(--glass-edge),
+        0 1px 6px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+}
+.mapbox .ctl button {
+    padding: 0 var(--s3);
+    font: 600 14px var(--ui);
+}
+.mapbox .ctl button:hover {
+    background: var(--glass-hover);
+    color: var(--title);
+}
+.mapbox .ctl button.on {
+    color: var(--hi);
+    background: var(--glass-on);
+    border-color: var(--hi);
+}
+.mapbox .keys.zoom button {
+    width: var(--ctl-h);
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+}
+/* a segmented toggle (the map's layers, the list's To do | Solved): one glass pill, the current segment filled gold */
+.mapbox .keys,
+.rlist .keys {
+    display: inline-flex;
+    flex: none;
+    height: var(--ctl-h);
+    overflow: hidden;
+    background: var(--glass);
+    border: 1px solid var(--frame);
+    border-radius: var(--r2);
+    box-shadow: inset 0 1px 0 var(--glass-edge);
+}
+.mapbox .keys {
+    box-shadow:
+        inset 0 1px 0 var(--glass-edge),
+        0 1px 6px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+}
+.mapbox .keys button,
+.rlist .keys button {
+    height: 100%;
+    padding: 0 var(--s3);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    font: 600 14px var(--ui);
+    color: var(--muted);
+}
+.mapbox .keys button + button,
+.rlist .keys button + button {
+    border-left: 1px solid var(--line);
+}
+.mapbox .keys button:hover,
+.rlist .keys button:hover {
+    background: var(--glass-hover);
+    color: var(--title);
+}
+.mapbox .keys button.on,
+.rlist .keys button.on {
+    background: var(--hi);
+    color: var(--ink);
+}
+.mapbox .keys.busy {
+    opacity: 0.7;
+    cursor: progress;
 }
 .mapbox .tip {
     position: absolute;
@@ -1070,82 +1382,132 @@ main > .mapbox {
     border-top: 1px solid var(--line);
     margin: var(--s2) calc(-1 * var(--s3));
 }
-.mapbox .tip .ic {
+.mapbox .tip .ic,
+.mapbox .tip .ico {
     margin-right: var(--s1);
-}
-.mapbox .key {
-    position: absolute;
-    left: var(--s3);
-    bottom: var(--s3);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--s1) var(--s3);
-    background: rgba(8, 18, 24, 0.85);
-    border: 1px solid var(--line);
-    border-radius: var(--r3);
-    padding: var(--s1) var(--s3);
-}
-.mapbox .key span {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s1);
-}
-.mapbox .key .ic {
-    vertical-align: 0;
 }
 .mapbox [hidden] {
     display: none !important;
 }
+/* No spoilers is a small switch on its own row: a thin track with a knob, the label beside it; gold while on */
 .side .spoil {
-    width: 100%;
-}
-.side .spoil .ic {
-    vertical-align: 0;
-}
-.side .spoil:not(.on) {
-    color: var(--muted);
-}
-.side .spoil:not(.on) .ic {
-    opacity: 0.5;
-}
-/* totals card: icon, label, count; a finished row turns gold with a check */
-.side .stats {
-    gap: 0;
-    padding: var(--s2) var(--s1) var(--s1);
-}
-.side .stats .sr {
-    display: grid;
-    grid-template-columns: var(--ic) minmax(0, 1fr) auto;
-    align-items: center;
+    justify-self: start;
+    height: auto;
+    padding: 0;
     gap: var(--s2);
-    width: 100%;
-    padding: 2px var(--s2);
-    border-radius: var(--r2);
+    font: 15px var(--ui);
+    color: var(--muted);
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+.side .spoil:hover {
     color: var(--text);
+    background: none;
 }
-.side .stats .sr .ic {
-    vertical-align: 0;
+.side .spoil.on {
+    color: var(--hi);
+    background: none;
+    box-shadow: none;
 }
-.side .stats button.sr:hover {
+.side .spoil .knob {
+    position: relative;
+    flex: none;
+    width: 30px;
+    height: 16px;
+    border: 1px solid var(--frame);
+    border-radius: 8px;
+}
+.side .spoil .knob::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+}
+.side .spoil.on .knob {
+    background: var(--hi);
+    border-color: var(--hi);
+}
+.side .spoil.on .knob::after {
+    left: 16px;
+    background: var(--ink);
+}
+/* Find on the map: a row per kind, its icon button showing or hiding the kind on the map (dimmed while hidden) and its
+   name button, which lists the items, beside found / total; a finished row turns gold with a check */
+.side .find {
+    display: block;
+}
+.side .find .sr {
+    display: grid;
+    grid-template-columns: var(--mark-w) minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--row-gap);
+    padding: 1px var(--side-pad);
+}
+.side .find .si {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--mark-w);
+    height: var(--mark-w);
+    border-radius: var(--r2);
+}
+.side .find .si .ico {
+    width: 20px;
+    height: 20px;
+}
+.side .find .si:hover,
+.side .find .sn:hover {
     background: var(--hover);
 }
-.side .stats button.sr:focus-visible {
+.side .find .si .ico {
+    vertical-align: 0;
+}
+.side .find .sn {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--row-gap);
+    width: 100%;
+    padding: 3px 0;
+    border-radius: var(--r2);
+    color: var(--text);
+    font-size: var(--side-text);
+}
+.side .find .sn .n {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.side .find .sr:has(.sn.on) {
+    box-shadow: inset 2px 0 0 var(--hi);
+}
+.side .find .sn.on .n {
+    color: var(--hi);
+}
+.side .find button:focus-visible {
     outline-offset: -2px;
 }
-.side .stats button.sr.on {
-    background: var(--sel-bg);
-    box-shadow: inset 0 0 0 1px var(--sel-ring);
+.side .find .sr:not(.on) .si .ico,
+.side .find .sr:not(.on) .sn {
+    opacity: 0.5;
 }
-.side .stats .sr.done .cnt {
+.side .find .sr:not(.on) .sn {
+    color: var(--muted);
+}
+.side .find .sr.done .cnt {
     color: var(--gold);
 }
-/* counters panel at the bottom of the sidebar: the toggle stays on the bottom edge and the rows open above it */
+/* counters panel at the bottom of the sidebar: the toggle is its header and the rows scroll under it */
 .side .sstats {
     display: flex;
     flex-direction: column;
     gap: 0;
-    padding: var(--s1);
+    padding: var(--s1) 0;
     margin-top: auto;
 }
 .side .sstats.open {
@@ -1157,9 +1519,7 @@ main > .mapbox {
     flex: 0 1 auto;
     min-height: 0;
     overflow: auto;
-    padding-bottom: var(--s1);
-    margin-bottom: var(--s1);
-    box-shadow: inset 0 -1px 0 var(--line);
+    padding-top: var(--s1);
 }
 .side .sstats .stog {
     display: flex;
@@ -1168,10 +1528,10 @@ main > .mapbox {
     align-items: center;
     width: 100%;
     color: var(--title);
-    font: 600 15px var(--ui);
-    text-transform: uppercase;
+    font: 600 var(--side-head) var(--serif);
+    font-variant-caps: small-caps;
     letter-spacing: 0.08em;
-    padding: var(--s1) var(--s2);
+    padding: var(--s1) var(--side-pad);
     border-radius: var(--r2);
 }
 .side .sstats .stog:hover {
@@ -1181,15 +1541,17 @@ main > .mapbox {
     outline-offset: -2px;
 }
 .side .sstats .stog .chev {
-    font-style: normal;
-    color: var(--muted);
-    letter-spacing: 0;
+    transform: rotate(-135deg);
+}
+.side .sstats .stog[aria-expanded='true'] .chev {
+    transform: rotate(45deg);
 }
 .side .sstats .kr {
     display: flex;
     justify-content: space-between;
     gap: var(--s2);
-    padding: 2px var(--s2);
+    padding: 2px var(--side-pad);
+    font-size: var(--side-text);
 }
 .side .sstats .v {
     color: var(--muted);
@@ -1197,69 +1559,11 @@ main > .mapbox {
     text-align: right;
     white-space: nowrap;
 }
-.dlg {
-    width: min(900px, calc(100vw - 2 * var(--s5)));
-    max-height: calc(100vh - 2 * var(--s5));
-    padding: 0;
-    background: var(--panel);
-    color: var(--text);
-    border: 1px solid var(--frame);
-    border-radius: var(--r4);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-}
-.dlg::backdrop {
-    background: rgba(4, 9, 12, 0.65);
-}
-.dlg .dh {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--s3) var(--s4);
-    background: var(--panel);
-    border-bottom: 1px solid var(--line);
-}
-.dlg .dh b {
-    font-size: 17px;
-    color: var(--title);
-}
-.dlg .dh button,
-.mapbox .sel button[data-close],
-.mapbox .sel button[data-back] {
-    flex: none;
-    width: var(--s6);
-    padding: 0;
-    font-size: 18px;
-    line-height: 1;
-}
-.dlg #achBody {
-    padding: var(--s4);
-}
 /* .mw is the map's group that the wrapped copies repeat; a copy matches selectors only through ancestors inside the group.
-   Thumbnails and Reachable images are always pixelated; the layer images are once the map is zoomed in far enough */
+   Reachable images are always pixelated; once the map is zoomed in far enough the layer images are as well */
 .mw image.reach,
-.mw image.thumb,
 .mw.crisp image {
     image-rendering: pixelated;
-}
-/* the marks a totals row asks for pulse for a moment */
-.mw .k.pulse {
-    stroke: var(--hi);
-    stroke-width: 3;
-    animation: mkpulse 0.6s ease-in-out 3;
-}
-@keyframes mkpulse {
-    50% {
-        stroke-width: 6;
-        filter: drop-shadow(0 0 4px var(--hi));
-    }
-}
-@media (prefers-reduced-motion: reduce) {
-    .mw .k.pulse {
-        animation: none;
-    }
 }
 .mw image.reach {
     pointer-events: none;
@@ -1279,29 +1583,33 @@ main > .mapbox {
 .mw .fogc rect {
     shape-rendering: crispEdges;
 }
-/* markers keep a constant screen size, but never less than their square: a level marker (radius 5) then fills .9 of it.
-   --px is set on the marker and label groups */
-.mw .ov,
-.mw.lbl {
-    --mk: max(var(--px, 0.3), 0.09);
-    --bo: calc(max(1, 0.09 / var(--px, 0.3)) * 5px);
+/* marks grow and shrink with the map: --mk, the squares one mark unit spans, and --px, the squares per screen pixel, are
+   set on the marker and label groups as the view zooms */
+.mw .ov {
+    --bo: calc(var(--mk) / var(--px, 0.3) * 7px);
 }
 .mw .k {
     transform: translate(var(--x), var(--y)) scale(var(--mk));
 }
+.mw .mi {
+    pointer-events: none;
+}
+/* an icon of a mark that is done or used is grey and dimmed; one of a level that is open but not reachable is dimmed */
+.mw .mi.dn {
+    filter: grayscale(1);
+    opacity: 0.55;
+}
+.mw .mi.dim {
+    opacity: 0.55;
+}
+.mw .mi.cage {
+    opacity: 0.92;
+}
 .mw .lv {
-    stroke: var(--ink);
-    stroke-width: 1.5;
+    fill: var(--disc);
+    stroke: var(--rim-level);
+    stroke-width: var(--rim-width);
     cursor: pointer;
-}
-.mw .lv.star {
-    stroke: #4a3505;
-    stroke-width: 1;
-    stroke-linejoin: round;
-}
-.mw .lv.ring {
-    stroke: #fff;
-    stroke-width: 2.5;
 }
 .mw .link {
     stroke-width: 2.5;
@@ -1337,7 +1645,8 @@ main > .mapbox {
     stroke-width: 6;
 }
 .mw .lv.hv,
-.mw .lv.hl {
+.mw .lv.hl,
+.mw .lv.chosen {
     stroke: #fff;
     stroke-width: 2;
 }
@@ -1348,8 +1657,7 @@ main > .mapbox {
 }
 /* while there is a selection (the overlay group's .picked), the levels outside it dim; a mark of a level in it is .hl */
 .mw .ov.picked .lv:not(.hl),
-.mw .ov.picked .achb:not(.hl),
-.mw .ov.picked .gt[data-i]:not(.hl, .chosen) {
+.mw .ov.picked .mi.lvi:not(.sel) {
     opacity: 0.3;
 }
 /* the level the save is in: a pulsing white ring */
@@ -1372,15 +1680,8 @@ main > .mapbox {
         animation: none;
     }
 }
-.mw .achb {
-    fill: var(--ach);
-    stroke: var(--ink);
-    stroke-width: 1;
-    stroke-linejoin: round;
-    pointer-events: none;
-}
 .mw .lv.fg,
-.mw .gt.fg,
+.mw .mi.fg,
 .mw .tw.fg {
     filter: drop-shadow(0 0 2px rgba(5, 10, 14, 0.95)) drop-shadow(0 0 1px #000);
 }
@@ -1389,15 +1690,23 @@ main > .mapbox {
     stroke: var(--ink);
     stroke-width: 1.5;
     cursor: pointer;
-    transform: translate(var(--x), var(--y)) scale(var(--mk)) rotate(45deg);
 }
 .mw .tw.on {
     fill: var(--gold);
 }
+/* a role badge is half a marker across but never under 10 screen pixels, the size a marker floors at: where the marker
+   is at its floor (--mk is 0.7 of --px) the badge grows about its centre (--cy); the badge's box is 8 mark units wide. */
+.mw .mi.rb {
+    transform: translate(var(--x), var(--y)) scale(var(--mk)) translate(0, var(--cy))
+        scale(max(1, calc(1.25 * var(--px, 0.3) / var(--mk)))) translate(0, calc(-1 * var(--cy)));
+}
+.mw .tw.hl,
+.mw .mi.hl {
+    transform: translate(var(--x), var(--y)) scale(calc(var(--mk) * 1.5));
+}
 .mw .tw.hl {
     stroke: var(--gold);
     stroke-width: 3;
-    transform: translate(var(--x), var(--y)) scale(calc(var(--mk) * 1.5)) rotate(45deg);
     filter: drop-shadow(0 0 4px rgba(245, 216, 74, 0.8));
 }
 .mw .area {
@@ -1412,106 +1721,60 @@ main > .mapbox {
 .mw .area.off {
     display: none;
 }
-/* overlays: Freezers (squares), teleporters (rings), gold rooms (big rings), treasure plinths (diamonds) */
-.mw .gt {
-    fill: var(--ov-gate);
-    stroke: var(--ink);
-    stroke-width: 1.2;
-}
-.mw .gt[data-i] {
+/* every mark is a dark disc with a thin light rim and its icon on it (a level pad's rim is neutral); an overlay mark's rim
+   is in its kind's colour, and a used one's is grey */
+.mw .ovk {
+    --rim: var(--rim-sign);
+    fill: var(--disc);
+    stroke: var(--rim);
+    stroke-width: var(--rim-width);
     cursor: pointer;
 }
-.mw .gt.open {
-    fill: rgba(11, 18, 24, 0.35);
-    stroke: rgba(168, 228, 255, 0.75);
-    stroke-width: 1.4;
+.mw .ovk:not([data-gate], [data-sign], [data-gtw], [data-tw]) {
+    cursor: default;
 }
-.mw .tp {
-    fill: rgba(11, 18, 24, 0.45);
-    stroke: var(--ov-tp);
-    stroke-width: 2.5;
+.mw .o-pods {
+    --rim: var(--rim-cage);
 }
-.mw .tp.off {
-    stroke: #9aa3ad;
-    stroke-width: 1.8;
-    stroke-dasharray: 2.6 2;
+.mw .o-doorways {
+    --rim: var(--rim-gate);
 }
-.mw .gr {
-    fill: rgba(11, 18, 24, 0.45);
-    stroke: var(--locked);
-    stroke-width: 2.5;
-    filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9));
+.mw .o-signs {
+    --rim: var(--rim-sign);
 }
-.mw .gr.unl {
-    stroke: var(--gold);
+.mw .o-tps {
+    --rim: var(--rim-teleporter);
 }
-.mw .gr.done {
-    stroke: #4a3505;
-    stroke-width: 1.5;
-    fill: var(--gold);
+.mw .o-towerPads {
+    --rim: var(--rim-tower-pad);
 }
-.mw .sg {
-    fill: #9aa3ad;
-    stroke: var(--ink);
-    stroke-width: 1.2;
-    stroke-linejoin: round;
+.mw .o-gold {
+    --rim: var(--rim-gold-room);
 }
-.mw .sg.ok {
-    fill: #c9ad5a;
+.mw .o-logs {
+    --rim: var(--rim-log);
 }
-.mw .sg.ready {
-    fill: #e08a3c;
+.mw .o-maps {
+    --rim: var(--rim-scroll);
+}
+.mw .o-treasures {
+    --rim: var(--rim-plinth);
+}
+.mw .ovk.dn {
+    --rim: var(--rim-done);
+}
+.mw .ovk.ready {
+    --rim: var(--rim-ready);
+}
+.mw .ovk.gold {
+    --rim: var(--gold);
+}
+.mw .ovk.chosen {
+    --rim: #fff;
     stroke-width: 2;
-}
-.mw .vl {
-    fill: var(--ov-log);
-    stroke: var(--ink);
-    stroke-width: 1.2;
-    stroke-linejoin: round;
-}
-.mw .vg {
-    fill: var(--ov-scroll);
-    stroke: var(--ink);
-    stroke-width: 1.2;
-    stroke-linejoin: round;
-}
-.mw .vl.off,
-.mw .vg.off {
-    fill: rgba(11, 18, 24, 0.45);
-    stroke-width: 1.6;
-}
-.mw .vl.off {
-    stroke: var(--ov-log);
-}
-.mw .vg.off {
-    stroke: var(--ov-scroll);
-}
-.mw .pad {
-    fill: rgba(0, 0, 0, 0);
-    stroke: none;
-    cursor: pointer;
-}
-.mw .k.chosen {
-    stroke: #fff;
-    stroke-width: 2.4;
     filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.8));
 }
-.mw .tr {
-    fill: var(--ov-plinth);
-    stroke: var(--ink);
-    stroke-width: 1.2;
-}
-.mw .tr.off {
-    fill: rgba(11, 18, 24, 0.45);
-    stroke: var(--ov-plinth);
-    stroke-width: 1.5;
-}
 .mw .hero {
-    pointer-events: none;
-    fill: #fff;
-    stroke: var(--ink);
-    stroke-width: 1.2;
-    stroke-linejoin: round;
     filter: drop-shadow(0 0 2px rgba(5, 10, 14, 0.95));
 }
 .mapbox .ovl button {
@@ -1531,154 +1794,63 @@ main > .mapbox {
 .mapbox .ovl button.empty {
     opacity: 0.55;
 }
-.mapbox .sel {
-    position: absolute;
-    top: 52px;
-    right: var(--s3);
-    width: clamp(240px, 42%, 360px);
-    max-height: calc(100% - 64px);
+/* the details panel in the results column: Back stays at the top while the rest scrolls */
+.detail .sel {
+    flex: 1 1 0;
+    min-height: 0;
     overflow: auto;
-    background: rgba(8, 18, 24, 0.94);
-    border: 1px solid var(--line);
-    border-radius: var(--r3);
-    padding: var(--s3);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-    z-index: 2;
-    /* a layer of its own: scrolling the panel over the map moves it without relayering and repainting the map under it */
-    will-change: transform;
 }
-.mapbox .sel .h {
-    color: var(--muted);
-    margin: var(--s2) 0 var(--s1);
+.detail .dtop {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--s4);
+    padding: var(--s3) 0 var(--s2);
+    background: var(--panel);
 }
-.mapbox .sel .hs {
-    color: var(--muted);
+.detail .dtop button {
+    color: var(--bevel-hi);
     font-weight: 600;
-    margin: var(--s1) 0 var(--s1) var(--s2);
 }
-.mapbox .sel .showlist,
-.mapbox .sel .extlink {
-    margin-top: var(--s2);
+.detail .dtop button:hover {
+    color: var(--hi);
 }
-.mapbox .sel .chip {
+.detail .h,
+.detail .hs {
+    margin: var(--s3) 0 var(--s1);
+    color: var(--muted);
+    font: 600 13px var(--ui);
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.08em;
+}
+.detail .extlink {
+    margin-top: var(--s3);
+}
+.detail .chip {
     white-space: normal;
     overflow-wrap: anywhere;
     max-width: 100%;
 }
-.mapbox .sel .hd {
+.detail .hd {
     display: flex;
     gap: var(--s2);
     align-items: center;
     margin-bottom: var(--s1);
 }
-.mapbox .sel .hd b {
+.detail .hd b {
     flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
-    color: var(--hi);
+    color: var(--title);
+    font: 600 18px/1.25 var(--serif);
 }
-.mapbox .sel .hd b:focus {
+.detail .hd b:focus {
     outline: none;
 }
-.mapbox .sel .hd b:focus-visible {
+.detail .hd b:focus-visible {
     outline: 2px solid var(--hi);
     outline-offset: 2px;
     border-radius: var(--r1);
-}
-@media (min-width: 1001px) {
-    .mapbox .sel .showlist {
-        display: none;
-    }
-}
-@media (max-width: 1280px) {
-    :root {
-        --side-w: 240px;
-    }
-    .side .brand {
-        font-size: 15px;
-    }
-}
-@media (max-width: 1000px) {
-    .banner .bt {
-        flex-basis: 100%;
-    }
-    .banner code {
-        flex: 1 1 240px;
-    }
-    /* the results list goes above the map and the page scrolls; the sidebar stays */
-    html,
-    body {
-        height: auto;
-    }
-    .page {
-        height: auto;
-        min-height: 100vh;
-        grid-template-columns: var(--side-w) minmax(0, 1fr);
-        grid-template-areas: 'side banner' 'side results' 'side main';
-        grid-template-rows: auto auto 1fr;
-    }
-    .side {
-        position: sticky;
-        top: 0;
-        align-self: start;
-        height: 100vh;
-    }
-    main {
-        overflow: visible;
-    }
-    .page:has(#results:empty) main {
-        grid-column: main;
-    }
-    main > .mapbox {
-        flex: none;
-        height: clamp(420px, 62vh, 640px);
-    }
-    #results {
-        overflow: visible;
-        padding-bottom: 0;
-    }
-    .rlist {
-        flex: none;
-        min-height: 0;
-        height: auto;
-        max-height: 45vh;
-    }
-    .rlist .rows {
-        flex: 1 1 auto;
-    }
-}
-@media (max-width: 700px) {
-    .page {
-        display: block;
-        padding-right: 0;
-    }
-    .side {
-        position: static;
-        height: auto;
-        padding: var(--gut) var(--gut) 0;
-    }
-    main {
-        padding: var(--s3) var(--gut) 0;
-    }
-    #results {
-        padding: var(--s3) var(--gut) var(--gut);
-    }
-    #banner {
-        padding: var(--gut) var(--gut) 0;
-    }
-    .side .alist {
-        flex: none;
-        max-height: 240px;
-    }
-    h2 {
-        font-size: 26px;
-    }
-    .mapbox .sel {
-        position: static;
-        width: auto;
-        max-height: none;
-        border-radius: 0;
-        border-width: 1px 0 0;
-        box-shadow: none;
-    }
 }

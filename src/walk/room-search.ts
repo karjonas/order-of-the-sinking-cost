@@ -238,6 +238,19 @@ function roomsWithoutObjects(
     return rooms;
 }
 
+const NO_PIECE = -1;
+const UNASSIGNED = -2;
+
+/**
+ * The pieces of ground the hero stands in with the objects in some positions: per local cell of a RoomGraph the piece
+ * it lies in (NO_PIECE where the hero does not stand). `visited`: the hero's pieces (as a key) a search has been through
+ * in these positions.
+ */
+interface Ground {
+    pieceOf: Int16Array;
+    visited: Set<number | string>;
+}
+
 /**
  * A room's cells and the cells beside it that the hero stands in (its halo: ground in the same z, joined to the room by
  * an edge no Fence is on), with the steps between them. `heroStatic`: the cells the hero stands in whatever the
@@ -250,8 +263,6 @@ class RoomGraph {
     private steps: Int32Array;
     private heroStatic: Uint8Array;
     private heroDynamic: Uint8Array;
-    private stamp: Uint32Array;
-    private stampNow = 0;
     private walkGrid: WalkGrid;
 
     constructor(walkGrid: WalkGrid, cuts: Set<number>, roomCells: number[]) {
@@ -278,7 +289,6 @@ class RoomGraph {
         this.steps = new Int32Array(cells.length * 4).fill(-1);
         this.heroStatic = new Uint8Array(cells.length);
         this.heroDynamic = new Uint8Array(cells.length);
-        this.stamp = new Uint32Array(cells.length);
 
         cells.forEach((cell, local) => {
             for (let side = 0; side < 4; side++) {
@@ -324,23 +334,23 @@ class RoomGraph {
         return this.heroDynamic[local] === 1 && standable(this.walkGrid, this.walkGrid.noFlood, cell);
     }
 
-    /**
-     * Walks over the cells the hero stands in from the cells `seeds`, and marks them. Returns the lowest cell of each
-     * piece of ground the walk found, sorted: the key of the region.
-     */
-    walk(seeds: number[]): string {
-        this.stampNow++;
-        const { stamp, steps, cells } = this;
-        const mark = this.stampNow;
-        const lowest: number[] = [];
+    /** Splits the cells the hero stands in, the objects as they are in the grid, into pieces of ground. */
+    groundOf(): Ground {
+        const { steps, cells } = this;
+        const pieceOf = new Int16Array(cells.length);
         const queue: number[] = [];
+        let pieceCount = 0;
 
-        for (const seed of seeds) {
-            const start = this.localOf.get(seed);
-            if (start === undefined || stamp[start] === mark || !this.stands(start)) continue;
+        for (let local = 0; local < cells.length; local++) {
+            pieceOf[local] = this.stands(local) ? UNASSIGNED : NO_PIECE;
+        }
 
-            let low = seed;
-            stamp[start] = mark;
+        for (let start = 0; start < cells.length; start++) {
+            if (pieceOf[start] !== UNASSIGNED) continue;
+
+            const piece = pieceCount;
+            pieceCount++;
+            pieceOf[start] = piece;
             queue.length = 0;
             queue.push(start);
 
@@ -349,31 +359,48 @@ class RoomGraph {
 
                 for (let side = 0; side < 4; side++) {
                     const next = steps[local * 4 + side];
-                    if (next < 0 || stamp[next] === mark || !this.stands(next)) continue;
+                    if (next < 0 || pieceOf[next] !== UNASSIGNED) continue;
 
-                    stamp[next] = mark;
-                    if (cells[next] < low) low = cells[next];
+                    pieceOf[next] = piece;
                     queue.push(next);
                 }
             }
-
-            lowest.push(low);
         }
 
-        lowest.sort(ascending);
-        return lowest.join(',');
+        return { pieceOf, visited: new Set() };
     }
 
-    /** Whether the last walk marked `cell`. */
-    marked(cell: number): boolean {
+    /** The pieces of `ground` that the cells `seeds` and `extraSeed` stand in, each once. */
+    piecesAt(ground: Ground, seeds: number[], extraSeed: number): number[] {
+        const pieces: number[] = [];
+
+        for (const seed of seeds) this.addPieceAt(ground, pieces, seed);
+        this.addPieceAt(ground, pieces, extraSeed);
+
+        return pieces;
+    }
+
+    private addPieceAt(ground: Ground, pieces: number[], seed: number): void {
+        const local = this.localOf.get(seed);
+        if (local === undefined) return;
+
+        const piece = ground.pieceOf[local];
+        if (piece !== NO_PIECE && !pieces.includes(piece)) pieces.push(piece);
+    }
+
+    /** Whether `cell` lies in one of the pieces `pieces` of `ground`. */
+    standsIn(ground: Ground, pieces: number[], cell: number): boolean {
         const local = this.localOf.get(cell);
-        return local !== undefined && this.stamp[local] === this.stampNow;
+        if (local === undefined) return false;
+
+        return pieces.includes(ground.pieceOf[local]);
     }
 
     /** The cells the hero stands in from `seeds`, the objects as they are in the grid. */
     regionOf(seeds: number[]): number[] {
-        this.walk(seeds);
-        return this.cells.filter((_, local) => this.stamp[local] === this.stampNow);
+        const ground = this.groundOf();
+        const pieces = this.piecesAt(ground, seeds, -1);
+        return this.cells.filter((_, local) => pieces.includes(ground.pieceOf[local]));
     }
 
     /**
@@ -439,6 +466,10 @@ function loadPositions(searcher: Searcher, next: Positions): void {
     room.pieces.forEach((piece, index) => {
         if (loaded[index] === next[index]) return;
         if (loaded[index] >= 0) grid[loaded[index]] &= ~piece.bits;
+    });
+
+    room.pieces.forEach((piece, index) => {
+        if (loaded[index] === next[index]) return;
         if (next[index] >= 0) grid[next[index]] |= piece.bits;
         loaded[index] = next[index];
     });
@@ -519,11 +550,11 @@ interface Move {
 }
 
 /**
- * The pushes the hero can make from the cells the last walk marked: the objects still in a cell, each on every side
+ * The pushes the hero can make from the pieces `heroPieces` of `ground`: the objects still in a cell, each on every side
  * where he stands in the cell behind it, no Fence parts the cells, the object stands on a floor and landingOf lets it
  * end somewhere. An object that ends where the hero has no cell behind it is not pushed again.
  */
-function movesOf(searcher: Searcher, positions: Positions): Move[] {
+function movesOf(searcher: Searcher, positions: Positions, ground: Ground, heroPieces: number[]): Move[] {
     const { walkGrid, room, graph } = searcher;
     const layerCells = walkGrid.layerCells;
     const moves: Move[] = [];
@@ -538,7 +569,7 @@ function movesOf(searcher: Searcher, positions: Positions): Move[] {
         for (let side = 0; side < 4; side++) {
             const heroCell = cellOnSide(walkGrid, from, (side + 2) % 4);
             const into = cellOnSide(walkGrid, from, side);
-            if (!graph.marked(heroCell)) continue;
+            if (!graph.standsIn(ground, heroPieces, heroCell)) continue;
             if (fenced(walkGrid, from, side, into) || fenced(walkGrid, heroCell, side, from)) continue;
 
             const landing = landingOf(walkGrid, walkGrid.noFlood, from, side);
@@ -558,7 +589,7 @@ function afterMove(searcher: Searcher, positions: Positions, move: Move): Positi
     const { room, switchCells, slotCells, found } = searcher;
     const { index, landing } = move;
     const piece = room.pieces[index];
-    const next = Int32Array.from(positions);
+    const next = positions.slice();
 
     if (landing.sinks) {
         if (piece.kind === ROCK_PIECE || piece.kind === SPARE_GEM_PIECE) {
@@ -596,16 +627,33 @@ interface SearchResult {
     capped: boolean;
 }
 
-/** A position of the objects waiting to be pushed on, and the cell the hero's last push left. */
+/** A position of the objects waiting to be pushed on, its ground and the pieces of it the hero walks on. */
 interface State {
     positions: Positions;
-    heroCell: number;
+    ground: Ground;
+    heroPieces: number[];
+}
+
+/** Notes the hero's pieces of a ground as visited; false when an earlier state had them. */
+function noteHeroPieces(ground: Ground, heroPieces: number[]): boolean {
+    let key: number | string = '';
+
+    if (heroPieces.length === 1) {
+        key = heroPieces[0];
+    } else if (heroPieces.length > 1) {
+        key = heroPieces.toSorted(ascending).join(',');
+    }
+
+    if (ground.visited.has(key)) return false;
+
+    ground.visited.add(key);
+    return true;
 }
 
 /**
  * Visits every position of the room's objects that the hero reaches from the start cells `reps` by pushes, one push at
  * a time: the hero stands in the cells he walks to from the start cells and from the cell his last push left. A
- * position is told apart by where each object is and by the lowest cells of the hero's region.
+ * position is told apart by where each object is and by the pieces of ground the hero's region is made of.
  */
 function searchFrom(
     walkGrid: WalkGrid,
@@ -628,37 +676,50 @@ function searchFrom(
         found: newFound(),
     };
 
-    const seen = new Set<string>();
-    const queue: State[] = [{ positions: start, heroCell: -1 }];
-    seen.add(`${start.join(',')}|${graph.walk(reps)}`);
+    // the ground of each position of the objects, found once however the hero got there
+    const grounds = new Map<string, Ground>();
+    const groundAt = (positions: Positions, positionsKey: string): Ground => {
+        const known = grounds.get(positionsKey);
+        if (known) return known;
+
+        loadPositions(searcher, positions);
+        const ground = graph.groundOf();
+        grounds.set(positionsKey, ground);
+        return ground;
+    };
+
+    const startGround = groundAt(start, start.join(','));
+    const startPieces = graph.piecesAt(startGround, reps, -1);
+    const queue: State[] = [{ positions: start, ground: startGround, heroPieces: startPieces }];
+    noteHeroPieces(startGround, startPieces);
+    let stateCount = 1;
     let capped = false;
 
     for (let index = 0; index < queue.length; index++) {
-        if (seen.size > stateCap) {
+        if (stateCount > stateCap) {
             capped = true;
             break;
         }
 
-        const { positions, heroCell } = queue[index];
+        const { positions, ground, heroPieces } = queue[index];
         loadPositions(searcher, positions);
-        graph.walk(heroCell >= 0 ? [...reps, heroCell] : reps);
-        const moves = movesOf(searcher, positions);
+        const moves = movesOf(searcher, positions, ground, heroPieces);
 
         for (const move of moves) {
             const after = afterMove(searcher, positions, move);
             if (!after) continue;
 
-            loadPositions(searcher, after);
-            const key = `${after.join(',')}|${graph.walk([...reps, move.from])}`;
-            if (seen.has(key)) continue;
+            const afterGround = groundAt(after, after.join(','));
+            const afterPieces = graph.piecesAt(afterGround, reps, move.from);
+            if (!noteHeroPieces(afterGround, afterPieces)) continue;
 
-            seen.add(key);
-            queue.push({ positions: after, heroCell: move.from });
+            stateCount++;
+            queue.push({ positions: after, ground: afterGround, heroPieces: afterPieces });
         }
     }
 
     loadPositions(searcher, start);
-    return { found: searcher.found, states: seen.size, capped };
+    return { found: searcher.found, states: stateCount, capped };
 }
 
 /**

@@ -3,27 +3,28 @@
 // "The spoiler model (viewer)")
 import { PROG } from '../data.ts';
 import { countBy, escapeHtml } from '../util.ts';
-import { roleDot, ROLES, shapeIcon, starIcon, STATE_COLORS } from '../map/icons.ts';
+import { iconHtml, roleDot, ROLES } from '../map/icons.ts';
 import type { Role } from '../map/icons.ts';
+import { levelIconName } from '../map/level-icons.ts';
+import type { LevelIconName } from '../map/level-icons.ts';
 import type { LinkEnd, MapLink, MapStep } from '../map/map-view.ts';
 import { achievementName, rankAchievement } from '../model/achievements.ts';
 import { capitalized, freezerNoun } from '../model/freezer-names.ts';
-import { layerName, mapLayerOf } from '../model/layers.ts';
+import { layerName, mapLayerOf, wayTo } from '../model/layers.ts';
 import type { UnlockPlan } from '../model/plans.ts';
-import { RANKS, STATES, stateLabel } from '../model/progress.ts';
+import { RANKS, stateLabel } from '../model/progress.ts';
 import type { ShownProgress } from '../model/progress.ts';
 import { SIGN_INDEX } from '../model/requirements.ts';
 import type { PlanStep } from '../model/requirements.ts';
 import { towerName } from '../model/towers.ts';
 import { optionCount, signStateOf } from '../model/unlocking.ts';
-import type { LevelState, SignRule } from '../model/unlocking.ts';
+import type { SignRule } from '../model/unlocking.ts';
 import type { Freezer, FreezerSign, Position } from '../types.ts';
 import type { PanelContext } from './context.ts';
 
-/** What a plan shows as numbered steps: each step's number by key, and how many steps fog hides. */
+/** What a plan shows as numbered steps: each step's number by key. */
 export interface PlanSteps {
     num: Map<string, number>;
-    fog: number;
 }
 
 /**
@@ -43,9 +44,32 @@ export interface Chain {
 /** Level names may wrap after underscores. */
 export const wrappable = (name: string): string => escapeHtml(name).replace(/_/g, '_<wbr>');
 
-export function stateDot(levelState: LevelState): string {
-    if (levelState === 'solved') return starIcon(STATE_COLORS.solved);
-    return shapeIcon('circle', STATE_COLORS[levelState]);
+/** The entry pad icon of a level and whether it is dimmed. */
+export interface LevelPad {
+    icon: LevelIconName;
+    /** Open but not reachable yet: dimmed. */
+    blocked: boolean;
+}
+
+/**
+ * The entry pad of a level by its state: locked, available (also a level that is open but not reachable yet, dimmed),
+ * solved (the solved pad is dim by itself). A level entered but not solved has the available pad.
+ */
+export function levelPadOf(progress: Pick<ShownProgress, 'state'>, levelIndex: number): LevelPad {
+    const level = PROG.levels[levelIndex];
+    const levelState = progress.state[levelIndex];
+    if (levelState === 'solved') return { icon: levelIconName(level, 'solved'), blocked: false };
+    if (levelState === 'locked') return { icon: levelIconName(level, 'locked'), blocked: false };
+    if (levelState === 'blocked') return { icon: levelIconName(level, 'available'), blocked: true };
+    return { icon: levelIconName(level, 'available'), blocked: false };
+}
+
+/** A level's entry pad as an image in a chip, a row or a tooltip. */
+export function levelPadHtml(progress: Pick<ShownProgress, 'state'>, levelIndex: number): string {
+    const pad = levelPadOf(progress, levelIndex);
+    let extraClass = '';
+    if (pad.blocked) extraClass = 'dim';
+    return iconHtml(pad.icon, extraClass);
 }
 
 // a fogged level's chip carries only its index; revealing it draws the chip again with the name
@@ -64,10 +88,9 @@ export function levelChip(
     }
 
     const levelState = progress.state[levelIndex];
-    const stateClass = STATES[levelState][1];
     const title = escapeHtml(stateLabel(progress, levelState));
     const name = wrappable(PROG.levels[levelIndex].n);
-    return `<span class="chip ${stateClass}" ${target} title="${title}">${name}</span>`;
+    return `<span class="chip" ${target} title="${title}">${levelPadHtml(progress, levelIndex)}${name}</span>`;
 }
 
 export function towerNameHtml(context: PanelContext, towerIndex: number): string {
@@ -149,6 +172,16 @@ export function opensChips(context: PanelContext, freezer: Freezer): string {
     return pick(context, freezer.req) + signChips;
 }
 
+/** The small tag that names a layer in front of a row's text. */
+export const layerTagHtml = (layerKey: string): string => `<span class="lt">${escapeHtml(layerName(layerKey))}</span>`;
+
+/** ` · place` after a Freezer's name where it has a place; empty for none. */
+export function gatePlaceSuffix(context: PanelContext, freezerIndex: number): string {
+    const placeName = context.model.gatePlace(freezerIndex);
+    if (!placeName) return '';
+    return ` · ${escapeHtml(placeName)}`;
+}
+
 export function gateChip(context: PanelContext, freezerIndex: number): string {
     const open = context.progress.gateOpen[freezerIndex];
     const label = capitalized(freezerNoun(freezerIndex));
@@ -159,10 +192,9 @@ export function gateChip(context: PanelContext, freezerIndex: number): string {
         openNote = ' (open)';
     }
 
-    const title = `${label} at ${context.gateAt(freezerIndex)}`;
-    const name = escapeHtml(context.gateName(freezerIndex));
-    const attributes = `data-pgate="${freezerIndex}" tabindex="0" role="button" title="${title}"`;
-    return `<span class="chip${tone}" ${attributes}>${label}${openNote} · ${name}</span>`;
+    const place = gatePlaceSuffix(context, freezerIndex);
+    const attributes = `data-pgate="${freezerIndex}" tabindex="0" role="button"`;
+    return `<span class="chip${tone}" ${attributes}>${label}${openNote}${place}</span>`;
 }
 
 // a gold room (plan step 'p') shows where the totals show it: once visited, or with spoilers shown
@@ -177,7 +209,7 @@ function otherStepText(context: PanelContext, node: PlanStep): string {
         return `Antipode teleporter · ${towerName(context.progress.towers[PROG.gold_rooms[node.id].tower].t)}`;
     }
 
-    if (node.t === 'a') return `The way onto the ${layerName(node.id)}`;
+    if (node.t === 'a') return capitalized(wayTo(node.id));
     if (node.t === 'e') return achievementName(node.id);
     return '';
 }
@@ -194,12 +226,18 @@ function nodeChip(context: PanelContext, node: PlanStep): string {
     return `<span class="chip">${escapeHtml(otherStepText(context, node))}</span>`;
 }
 
-/** A panel's header: Back while the panel history has a view to go back to, the title, Close. */
+/**
+ * A panel's header: the Back button that returns to the list, a link to the previous panel while the panel history has
+ * one, and the title.
+ */
 export function panelHead(context: PanelContext, title: string): string {
-    let back = '';
-    if (context.back.length) back = '<button data-back title="Back" aria-label="Back">‹</button>';
-    const close = '<button data-close title="Close" aria-label="Close">×</button>';
-    return `<div class="hd">${back}<b tabindex="-1">${title}</b>${close}</div>`;
+    let previous = '';
+    if (context.back.length) {
+        previous = '<button class="plain" data-back title="Previous panel">↶ Previous</button>';
+    }
+
+    const back = '<button class="plain" data-close title="Back to the list (Esc)">‹ Back</button>';
+    return `<div class="dtop">${back}${previous}</div><div class="hd"><b tabindex="-1">${title}</b></div>`;
 }
 
 /** The positions of the levels not under fog. */
@@ -252,15 +290,13 @@ export function stepsOf(context: PanelContext, plan: UnlockPlan): PlanSteps {
     };
 
     const numbers = new Map<string, number>();
-    let fogged = 0;
     plan.nodes.forEach((node, key) => {
         if (key === plan.rootKey) return;
 
         if (stepShown(node)) numbers.set(key, numberOf(key));
-        else fogged++;
     });
 
-    return { num: numbers, fog: fogged };
+    return { num: numbers };
 }
 
 /** The unlock chain as panel text: what to solve first, then the steps in order. */
@@ -272,7 +308,7 @@ export function pathHtml(
 ): string {
     if (!plan || !steps || plan.steps < 1) return '';
 
-    const { num: numbers, fog: fogged } = steps;
+    const numbers = steps.num;
     const rows: PlanStep[][] = [];
     plan.nodes.forEach((node, key) => {
         const stepNumber = numbers.get(key);
@@ -320,7 +356,6 @@ export function pathHtml(
         .map((row, index) => line('then →', row, index + 2))
         .join('');
     html += alternatives;
-    if (fogged) html += `<div class="muted">+${fogged} under fog</div>`;
     return html;
 }
 

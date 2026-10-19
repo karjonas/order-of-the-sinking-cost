@@ -128,8 +128,10 @@ read it as layer weights, not colour: red exposes layer B (`blended2`, `ground_g
 ```
 u32 LOD count (3)   u32 vertex count   u32 checksum   u8, u8, u8 skinned, u8
 f32 × 6 bounding box (min xyz, max xyz)   f32, f32   u32   u32 triangle list count (nl)
-vertex count × f32 × 3 positions (+ 8 bytes per vertex when skinned; skinned character meshes differ further)
-vertex count × 20 bytes: f32 u, f32 v (bytes 0..7), then normal and tangent (not decoded)
+vertex count × f32 × 3 positions (+ 8 bytes per vertex when skinned: u8 × 4 skin weights, summing to 255, then
+                                  u8 × 4 bone indices)
+vertex count × 20 bytes: f32 u, f32 v (bytes 0..7), 4 bytes of a second texture coordinate pair (bytes 8..11, half
+                         floats; unused ones hold stray bytes), u32 normal (bytes 12..15), u32 tangent (bytes 16..19)
 vertex count × u32 vertex colour (default paint, same layout as all_paint_data)
 LOD count × { nl × { u32 material index, u32 index count, u32 first index }
               u32 index count, u32 byte size, u16 format (0 = u16, 1 = u32), indices }
@@ -142,10 +144,20 @@ counter-clockwise seen from above). Texture row 0 is v = 0 (inferred, checked by
 Positions are in metres in the entity's space: world = rotate(quaternion) · (scale × p) + position.
 `base.materials[i]`, when non-empty, overrides material `i`.
 
+A normal and a tangent are each 10-10-10-2 unsigned normalised: x in bits 0..9, y in 10..19, z in 20..29, component
+= value / 511.5 − 1 (inferred: floor tiles give the unit vectors of their faces, side faces give ±y).
+
+A skinned mesh's bone indices point into the skeleton of the model's `data-common/<name>.anim` in
+`data/animation.package`: `Anim`, u16, u16, u16, u16 bone count (byte 10), the file's offsets, a rest transform, then at
+byte 74 one u16 parent bone index per bone (0xffff for the root). Everything after the parents (the bind pose and the
+curves) is not decoded. In the queen's bind pose the arms stretch out along y at shoulder height with the face towards
++x, and each arm and finger bone's vertices lie far from the body; the cape's strands hang from the shoulders on their
+own bones.
+
 ### `data-pc/<name>.texture`
 
 Header bytes 12..: `u16 width, u16 height, u16 depth, u16 mips, u8 format, u8, u8, u8`. Format 0 = BC1, 1 = BC3,
-5 = 4 bytes per pixel (RGBA8) are decoded. 2 (8-byte blocks, masks) and 3 (16-byte blocks, normal maps) fit BC4 and
+5 = 4 bytes per pixel (RGBA8) are decoded, and 2 (8-byte blocks, masks) as BC4. 3 (16-byte blocks, normal maps) fits
 BC5; 4 (16-byte blocks, light-probe arrays) is not decoded. Mips follow largest first, laid out like a D3D12 upload:
 each block row padded to 256 bytes, each mip padded to 512.
 
@@ -161,6 +173,8 @@ albedo-related keys:
 | `ground_general` | as `blended2`, but each layer is also multiplied by a world-space tint map `tint_map_A/B`: u = (x − `tint_map_offset_X`) / `tint_map_size_XY`, v = (`tint_map_offset_Y` − y) / size, after rotating x, y by `tint_map_rotation` × 90°. `tint_align_mode` 1 and 2 use fixed maps: u = (x + 0.5) / 24, v = (−0.5 − y) / 24, and u = (x + 5) / 84.667, v = (−5 − y) / 84.667. The entity colour applies only with `use_tint_colors_A/B`, which set `material_flags` bits 128 and 512 (below) |
 | `basic`, `foliage*`, `rocks_general` | `DIFFR_tex` × tint; alpha = opacity in the masked variants |
 | `crystal_general` | `color_core` / `fracture_color` (the red goal rooms) |
+| `guy` (characters) | `color_map` (the palette) × `color_modulate`; `color_mask_tex` picks the palette entries the entity colours replace (not decoded) |
+| `additive` | emitted light, `tint_color` × the entity's effect colour: the glow of Level_Entry and Teleporter models, whose entity colour fields (`color_active`, `color_discovered`, …: red, green, blue, intensity) set it |
 
 Entity colours reach the shader as half floats (`Entity_Params.entity_color`, `effect_color`).
 

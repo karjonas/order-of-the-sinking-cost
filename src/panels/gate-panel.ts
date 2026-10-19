@@ -41,7 +41,6 @@ export function showGatePanel(context: PanelContext, freezerIndex: number, how?:
     const isOpen = progress.gateOpen[freezerIndex];
     const mode = gateMode(freezer);
     const signs = freezer.signs || [];
-    const area = context.gateArea(freezerIndex);
     const label = capitalized(freezerNoun(freezerIndex));
     let html = panelHead(context, label);
 
@@ -52,13 +51,11 @@ export function showGatePanel(context: PanelContext, freezerIndex: number, how?:
         statusTone = ' good';
     }
 
-    let inArea = '';
-    if (area != null) inArea = `${escapeHtml(area)} · `;
-
     const role = roleFor(context.goal, 'g', freezerIndex);
     const statusChip = `<span class="chip${statusTone}">${status}</span>`;
     html += `<div>${statusChip}${roleChipHtml(context, role)}</div>`;
-    html += `<div class="muted">${inArea}${label} at ${context.gateAt(freezerIndex)}</div>`;
+    const place = context.model.gatePlace(freezerIndex);
+    if (place) html += `<div class="muted">${escapeHtml(place)}</div>`;
 
     let withMode = '';
     if (mode) withMode = ' ' + mode;

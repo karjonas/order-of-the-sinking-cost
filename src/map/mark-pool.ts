@@ -45,36 +45,39 @@ export class Mark {
 }
 
 /**
- * The marks of one map layer in paint order: the overlay marks, the selection's lines (a halo line and a coloured line
- * each), the towers, the level markers, the selected levels' markers (drawn over all others), the hero, the pulsing
- * ring round the level the save is in and the step badges. The ring is composited, so it comes after everything that
- * does not need to sit over it. Each layer has its own group, kept out of the overlay group while the layer is not
- * shown: every copy of the overlay group carries all the elements inside it, hidden or not.
+ * The marks of one map layer in paint order: the overlay marks (a disc that takes the pointer, then the icons on the
+ * discs), the selection's lines (a halo line and a coloured line each), the towers, the level markers (a ring that takes
+ * the pointer, then the pad icons, role badges and frozen cages), the selected levels' markers (drawn over all others),
+ * the hero, the pulsing ring round the level the save is in and the step badges. The ring is composited, so it comes
+ * after everything that does not need to sit over it. Each layer has its own group, kept out of the overlay group while
+ * the layer is not shown: every copy of the overlay group carries all the elements inside it, hidden or not.
  */
 export class LayerMarks {
     root: SVGGElement = document.createElementNS(SVG_NS, 'g');
     overlayMarks: MarkPool;
+    overlayIcons: MarkPool;
     linkLines: MarkPool;
     towerMarks: MarkPool;
+    towerIcons: MarkPool;
     levelMarks: MarkPool;
+    levelIcons: MarkPool;
     raisedMarks: MarkPool;
+    raisedIcons: MarkPool;
     heroMark: Mark;
     ringMark: Mark;
     stepMarks: MarkPool;
 
     constructor() {
         this.overlayMarks = new MarkPool(this.addSection(), 'path');
+        this.overlayIcons = new MarkPool(this.addSection(), 'use');
         this.linkLines = new MarkPool(this.addSection(), 'line');
-        this.towerMarks = new MarkPool(this.addSection(), 'rect', (rect) => {
-            rect.setAttribute('x', '-6');
-            rect.setAttribute('y', '-6');
-            rect.setAttribute('width', '12');
-            rect.setAttribute('height', '12');
-        });
-
+        this.towerMarks = new MarkPool(this.addSection(), 'path');
+        this.towerIcons = new MarkPool(this.addSection(), 'use');
         this.levelMarks = new MarkPool(this.addSection(), 'path');
+        this.levelIcons = new MarkPool(this.addSection(), 'use');
         this.raisedMarks = new MarkPool(this.addSection(), 'path');
-        this.heroMark = new Mark(this.addElement('path'));
+        this.raisedIcons = new MarkPool(this.addSection(), 'use');
+        this.heroMark = new Mark(this.addElement('use'));
         this.ringMark = new Mark(this.addElement('path'));
         this.stepMarks = new MarkPool(this.addSection(), 'g', (badge) => {
             const circle = document.createElementNS(SVG_NS, 'circle');

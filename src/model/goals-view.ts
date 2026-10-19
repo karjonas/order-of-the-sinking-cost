@@ -66,7 +66,7 @@ export interface GoalsViewInput {
     achievementHidden: (name: string) => boolean;
     achievementRule: (name: string) => AchievementRule | undefined;
     gateShown: (freezer: number) => boolean;
-    gateArea: (freezer: number) => string | null;
+    gatePlace: (freezer: number) => string;
     signShown: (sign: number) => boolean;
     stepShown: (step: PlanStep) => boolean;
     heroDist: (level: number) => number;
@@ -106,11 +106,6 @@ function towerShown(context: GoalsContext, tower: number): boolean {
 function towerLeft(context: GoalsContext, tower: number): number {
     const { req, solvedNormal } = context.progress.towers[tower];
     return Math.max(0, req - solvedNormal);
-}
-
-function gateName(context: GoalsContext, freezer: number): string {
-    const position = PROG.freezers[freezer].p;
-    return context.gateArea(freezer) ?? `at ${position[0]}, ${position[1]}`;
 }
 
 function levelId(context: GoalsContext, level: number): number | undefined {
@@ -189,7 +184,9 @@ function describe(context: GoalsContext, id: number, below: number): string | nu
 
     if (node.t === 'g') {
         if (!context.gateShown(node.id)) return null;
-        return `opens ${freezerNoun(node.id)} ${gateName(context, node.id)}`;
+        const place = context.gatePlace(node.id);
+        if (!place) return `opens ${freezerNoun(node.id)}`;
+        return `opens ${freezerNoun(node.id)} ${place}`;
     }
 
     if (node.t === 'l') {
@@ -342,9 +339,10 @@ function goalOf(context: GoalsContext, level: number): string {
         if (required.length > 1) more = ` +${required.length - 1}`;
         if (kind === 'l') return `Required ${levels[id].n}${more}`;
 
-        const area = context.gateArea(id);
-        const areaNote = area != null ? ' · ' + area : '';
-        return `Required ${freezerNoun(id)}${areaNote}${more}`;
+        const place = context.gatePlace(id);
+        let placeNote = '';
+        if (place) placeNote = ' · ' + place;
+        return `Required ${freezerNoun(id)}${placeNote}${more}`;
     }
 
     if (roleOf('l', level) === 'req') return 'Required level';

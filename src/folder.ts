@@ -164,7 +164,7 @@ const TIME_UNITS: Array<[limit: number, unit: Intl.RelativeTimeFormatUnit]> = [
     [Infinity, 'year'],
 ];
 
-export function timeAgo(time: number): string {
+function timeAgo(time: number): string {
     const seconds = (time - Date.now()) / 1000;
     let divisor = 1;
 
@@ -177,10 +177,13 @@ export function timeAgo(time: number): string {
     return '';
 }
 
-// only the text changes, so the ↻ button keeps the focus
+/** When the save was written, as the save line's tooltip tells it. */
+export const savedTitle = (time: number): string => `Saved ${timeAgo(time)} · ${new Date(time).toLocaleString()}`;
+
+// only the tooltip changes, so the ↻ button keeps the focus
 function liveStatus(): void {
-    const element = $('#savedAgo');
-    if (element) element.textContent = timeAgo(Number(element.dataset.t));
+    const element = $('#saveMeta');
+    if (element) element.title = savedTitle(Number(element.dataset.t));
 }
 
 async function useHandle(handle: FileSystemDirectoryHandle): Promise<void> {
@@ -261,14 +264,22 @@ function pickerHelpText(): string {
     return `${noPicker} Pick the save folder as a one-time snapshot.`;
 }
 
+/** A button of the save folder's path as muted text followed by a copy icon; a click copies the path. */
+export function savePathHtml(attributes: string): string {
+    const icon =
+        '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>' +
+        '<path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5"/></svg>';
+    const text = `<span class="bptext">${escapeHtml(SAVE_PATH)}</span>`;
+    return `<button class="plain bpath" ${attributes} title="Copy the folder path">${text}<span class="copyicon">${icon}</span></button>`;
+}
+
 export function pickerHelpHtml(): string {
     const message = pickerHelpText();
-    const copyButton = '<button data-copy-path title="Copy the folder path">Copy path</button>';
     const snapshotButton = '<button class="primary" data-snapshot>Pick a snapshot…</button>';
 
     // the example view's banner above already shows the path
-    let path = `<code>${escapeHtml(SAVE_PATH)}</code>${copyButton}`;
-    if ($('#bnPath')) path = '';
+    let path = savePathHtml('data-copy-path');
+    if ($('#bnCopy')) path = '';
     return `<div class="banner" id="pickHelp"><span class="bt">${message}</span>${path}${snapshotButton}</div>`;
 }
 
@@ -323,7 +334,16 @@ let pendingHandle: FileSystemDirectoryHandle | null = null;
 /** The label of the buttons that open the save folder. */
 export const folderLabel = (): string => (pendingHandle ? 'Reconnect save folder' : 'Open save folder');
 
+/** The banner's message; its first word matches the button that opens the save folder. */
+export function bannerMessage(): string {
+    const verb = pendingHandle ? 'Reconnect' : 'Open';
+    return `${verb} your save folder to see what to play next. Your save is read here in the browser and never uploaded.`;
+}
+
 function syncFolderUi(): void {
+    const bannerText = $('#bnText');
+    if (bannerText) bannerText.textContent = bannerMessage();
+
     $('#openDir').textContent = folderLabel();
     $('#openDir').title = pendingHandle ? `Reconnect “${pendingHandle.name}”` : '';
 
@@ -370,12 +390,19 @@ async function forgetFolder(): Promise<void> {
 /** Without clipboard access the path is selected for copying by hand. */
 export async function copyPath(event: { currentTarget: EventTarget | null }): Promise<void> {
     const button = event.currentTarget;
-    if (!(button instanceof HTMLElement)) return;
+    if (!(button instanceof HTMLElement) || button.classList.contains('done')) return;
 
+    const icon = button.querySelector('.copyicon');
+    const pathText = button.querySelector('.bptext');
+    if (!icon || !pathText) return;
+
+    const iconMarkup = icon.innerHTML;
     const showResult = (text: string): void => {
-        button.textContent = text;
+        icon.textContent = text;
+        button.classList.add('done');
         setTimeout(() => {
-            button.textContent = 'Copy path';
+            icon.innerHTML = iconMarkup;
+            button.classList.remove('done');
         }, 1500);
     };
 
@@ -384,7 +411,7 @@ export async function copyPath(event: { currentTarget: EventTarget | null }): Pr
         showResult('Copied');
     } catch {
         const range = document.createRange();
-        range.selectNodeContents(button.parentElement?.querySelector('code') || $('#bnPath'));
+        range.selectNodeContents(pathText);
 
         const selection = getSelection();
         selection?.removeAllRanges();

@@ -36,7 +36,7 @@ import { push, settle } from './queue.ts';
 import type { Cursor } from './queue.ts';
 import { sinkChained } from './rock-chains.ts';
 import type { ChainMiss } from './rock-chains.ts';
-import { respawnedRocksOf, rockTurnsOf, sinkTurned } from './rock-turns.ts';
+import { respawnedRocksOf, rockTurnsOf, sinkTurned, stoneTurnsOf } from './rock-turns.ts';
 import type { RockTurn } from './rock-turns.ts';
 import { ferry, roverTurnsOf } from './rovers.ts';
 import type { RoverCell, SunkRover } from './rovers.ts';
@@ -380,7 +380,7 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
 
     const transmutes = transmuteTargetsOf(walkGrid);
     const standingRocks = [...rockTurnsOf(walkGrid), ...crystalTurnsOf(walkGrid, transmutes)];
-    const rocks = [...standingRocks, ...respawnedRocksOf(walkGrid)];
+    const rocks = [...standingRocks, ...respawnedRocksOf(walkGrid), ...stoneTurnsOf(walkGrid)];
     const rocksAt = new Map<number, number[]>();
 
     // a Rock whose room has a stored answer is due once the walk reaches a start of that answer

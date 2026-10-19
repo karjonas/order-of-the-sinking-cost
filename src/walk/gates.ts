@@ -2,7 +2,19 @@
 // OPEN beam bumping a Gate open (MOVEMENT.md "Gates, switches and buttons", "Promesst beams and powers")
 import { latestFlag } from '../save.ts';
 import { attackedAt } from './attacks.ts';
-import { addTo, cellOnSide, GATE, neighbourOf, PUSH, SIDES, SOLID, SUPPORT, THRU, Z_BIAS } from './cells.ts';
+import {
+    addTo,
+    cellOnSide,
+    FROZEN_MARK,
+    GATE,
+    neighbourOf,
+    PUSH,
+    SIDES,
+    SOLID,
+    SUPPORT,
+    THRU,
+    Z_BIAS,
+} from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { exists, place, put } from './groups.ts';
 import { deep, waterStopsFall } from './ocean.ts';
@@ -160,7 +172,7 @@ export function placeNotPressers(walkGrid: WalkGrid): void {
 /** What an object cannot be pushed into: a solid voxel, a shut Gate, a closed Freezer. */
 export function walled(walkGrid: WalkGrid, floodState: FloodState, cell: number): boolean {
     if ((walkGrid.grid[cell] & SOLID) !== 0) return true;
-    return gateShutNow(walkGrid, floodState, cell) || walkGrid.frozen.has(cell);
+    return gateShutNow(walkGrid, floodState, cell) || (walkGrid.marks[cell] & FROZEN_MARK) !== 0;
 }
 
 /**
@@ -174,22 +186,27 @@ function charmLaunches(walkGrid: WalkGrid, floodState: FloodState, from: number,
     const fromZ = Math.floor(from / layerCells) - Z_BIAS;
     if (fromZ >= boxZ) return;
 
+    const sameLayerCells: number[] = [];
+
+    for (let dy = -CHARM_RANGE; dy <= CHARM_RANGE; dy++) {
+        for (let dx = -CHARM_RANGE; dx <= CHARM_RANGE; dx++) {
+            sameLayerCells.push(neighbourOf(walkGrid, from, dx, dy));
+        }
+    }
+
     for (let layerStep = -CHARM_RANGE; layerStep <= CHARM_RANGE; layerStep++) {
         const layerShift = layerStep * layerCells;
 
-        for (let dy = -CHARM_RANGE; dy <= CHARM_RANGE; dy++) {
-            for (let dx = -CHARM_RANGE; dx <= CHARM_RANGE; dx++) {
-                const bardCell = neighbourOf(walkGrid, from, dx, dy) + layerShift;
-                if (bardCell === from || bardCell < 0 || bardCell >= grid.length) continue;
-                if (!standable(walkGrid, floodState, bardCell)) continue;
+        for (const sameLayerCell of sameLayerCells) {
+            const bardCell = sameLayerCell + layerShift;
+            if (bardCell === from || bardCell < 0 || bardCell >= grid.length) continue;
+            if (!standable(walkGrid, floodState, bardCell)) continue;
 
-                const stepCell = cellOnSide(walkGrid, bardCell, side);
-                if (fenced(walkGrid, bardCell, side, stepCell)) continue;
-                if (stepCell !== from && (grid[stepCell] & PUSH || !standable(walkGrid, floodState, stepCell)))
-                    continue;
+            const stepCell = cellOnSide(walkGrid, bardCell, side);
+            if (fenced(walkGrid, bardCell, side, stepCell)) continue;
+            if (stepCell !== from && (grid[stepCell] & PUSH || !standable(walkGrid, floodState, stepCell))) continue;
 
-                way(from, bardCell, true, true);
-            }
+            way(from, bardCell, true, true);
         }
     }
 }
@@ -247,24 +264,26 @@ function skipFrom(
 
 /**
  * The skips onto cell `target` of a skipping stone pushed into level water on side `side` of it: the stone is
- * launched from each cell it can stand on further back along the water. The solid cells that stop a skip go to
- * `wallStops`.
+ * launched from each cell it can stand on further back along the water. `nextBack` and `afterNextBack` are the two
+ * cells behind `target` on that side, `z` its height. The solid cells that stop a skip go to `wallStops`.
  */
 function skipsOnto(
     walkGrid: WalkGrid,
     floodState: FloodState,
     target: number,
+    z: number,
     side: number,
+    nextBack: number,
+    afterNextBack: number,
     way: PushWay,
     wallStops: number[],
     charm: boolean,
 ): void {
-    const z = Math.floor(target / walkGrid.layerCells) - Z_BIAS;
     const back = (side + 2) % 4;
-    let firstWater = cellOnSide(walkGrid, target, back);
+    let firstWater = nextBack;
     if (fenced(walkGrid, firstWater, side, target) || !skipsOver(walkGrid, floodState, firstWater, z)) return;
 
-    let from = cellOnSide(walkGrid, firstWater, back);
+    let from = afterNextBack;
 
     for (let stepsBack = 0; stepsBack < walkGrid.width + walkGrid.height; stepsBack++) {
         if (!skipsOver(walkGrid, floodState, from, z)) break;
@@ -279,6 +298,42 @@ function skipsOnto(
     }
 
     skipFrom(walkGrid, floodState, target, z, side, from, firstWater, way, wallStops, charm);
+}
+
+// movesOnto's per side: the cell an object is pushed from into the target and the hero's push cell behind it; below the
+// fast-travel rooms the same cells m layers up are these plus m * layerCells
+const sideFromCells = new Int32Array(4);
+const sidePushCells = new Int32Array(4);
+
+/**
+ * The pushes into cell `into` at height intoZ, which the object then stands in or falls from onto `target`: way(from,
+ * pushCell, false, false) for each side whose cell holds an object that can be pushed.
+ */
+function pushesInto(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    target: number,
+    into: number,
+    intoZ: number,
+    way: PushWay,
+): void {
+    const shift = into - target;
+    const inFastTravelRooms = intoZ >= walkGrid.boxZ;
+
+    for (let side = 0; side < 4; side++) {
+        const back = (side + 2) % 4;
+        let from = sideFromCells[side] + shift;
+        let pushCell = sidePushCells[side] + shift;
+
+        if (inFastTravelRooms) {
+            from = cellOnSide(walkGrid, into, back);
+            pushCell = cellOnSide(walkGrid, from, back);
+        }
+
+        if (!holdsStone(walkGrid, floodState, from, intoZ) || walled(walkGrid, floodState, from)) continue;
+        if (fenced(walkGrid, from, side, into) || fenced(walkGrid, pushCell, side, from)) continue;
+        way(from, pushCell, false, false);
+    }
 }
 
 /**
@@ -297,58 +352,37 @@ function movesOnto(
     way: PushWay,
     charm: boolean,
 ): void {
-    const { grid, layerCells, boxZ } = walkGrid;
+    const { grid, layerCells } = walkGrid;
     const z = Math.floor(target / layerCells) - Z_BIAS;
     const column = target % layerCells;
-
-    // per side, the cell an object is pushed from into `target` and the hero's push cell behind it; below the
-    // fast-travel rooms the same cells m layers up are these plus m * layerCells
-    const fromCells: number[] = [];
-    const pushCells: number[] = [];
+    const columnHasWater = walkGrid.waterColumns[column] !== undefined;
 
     for (let side = 0; side < 4; side++) {
         const back = (side + 2) % 4;
         const from = cellOnSide(walkGrid, target, back);
-        fromCells.push(from);
-        pushCells.push(cellOnSide(walkGrid, from, back));
+        sideFromCells[side] = from;
+        sidePushCells[side] = cellOnSide(walkGrid, from, back);
     }
 
-    // the pushes into cell `into` at height intoZ, which the object then stands in or falls from onto `target`
-    const pushesInto = (into: number, intoZ: number): void => {
-        const shift = into - target;
-
-        for (let side = 0; side < 4; side++) {
-            const back = (side + 2) % 4;
-            let from = fromCells[side] + shift;
-            let pushCell = pushCells[side] + shift;
-
-            if (intoZ >= boxZ) {
-                from = cellOnSide(walkGrid, into, back);
-                pushCell = cellOnSide(walkGrid, from, back);
-            }
-
-            if (!holdsStone(walkGrid, floodState, from, intoZ) || walled(walkGrid, floodState, from)) continue;
-            if (fenced(walkGrid, from, side, into) || fenced(walkGrid, pushCell, side, from)) continue;
-            way(from, pushCell, false, false);
-        }
-    };
-
-    pushesInto(target, z);
+    pushesInto(walkGrid, floodState, target, target, z, way);
 
     // an object that falls into water sinks to the surface - 1, so a fall reaches a cell only if the water does not
     // cancel the step into it or into a cell below
     let into = target + layerCells;
 
     for (let intoZ = z + 1; into < grid.length && intoZ - z <= PRESS_FALL; intoZ++) {
-        if (waterStopsFall(walkGrid, column, intoZ - 1)) break;
+        if (columnHasWater && waterStopsFall(walkGrid, column, intoZ - 1)) break;
         if (walled(walkGrid, floodState, into) || grid[into] & PUSH) break;
         if (holdsStone(walkGrid, floodState, into, intoZ)) break;
-
-        pushesInto(into, intoZ);
+        pushesInto(walkGrid, floodState, target, into, intoZ, way);
         into += layerCells;
     }
 
-    for (let side = 0; side < 4; side++) skipsOnto(walkGrid, floodState, target, side, way, wallStops, charm);
+    for (let side = 0; side < 4; side++) {
+        const nextBack = sideFromCells[side];
+        const afterNextBack = sidePushCells[side];
+        skipsOnto(walkGrid, floodState, target, z, side, nextBack, afterNextBack, way, wallStops, charm);
+    }
 }
 
 /** A hero in an OPEN beam with no ALTER beam bumps the shut Gate next to it open, and it stays open. */
@@ -426,35 +460,36 @@ export function bringObjectOnto(
     const seen = new Set([target * 4]);
     let found = -1;
 
+    let wayLater = 0;
+
+    const visitWay: PushWay = (from, pushCell, skip, charmed) => {
+        if (found >= 0) return;
+        if (!charmed && attackedAt(walkGrid, from)) return;
+
+        if (!heroPushes(pushCell)) {
+            miss.pushCells.push(pushCell);
+            return;
+        }
+
+        if (stays && !stays(from)) return;
+
+        let way = wayLater;
+        if (skip) way |= SKIPS;
+        if (charmed) way |= CHARMED;
+
+        if (grid[from] & PUSH) {
+            if (accepts(from, (way & SKIPS) !== 0, (way & CHARMED) !== 0)) found = from;
+            return;
+        }
+
+        const key = from * 4 + way;
+        if (seen.has(key)) return;
+        seen.add(key);
+        todo.push(from, way);
+    };
+
     for (let pairStart = 0; pairStart < todo.length && pairStart < 2 * PRESS_CELLS; pairStart += 2) {
-        const wayLater = todo[pairStart + 1];
-
-        const visitWay: PushWay = (from, pushCell, skip, charmed) => {
-            if (found >= 0) return;
-            if (!charmed && attackedAt(walkGrid, from)) return;
-
-            if (!heroPushes(pushCell)) {
-                miss.pushCells.push(pushCell);
-                return;
-            }
-
-            if (stays && !stays(from)) return;
-
-            let way = wayLater;
-            if (skip) way |= SKIPS;
-            if (charmed) way |= CHARMED;
-
-            if (grid[from] & PUSH) {
-                if (accepts(from, (way & SKIPS) !== 0, (way & CHARMED) !== 0)) found = from;
-                return;
-            }
-
-            const key = from * 4 + way;
-            if (seen.has(key)) return;
-            seen.add(key);
-            todo.push(from, way);
-        };
-
+        wayLater = todo[pairStart + 1];
         movesOnto(walkGrid, floodState, todo[pairStart], miss.wallStops, visitWay, charms);
 
         if (found >= 0) break;

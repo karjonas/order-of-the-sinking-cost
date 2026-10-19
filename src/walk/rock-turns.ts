@@ -9,6 +9,8 @@ import { exists } from './groups.ts';
 import { levelWater, waterStopsFall } from './ocean.ts';
 import { requeue, visitReached } from './queue.ts';
 import { reachedEntries } from './room-answers.ts';
+import { skippingStones, stoneLandingOf } from './skipping-stones.ts';
+import { LAYER_COUNT } from './skills.ts';
 import { holdsStone, standable } from './support.ts';
 import { swappedTo, visitSwaps } from './swaps.ts';
 import type { WalkGrid } from './walker.ts';
@@ -17,13 +19,15 @@ import { fenced } from './walls.ts';
 /**
  * An existing Rock that is no skipping stone: its pid and the cell the save last left it in. A Tree a TRANSMUTE hero
  * turns into a crystal is one once its transmute target `target` is turned. A Rock a Spawner respawns stands in the
- * Spawner's cell once the flood has reached one of the Activators in `activators` (their cells).
+ * Spawner's cell once the flood has reached one of the Activators in `activators` (their cells). A skipping stone
+ * (`skips`) skips on into level water instead of sinking where it enters it.
  */
 export interface RockTurn {
     pid: number;
     cell: number;
     target?: number;
     activators?: number[];
+    skips?: boolean;
 }
 
 /** Where a push ends: the cell the object lands in, and whether it sinks in water level with that cell. */
@@ -36,6 +40,11 @@ export interface Landing {
 export function rockTurnsOf(walkGrid: WalkGrid): RockTurn[] {
     const skippable = new Set(walkGrid.world.skippable || []);
     return walkGrid.rocks.filter(({ pid }) => !skippable.has(pid));
+}
+
+/** The skipping stones that exist and have not sunk, each at the cell the save last left it in. */
+export function stoneTurnsOf(walkGrid: WalkGrid): RockTurn[] {
+    return skippingStones(walkGrid).map(([cell, , pid]) => ({ pid, cell, skips: true }));
 }
 
 /**
@@ -95,7 +104,7 @@ export function landingOf(walkGrid: WalkGrid, floodState: FloodState, from: numb
 /**
  * Calls visit(landing) for each push of the object in `from` that the hero can make from a cell the flood reached in
  * layer 0, as a Rock lands in landingOf. None when the object cannot stand in `from` or `from` is attacked (the hero
- * steps into it and dies). The push cells turned down because
+ * steps into it and dies); a skipping stone (`skips`) lands as stoneLandingOf has it. The push cells turned down because
  * the flood has not reached them go to `miss`.
  */
 export function pushLandings(
@@ -104,6 +113,7 @@ export function pushLandings(
     from: number,
     miss: PressMiss,
     visit: (landing: Landing) => void,
+    skips = false,
 ): void {
     const { layerCells, visited } = walkGrid;
     const z = Math.floor(from / layerCells) - Z_BIAS;
@@ -115,7 +125,9 @@ export function pushLandings(
         const into = cellOnSide(walkGrid, from, side);
         if (fenced(walkGrid, from, side, into) || fenced(walkGrid, pushCell, side, from)) continue;
 
-        const landing = landingOf(walkGrid, floodState, from, side);
+        const landing = skips
+            ? stoneLandingOf(walkGrid, floodState, from, side, z)
+            : landingOf(walkGrid, floodState, from, side);
         if (!landing) continue;
 
         if ((visited[pushCell] & 1) === 0) {
@@ -128,9 +140,10 @@ export function pushLandings(
 }
 
 /**
- * Whether a bridge in `waterCell` joins ground the flood reached to ground it has not: it holds no hero yet, a cell
- * beside it is reached and another beside it is a cell a hero stands in that is not. The cells beside it go to
- * `miss`, since reaching one may make it join them.
+ * Whether a bridge in `waterCell` joins ground the flood reached to ground it has not: it holds no hero yet, it is
+ * reached (a cell beside it is, or the arm cell of a magic-mirror hop that lands on it) and another cell beside it is
+ * a cell a hero stands in that is not. The cells beside it and the arm cells go to `miss`, since reaching one may make
+ * it join them.
  */
 export function joinsNewGround(
     walkGrid: WalkGrid,
@@ -155,13 +168,19 @@ export function joinsNewGround(
         }
     }
 
+    for (const armCell of walkGrid.hopSources.get(waterCell) ?? []) {
+        miss.pushCells.push(armCell);
+        if ((visited[armCell] & 1) !== 0) joinsReached = true;
+    }
+
     return joinsReached && joinsNew;
 }
 
 /**
  * The first water cell `accepts` where the Rock in `rockCell` sinks, else -1: the cells the Rock is pushed to from its
  * own cell or a cell a swap put it in, nearest first over at most PRESS_CELLS cells, by a hero who stands in a cell the
- * flood reached. The push cells turned down go to `miss`.
+ * flood reached; a skipping stone (`skips`) rests on cells and sinks where stoneLandingOf has it. The push cells turned
+ * down go to `miss`.
  */
 export function sinkOf(
     walkGrid: WalkGrid,
@@ -169,6 +188,7 @@ export function sinkOf(
     rockCell: number,
     miss: PressMiss,
     accepts: (waterCell: number) => boolean,
+    skips = false,
 ): number {
     const positions = [rockCell];
     for (const swapped of swappedTo(floodState, rockCell)) {
@@ -179,18 +199,25 @@ export function sinkOf(
     let waterCell = -1;
 
     for (let index = 0; index < positions.length && index < PRESS_CELLS; index++) {
-        pushLandings(walkGrid, floodState, positions[index], miss, (landing) => {
-            if (waterCell >= 0) return;
+        pushLandings(
+            walkGrid,
+            floodState,
+            positions[index],
+            miss,
+            (landing) => {
+                if (waterCell >= 0) return;
 
-            if (!landing.sinks) {
-                if (!seen.has(landing.cell)) {
-                    seen.add(landing.cell);
-                    positions.push(landing.cell);
+                if (!landing.sinks) {
+                    if (!seen.has(landing.cell)) {
+                        seen.add(landing.cell);
+                        positions.push(landing.cell);
+                    }
+                } else if (accepts(landing.cell)) {
+                    waterCell = landing.cell;
                 }
-            } else if (accepts(landing.cell)) {
-                waterCell = landing.cell;
-            }
-        });
+            },
+            skips,
+        );
 
         if (waterCell >= 0) break;
     }
@@ -202,13 +229,20 @@ export function sinkOf(
  * The water cell where the Rock in `rockCell` sinks into a bridge that joins new ground, else -1. The cells beside a
  * water cell that joined nothing go to `miss` as well.
  */
-function bridgeOf(walkGrid: WalkGrid, floodState: FloodState, rockCell: number, miss: PressMiss): number {
+function bridgeOf(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    rockCell: number,
+    miss: PressMiss,
+    skips: boolean,
+): number {
     return sinkOf(
         walkGrid,
         floodState,
         rockCell,
         miss,
         (waterCell) => !floodState.bridged.has(waterCell) && joinsNewGround(walkGrid, floodState, waterCell, miss),
+        skips,
     );
 }
 
@@ -253,10 +287,11 @@ export function rockFree(walkGrid: WalkGrid, floodState: FloodState, rockIndex: 
 
 /**
  * Sinks the Rock `rockIndex` in `waterCell`: the cell holds the hero, and the walk resumes from the reached cells beside
- * it. The Rock bridges once, and its straight bridge is spent with it.
+ * it and from the reached arm cells of the magic-mirror hops that land on it. The Rock bridges once, and its straight
+ * bridge is spent with it.
  */
 export function sinkRock(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number, waterCell: number): void {
-    const { triggers, marks } = walkGrid;
+    const { triggers, marks, visited, hopSources } = walkGrid;
     floodState.rockSpent[rockIndex] = 1;
 
     const bridgeIndex = triggers.bridgeIndexOf.get(triggers.rocks[rockIndex].pid);
@@ -270,13 +305,20 @@ export function sinkRock(walkGrid: WalkGrid, floodState: FloodState, rockIndex: 
     }
 
     requeue(walkGrid, floodState, waterCell);
+
+    for (const armCell of hopSources.get(waterCell) ?? []) {
+        for (let layer = 0; layer < LAYER_COUNT; layer++) {
+            if (visited[armCell] & (1 << layer)) floodState.queue.push(armCell, layer);
+        }
+    }
 }
 
 /**
  * Sinks the Rocks that can be pushed into water with turns, once a hero reaches a cell beside one: each Rock bridges
  * once, at the nearest water cell it sinks in that joins new ground, and not when its straight bridge sank it already
- * (its `bridgeTaken`). A Rock whose search found nothing is looked at again only once what it reads has changed.
- * Returns whether any Rock sank.
+ * (its `bridgeTaken`). A skipping stone is one of them: it sinks once, in the nearest cell where it ends a skip against
+ * a fence, a blocked cell or a pushable that joins new ground. A Rock whose search found nothing is looked at again only
+ * once what it reads has changed. Returns whether any Rock sank.
  */
 export function sinkTurned(walkGrid: WalkGrid, floodState: FloodState): boolean {
     const { triggers } = walkGrid;
@@ -310,14 +352,15 @@ export function sinkTurned(walkGrid: WalkGrid, floodState: FloodState): boolean 
     for (const rockIndex of rocksDue) {
         if (!rockFree(walkGrid, floodState, rockIndex)) continue;
 
-        const { cell } = triggers.rocks[rockIndex];
+        const { cell, skips = false } = triggers.rocks[rockIndex];
         const swaps = swappedTo(floodState, cell).length;
         const miss = rockMisses[rockIndex];
         if (miss && !missChanged(walkGrid, floodState, miss, swaps)) continue;
 
         const newMiss: PressMiss = { inputs: pressInputs(floodState) + swaps, pushCells: [], wallStops: [] };
-        let waterCell = storedBridgeOf(walkGrid, floodState, cell, newMiss);
-        if (waterCell < 0) waterCell = bridgeOf(walkGrid, floodState, cell, newMiss);
+        let waterCell = -1;
+        if (!skips) waterCell = storedBridgeOf(walkGrid, floodState, cell, newMiss);
+        if (waterCell < 0) waterCell = bridgeOf(walkGrid, floodState, cell, newMiss, skips);
 
         if (waterCell < 0) {
             rockMisses[rockIndex] = newMiss;

@@ -175,9 +175,9 @@ as `map`, and fog. Level roles (Required / Optional, the Freezers each level sit
 
 | Key | Shape |
 |---|---|
-| `levels[]` | the overworld Level_Entries that are not `currently_broken` or `currently_disfavored`, in level-data order: {n (level_name), p, req (indices into `levels` of `unlocked_by_id`..`id3`; may be empty), or (`unlock_is_or_gate` with 2+ ids), en (gated but `enabled_t_target` 1 in the data, so open from the start), t (`tower_flags` bits: HEROES 1, MIRRORS 2, SKIPPING 4, PROMESST 8, UPSTAIRS 16, DOWNSTAIRS 32), d (dropdown), a (achievement name), set: [index into `sets`, place in the set from 1], area (index into `areas`), areaNear (outside every area box, grouped with the nearest), overlap (in boxes of more than one area: [[index into `areas`, float_parameter]] in record order; the viewer picks among them by activated pins, [Level areas (viewer)](VIEWER.md#level-areas-viewer))} |
+| `levels[]` | the overworld Level_Entries that are not `currently_broken` or `currently_disfavored`, in level-data order: {n (level_name), p, req (indices into `levels` of `unlocked_by_id`..`id3`; may be empty), or (`unlock_is_or_gate` with 2+ ids), en (gated but `enabled_t_target` 1 in the data, so open from the start), t (`tower_flags` bits: HEROES 1, MIRRORS 2, SKIPPING 4, PROMESST 8, UPSTAIRS 16, DOWNSTAIRS 32), glow (the glow colour group of its pad: green, orange, yellow, blue or purple, the group whose hue its `color_active` is nearest to; reds count as orange, cyans as blue, magentas as purple; [The marker icons](#the-marker-icons)), tower (1 when its `style` is SIXTEEN_POINTS, the 16-point star pad of the tower levels, which is also the pad of a few levels with no `tower_flags`), d (dropdown), a (achievement name), set: [index into `sets`, place in the set from 1], area (index into `areas`), areaNear (outside every area box, grouped with the nearest), overlap (in boxes of more than one area: [[index into `areas`, float_parameter]] in record order; the viewer picks among them by activated pins, [Level areas (viewer)](VIEWER.md#level-areas-viewer))} |
 | `sets[]` | {name, n (levels in the set that exist)}: each level's first level set by set name, a `drafts*` set only when it has no other |
-| `towers[]` | {pid, t (tower_flags bits), req (`levels_required`, type default filled in), p}, sorted ground first, then sky, then underworld, then by t |
+| `towers[]` | {pid, t (tower_flags bits), req (`levels_required`, type default filled in), p, pad (index into `teleporters` of the tower's `teleporter_id` pad when that is a MINOR pad: a ground or low tower's pad stands on or beside the tower, a high tower's is a MAJOR pad elsewhere and has no `pad`)}, sorted ground first, then sky, then underworld, then by t |
 | `freezers[]` | {pid, p, l (ground layer by z), req (indices into `levels` of `unlocked_by_id`..`id4`), or, partial (`partial_solve_count` set), judge (`judge_unlock_level`), doorway (model B, `base.mesh` `GAME_OVER_Freezer_B`), signs when some unlock ids are not levels: [{pid, rank} \| {pid, tower: index into towers} \| {pid, gold: 4} \| {pid}]} |
 | `signs[]` | {pid, p, l, rank \| tower (index) \| gold: 4, status (a TOWER_STATUS sign), gates (indices into `freezers` that list it)}: the Signs that open gates by rank, tower or gold rooms, and the tower status signs |
 | `treasures` | the number of Treasure_Displays |
@@ -217,4 +217,50 @@ that layer of the overworld with the fog cleared, the hero hidden and the time f
   ([Fog of war](STATE.md#fog-of-war)).
 - `src/map/thumbs/<layer>.avif` is the same layer at one pixel per square (190 × 156, each pixel the average colour
   of its square, row 0 north). The page embeds the thumbnails and draws a layer's thumbnail pixelated until its full
-  image, published next to the page, has loaded.
+  image, published next to the page, has loaded and decoded.
+
+## The marker icons
+
+`public/assets/icons/<name>.avif` holds one 128 × 128 image per marker kind and state, rendered from the game's own
+3D models by `scripts/build-icons.js` (`npm run icons`). The pixels are RGBA on a transparent background: the object
+fills the frame (5 pixels of margin), with a thin dark outline and a soft drop shadow so it reads on any terrain. The
+whole set is about 130 KB.
+
+| Icon | Model | Colour |
+|---|---|---|
+| `ice-cage`, `ice-gate` | the Freezer models `Freezer_A` and `Freezer_B` | the entity's tints |
+| `sign` | the Sign model `overworld_plaque` | the entity's tints |
+| `teleporter` | the Teleporter model `Reset_B` | the glowing parts take the entity's `color_discovered` |
+| `tower-pad` | the Teleporter model `Reset_C` | the same |
+| `gold-room` | `Reset_C` of a gold room's endpoint | `color_discovered` and the entity's own tints (gold) |
+| `voice-log` | the Voice_Log model `Story_A` | none |
+| `map-scroll` | the View_Giver model `CamControl_Scroll` | the entity's tints |
+| `treasure` | the Treasure_Display's plinth with its treasure's model standing on top | the entity's tints |
+| `treasure-taken` | the Treasure_Display's acquired model (`Chest_Open_A`) | the entity's tints |
+| `level-locked`, `level-solved`, `level-available-<group>` | the plain 8-point Level_Entry models `Entry_Locked_A` and `Entry_Available_A` | the viewer's colours (below) |
+| `level-tower-locked`, `level-tower-solved`, `level-tower-available-<group>` | the 16-point models of the tower levels, `Entry_Hero_Locked_A` and `Entry_Hero_Available_A` | the same |
+| `hero` | the queen, without her props, as a bust from the front, 12° above | the palette texture |
+
+- The view is orthographic: the camera sits south of the object and 25° east of south, 42° above the ground, so a
+  model's front faces south, as on the map. The Level_Entry and Teleporter pads are seen straight from above, north up. The sign and the ice gate
+  face +x, so they are seen from the east, 24° above, face-on. The hero bust is framed on her head and shoulders and
+  the rest of her falls off the bottom edge.
+- Where a model is placed in the overworld, the icon uses one placed entity's own fields: the first entity of that type
+  with that model (and, for the Teleporters, the first gold-room endpoint or the first other one).
+- The Teleporters' glowing parts take the hue of the entity's `color_discovered`, dimmer for a small intensity (the
+  field's fourth number) or a dark colour. The undiscovered pads have no icons: the map dims them.
+- Each Level_Entry has its own glow colour, `color_active`: mostly green, then orange, magenta, cyan, yellow, blue,
+  purple and a few red. The icons group them into five by hue, `glow` in `progress.json` `levels` (green, orange,
+  yellow, blue, purple, near the median of each group's colours, with 282, 220, 97, 170 and 151 of the 920 levels).
+  The 16-point pads of the tower levels have their own
+  icons, `tower` in `levels`.
+- The level pads do not use the game's stone tints or exact colours, which hardly tell the states apart. The viewer's
+  own: locked is dark grey stone (#4a5058) with no glow; available is the group's glow (green #4fe06c, orange
+  #ff8a1e, yellow #ffd21a, blue #2ab4ff, purple #b048ff) on mid stone (#8c8a80), also for a level entered but not
+  solved; solved is a dim gold stone (#8a7440) with no glow, for every group.
+- Shading is a smooth Lambert shade from the mesh's vertex normals, a key light from the top left, a fill light from the
+  right and a rim light behind. Normal maps, reflections and shadows are not drawn.
+- The hero is posed from the bind pose by moving each vertex with its arm bones, in proportion to its skin weights,
+  75° down about the shoulder ([Render assets](GAMEDATA.md#render-assets)); no animation is decoded.
+- `favicon-32.png` and `favicon-64.png` are the `Entry_Solved_A` model in bright gold (#e6b83a glow on #b8902c stone)
+  seen from straight above, cropped to its star, at 32 and 64 pixels, as PNG.

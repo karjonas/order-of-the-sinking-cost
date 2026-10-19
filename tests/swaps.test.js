@@ -735,6 +735,78 @@ describe('a skipping stone onto a Switch', () => {
     });
 });
 
+describe('a skipping stone that sinks in place', () => {
+    // row 0: the hero at 0, the stone at 1, dry 2, water from 3 on and a wall after the water. Row 1 is wall but for a
+    // dry cell under the last water cell, which only a bridge there reaches. Row 2 is wall.
+    const setup = (waterEnd, skippable, more = {}) => {
+        const water = {},
+            walls = {};
+        for (let i = 3; i <= waterEnd; i++) water[i] = [0];
+        for (let i = waterEnd + 1; i < 8; i++) walls[i] = [0];
+        for (let i = 0; i < 8; i++) {
+            if (i !== waterEnd) walls[8 + i] = [0];
+            walls[16 + i] = [0];
+        }
+        world({
+            width: 8,
+            height: 3,
+            walls,
+            water,
+            extra: { oceans: [[1, 0, 0, 0, 0, 8, 1]], rocks: [[9, 1, 0, 0]], skippable, ...more },
+        });
+        const walkGrid = walker(NONE, [], []);
+        return cells(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 0, 0)]));
+    };
+    test('the hero pushes it on from the cell it started in, and it sinks against the wall in the last water cell', () => {
+        expect(setup(3, [9])).toEqual(['0,0', '1,0', '2,0', '3,0', '3,1']);
+    });
+    test('a stone that sinks far from the shore joins no ground the hero reaches', () => {
+        expect(setup(5, [9])).toEqual(['0,0', '1,0', '2,0']);
+    });
+    test('a plain Rock sinks in the first water cell instead, where it joins nothing', () => {
+        expect(setup(5, [])).toEqual(['0,0', '1,0', '2,0']);
+    });
+});
+
+describe('a magic-mirror hop onto a sunk skipping stone', () => {
+    // 10 x 5 at z 0 (# wall, ~ water, M the flat magic Mirror with its arms west and north). The hero starts at (0, 1)
+    // and pushes the stone at (1, 1) east: it skips over (3..6, 1) and sinks in (6, 1) against the wall. Only a hop
+    // reaches that cell: from (3, 4), three cells out on the Mirror's west arm, the hero lands three cells up its north
+    // arm. The dry cell (6, 0) beyond it joins no other ground.
+    const MAP = ['######.###', '...~~~~###', '...###~###', '......~###', '..#...M###', '##########'];
+    const setup = (skippable) => {
+        const water = {},
+            walls = {};
+        MAP.forEach((row, j) => {
+            [...row].forEach((tile, i) => {
+                if (tile === '~') water[i + j * 10] = [0];
+                if (tile === '#') walls[i + j * 10] = [0];
+            });
+        });
+        world({
+            width: 10,
+            height: 6,
+            walls,
+            water,
+            extra: {
+                oceans: [[1, 0, 0, 0, 0, 10, 1]],
+                rocks: [[9, 1, 1, 0]],
+                skippable,
+                magic_mirrors: [[5, 6, 4, 0, -1, 0, 0, -1, 0, 0]],
+            },
+        });
+        const walkGrid = walker(NONE, [], []);
+        return cells(walkGrid, walkGrid.flood([walkGrid.cellOf(0, 1, 0)]));
+    };
+    test('the hop lands on the sunk stone, which joins the dry cell beyond it', () => {
+        expect(setup([9])).toContain('6,1');
+        expect(setup([9])).toContain('6,0');
+    });
+    test('a plain Rock sinks short of the cell, so the hop lands in water', () => {
+        expect(setup([])).not.toContain('6,1');
+    });
+});
+
 describe('unlock plans through cycles', () => {
     // level 0 playable; level 1 behind gate 0 (needs level 2) or gate 1 (needs level 0); level 2 behind gate 2 (needs
     // level 1): planning level 2 runs into itself through gate 0 and takes gate 1

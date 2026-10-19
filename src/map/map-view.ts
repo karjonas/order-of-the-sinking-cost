@@ -1,19 +1,22 @@
 // The overworld map of the progress view (VIEWER.md "The page (viewer)"): one layer's image under the fog, the
 // Reachable overlay, the overlay marks, the level and tower markers with the selection's links and steps, the area
-// labels, the selection panel, the key and the tooltip, over panZoom's view of the wrapping map
+// labels, the selection panel, the toolbar and the tooltip, over panZoom's view of the wrapping map
 import { PROG } from '../data.ts';
 import type { Fog, FogRect } from '../fog.ts';
+import type { FindKind } from '../model/find-kinds.ts';
 import { AREA_LAYERS, mapLayerOf, wrapDelta } from '../model/layers.ts';
 import { panZoom } from '../panzoom.ts';
 import type { Box, Insets, PanZoom, ViewCorner } from '../panzoom.ts';
 import { setPreference } from '../shared.ts';
+import type { PanelKey, PanelKind } from '../shared.ts';
 import type { MapLayer, Position } from '../types.ts';
 import { $, setButtonPressed } from '../util.ts';
-import { achievementBadgePath, HERO_PATH, OVERLAY_PAD, SHAPES, STAR, STAR_BIG } from './icons.ts';
-import type { ShapeName } from './icons.ts';
-import { layerImageUrl } from './layer-images.ts';
+import { SHAPES } from './icons.ts';
+import type { IconName, Role } from './icons.ts';
+import { MAP_IMAGE_PIXELS_PER_SQUARE, TerrainImages } from './layer-images.ts';
+import type { LevelIconName } from './level-icons.ts';
 import type { OceanSquares } from './ocean-water.ts';
-import { isOverlayKind, knownLayers, mapKeep, overlayOn, startLayer } from './map-html.ts';
+import { isOverlayKind, knownLayers, mapKeep, overlayOn, startLayer, switchOf, symbolId } from './map-html.ts';
 import type { MapKeep, OverlayKind } from './map-html.ts';
 import { LayerMarks } from './mark-pool.ts';
 import type { MarkAttributes } from './mark-pool.ts';
@@ -21,9 +24,10 @@ import { reachedRects, reachImage } from './reach-image.ts';
 import { mapXY, rawXY, torusBox, wrapRect } from './torus.ts';
 import type { Rect } from './torus.ts';
 
-/** The overlay of a Freezer on a level's entrance: the overlay id of the Freezer and whether it is open. */
+/** The overlay of a Freezer on a level's entrance: the overlay id of the Freezer, its model and whether it is open. */
 export interface MapFreezer {
     id: string;
+    doorway: boolean;
     open: boolean;
 }
 
@@ -43,25 +47,28 @@ export interface MarkerStyle {
     hidden: boolean;
     /** The level is under fog and not drawn at all. */
     gone: boolean;
-    color: string;
-    star: boolean;
-    shape: ShapeName;
-    ring: boolean;
+    /** The entry pad's icon: whether the level can be entered, was entered or is solved. */
+    pad: LevelIconName;
+    /** The level is open but not reachable yet: its icon is dimmed. */
+    blocked: boolean;
+    /** The level's role for the selected goal, null for a level that is not in it. */
+    role: Role | null;
     big: boolean;
-    /** The level has an achievement. */
-    achievement: boolean;
     /** The save is in the level. */
     current: boolean;
     rank: number;
 }
 
-/** A tower marker. */
+/** A tower marker; one on its tower pad is drawn as the pad's icon and belongs to the Tower pads switch. */
 export interface MapTower {
     towerIndex: number;
     x: number;
     y: number;
     z: number;
     activated: boolean;
+    onPad: boolean;
+    /** The tower's pad has been discovered. */
+    padFound: boolean;
     tip: string;
 }
 
@@ -74,23 +81,31 @@ export interface MapLabel {
 }
 
 /**
- * A mark of the overlay group. `kind` is an overlay switch (gates, tps, logs, reach) or treasures or maps, which are
- * always drawn; `layer` is the map layer key; `cls` and `d` are the mark's path classes and path in screen pixels;
- * `done` is false while the thing is not done yet; `attr` is the data attribute [name, value] that makes the mark
- * clickable; `merge` is the marker index whose backing square replaces the mark while that marker is drawn; `req` is
- * false for a gate the goal does not need.
+ * A mark of the overlay group. `kind` names its rim style and, unless `findKind` says otherwise, the overlay switch that
+ * shows or hides it; `findKind` is the kind whose Find on the map list counts it, null for none; `layer` is the map layer
+ * key; `icon` is the image on its disc; `done` is false while the thing is not done yet, and the mark is drawn as used
+ * (grey rim, desaturated icon) once it is, or before it is for `dimUntilDone`; `accent` is a rim colour that replaces the
+ * kind's: a sign ready to read, a gold room visited; `panel` is the panel a click opens, which also makes the mark
+ * clickable; `merge` is the marker index whose pad shows the mark's Freezer while that marker is drawn, so the mark
+ * itself is left out; `req` is false for a gate the goal does not need; `position` is where the Find on the map list
+ * names its place from, unless `place` names it; `state` is what became of it.
  */
 export interface MapOverlay {
     kind: string;
+    findKind: FindKind | null;
     layer: string;
     x: number;
     y: number;
-    cls: string;
-    d: string;
+    position: Position;
+    icon: IconName;
+    dimUntilDone?: boolean;
+    accent?: 'ready' | 'gold';
     tip: string;
-    id?: string;
-    done?: boolean;
-    attr?: [name: string, value: string | number];
+    id: string;
+    place?: string;
+    state: string;
+    done: boolean;
+    panel?: PanelKey;
     merge?: number;
     req?: boolean;
 }
@@ -138,21 +153,23 @@ export interface MapPoint {
 }
 
 /**
- * markers: the level markers; style(marker): how one is drawn; towers; labels: the area labels; hero; fog (shown and
- * framed as the home view when given); key: the key's html; onClose(); keep(overlay): whether the list filter keeps an
+ * panel: the element that holds the selection's html (it is hidden while there is none); markers: the level markers;
+ * style(marker): how one is drawn; towers; labels: the area labels; hero; fog (shown and
+ * framed as the home view when given); onOpen() and onClose(): after a selection is made or cleared; keep(overlay): whether the list filter keeps an
  * overlay (the selection's overlays are drawn whatever it says); reach: the column bitmap of the reached squares per
  * layer key (the Reachable overlay; without it the toggle is hidden); overlays: the marks of the overlay group;
  * onLayer(key); water: the squares of changed water per layer key.
  */
 export interface MapOptions {
+    panel: HTMLElement;
     markers: MapMarker[];
     style: (marker: MapMarker) => MarkerStyle;
     towers: MapTower[];
     labels: MapLabel[];
     hero?: MapPoint | null;
     fog?: Fog | null;
-    key?: string;
     onClose?: () => void;
+    onOpen?: () => void;
     keep?: (overlay: MapOverlay) => boolean;
     reach?: Record<string, Uint8Array>;
     overlays: MapOverlay[];
@@ -201,11 +218,9 @@ type LinkEndpoints = [x1: number, y1: number, startRadius: number, x2: number, y
 /** A box in screen pixels: left, top, right, bottom. */
 type PixelRect = [left: number, top: number, right: number, bottom: number];
 
-/** The pixels of the map covered by its controls, panel and key. */
+/** The pixels of the map covered by its controls. */
 interface MapInsets {
     top: number;
-    right: number;
-    bottom: number;
 }
 
 // the map drawn last
@@ -231,9 +246,42 @@ const MIN_CHAIN_BOX = 8;
 // the margin around a framed box, in pixels
 const FRAME_MARGIN = 28;
 
-// how far a mark reaches from its position, in mark units (--mk squares): the largest, a selected tower with its stroke
-// and glow, and a step badge stay within it
+// the squares one mark unit spans: marks grow and shrink with the map
+const MARK_SCALE = 0.09;
+
+// the screen pixels one mark unit spans at the least: a mark stays about 10 px across however far the map is zoomed out
+const MARK_MIN_PIXELS = 0.7;
+
+// the squares one mark unit spans while the view shows `squaresPerPixel` squares per screen pixel; the stylesheet's marks
+// scale by it through --mk
+const markScale = (squaresPerPixel: number): number => Math.max(MARK_SCALE, MARK_MIN_PIXELS * squaresPerPixel);
+
+// an area label keeps a constant screen size until a square is wider than 11 px
+const labelScale = (squaresPerPixel: number): number => Math.max(MARK_SCALE, squaresPerPixel);
+
+// how far a mark reaches from its position, in mark units: the largest, a selected tower with its stroke and glow, and
+// a step badge stay within it
 const MARK_REACH = 32;
+
+// the radius of a mark's disc and of the icon on it, in mark units: every overlay mark, tower pad and level pad has them
+// (a big level marker's and the focused level's discs are larger)
+const DISC_RADIUS = 8;
+const ICON_MARGIN = 1;
+
+// the radius of a tower's diamond
+const TOWER_RADIUS = 8.5;
+
+// the radius of the icon on a disc
+const iconRadiusOn = (discRadius: number): number => discRadius - ICON_MARGIN;
+
+// the diamond of a tower without a pad
+const TOWER_DIAMOND = `M0 ${-TOWER_RADIUS}L${TOWER_RADIUS} 0L0 ${TOWER_RADIUS}L${-TOWER_RADIUS} 0Z`;
+
+/** The marks of one level marker: the ring that takes the pointer, and the icons on it (pad, frozen cage, role badge). */
+interface LevelParts {
+    ring: MarkAttributes;
+    icons: MarkAttributes[];
+}
 
 // the part of the map's markup that matches a selector; the markup always has it
 function find<Part extends Element>(root: ParentNode, selector: string, type: abstract new () => Part): Part {
@@ -241,8 +289,6 @@ function find<Part extends Element>(root: ParentNode, selector: string, type: ab
     if (!(part instanceof type)) throw new Error(`The map has no ${selector}`);
     return part;
 }
-
-const overlaid = (element: HTMLElement): boolean => getComputedStyle(element).position === 'absolute';
 
 // world rectangle [x, y, w, h] to map coordinates
 function toMap([x, y, width, height]: Rect): Rect {
@@ -255,6 +301,14 @@ const rectHtml = (x: number, y: number, width: number, height: number, grow: num
 
 // the screen position of a mark, which its transform reads
 const placedAt = (x: number, y: number): string => `--x:${x.toFixed(2)}px;--y:${y.toFixed(2)}px`;
+
+// the data attribute that makes a mark open each kind of panel; the pointer handlers read the same attributes
+const PANEL_ATTRIBUTES: Record<PanelKind, string> = {
+    level: 'data-i',
+    tower: 'data-gtw',
+    gate: 'data-gate',
+    sign: 'data-sign',
+};
 
 // the attributes of a mark, hidden when it is not drawn
 function hiddenWhen(hidden: boolean, attributes: MarkAttributes): MarkAttributes {
@@ -273,20 +327,32 @@ function padBox(box: Box, min = MIN_BOX): Box {
 const greatestCommonDivisor = (first: number, second: number): number =>
     second ? greatestCommonDivisor(second, first % second) : first;
 
-// the pixels per square of the layer images in public/assets/
-const MAP_IMAGE_PIXELS_PER_SQUARE = 32;
-
 function mapLayer(key: string): MapLayer {
     const layer = PROG.map.layers.find((candidate) => candidate.key === key);
     if (!layer) throw new Error(`The map has no layer ${key}`);
     return layer;
 }
 
-// a level marker's path radius: larger for the focused level and for big markers
+// a level marker's radius in mark units: larger for the focused level and for big markers
 function levelMarkerRadius(style: MarkerStyle, focused: boolean): number {
-    if (focused) return 8;
-    if (style.big) return 7;
-    return 5;
+    if (focused) return 11;
+    if (style.big) return 10;
+    return DISC_RADIUS;
+}
+
+// a circle's path around (0, 0), which the stylesheet draws as a disc or a ring
+const discPath = (radius: number): string => SHAPES.circle.path(radius);
+
+// the attributes of a use element that draws a symbol of the map `mapId` in a square around the mark's position
+function iconAttributes(mapId: string, name: string, radius: number, position: string): MarkAttributes {
+    return {
+        href: '#' + symbolId(mapId, name),
+        x: -radius,
+        y: -radius,
+        width: 2 * radius,
+        height: 2 * radius,
+        style: position,
+    };
 }
 
 // an end of a link: a marker index, or an [x, y, z] position (a tower)
@@ -319,11 +385,12 @@ export class MapView {
     private tip: HTMLElement;
     private panel: HTMLElement;
     private controls: HTMLElement;
-    private keyBox: HTMLElement;
     private keep: MapKeep;
-    private keyShown = false;
     private layoutFrame = 0;
     private currentLayer: string;
+
+    // the layer a click on the layer toggle waits to switch to, while its full image decodes; empty for none
+    private pendingLayer = '';
 
     // the selection (see select), or null
     private selection: MapSelection | null = null;
@@ -367,8 +434,9 @@ export class MapView {
     private fogBlur = 0;
     private hatchWidth = 0;
 
-    // the terrain group, which holds the layer images; its `crisp` class is set once a map image pixel is wider than a
-    // screen pixel
+    // the layer images under the svg, and the terrain group of the svg, which holds the Reachable images; both are
+    // `crisp` once a map image pixel is wider than a screen pixel
+    private terrain: TerrainImages;
     private terrainGroup: SVGGElement;
 
     // the Reachable overlay image of each layer of this map, built the first time the layer is shown
@@ -394,12 +462,11 @@ export class MapView {
     constructor(id: string, options: MapOptions) {
         this.options = options;
         this.box = $('#' + id);
-        this.svg = find(this.box, 'svg', SVGSVGElement);
+        this.svg = find(this.box, ':scope > svg', SVGSVGElement);
         this.overlayGroup = find(this.svg, '.ov', SVGGElement);
         this.tip = find(this.box, '.tip', HTMLElement);
-        this.panel = find(this.box, '.sel', HTMLElement);
+        this.panel = options.panel;
         this.controls = find(this.box, '.ctl', HTMLElement);
-        this.keyBox = find(this.box, '.key', HTMLElement);
         this.keep = mapKeep(id);
         this.currentLayer = startLayer(this.keep, options.fog);
         this.fogOn = !!options.fog;
@@ -409,6 +476,7 @@ export class MapView {
         this.keep.layer = this.currentLayer;
 
         this.labelsGroup = find(this.svg, 'g.lbl', SVGGElement);
+        this.terrain = new TerrainImages(find(this.box, ':scope > .terrain', HTMLElement));
         this.terrainGroup = find(this.svg, `#${id}-w`, SVGGElement);
         this.fogGroup = find(this.svg, '.fog', SVGGElement);
         this.fogCore = find(this.svg, '.fogc', SVGGElement);
@@ -421,28 +489,28 @@ export class MapView {
             pick: (event) => this.pick(event),
             home: () => this.homeBox(),
             cap: () => this.capBox(),
-            onView: () => this.viewChanged(),
+            onView: (view) => this.viewChanged(view),
             onIdle: () => gestureEndListener?.(),
             scaled: [this.overlayGroup, this.labelsGroup],
+            onPixelScale: (scale) => {
+                this.overlayGroup.style.setProperty('--mk', String(markScale(scale)));
+                this.labelsGroup.style.setProperty('--mk', String(labelScale(scale)));
+            },
             reach: (group, scale) => this.copyReach(group, scale),
         });
 
         this.wireControls();
-        this.setKey(options.key);
         this.wirePointer();
 
         new ResizeObserver(() => {
-            if (this.box.isConnected) {
-                this.placePanel();
-                this.viewport.resize();
-            }
+            if (this.box.isConnected) this.viewport.resize();
             this.settle();
         }).observe(this.box);
 
         // a box that is never laid out (hidden)
         setTimeout(() => this.settle(), 500);
 
-        this.panel.style.display = 'none';
+        this.panel.hidden = true;
         this.draw();
     }
 
@@ -466,35 +534,10 @@ export class MapView {
         return this.marks;
     }
 
-    private panelOpen(): boolean {
-        return this.panel.style.display !== 'none' && overlaid(this.panel);
-    }
-
+    // the toolbar floats over the top of the map: a framed view keeps below it
     private insets(): MapInsets {
-        let bottom = 0;
-        if (this.keyBox.style.display !== 'none' && overlaid(this.keyBox)) {
-            bottom = this.box.clientHeight - this.keyBox.offsetTop;
-        }
-
-        let top = 0;
-        if (overlaid(this.controls)) top = this.controls.offsetTop + this.controls.offsetHeight;
-
-        let right = 0;
-        if (this.panelOpen()) right = this.box.clientWidth - this.panel.offsetLeft;
-        return { top, right, bottom };
-    }
-
-    // the panel sits below the controls however many rows they wrap to; the key stays left of the panel
-    // the key gives way to an open panel on a narrow map
-    private placePanel(): void {
-        const keyHidden = !this.keyShown || (this.panelOpen() && this.box.clientWidth < 800);
-        this.keyBox.style.display = keyHidden ? 'none' : '';
-        if (!overlaid(this.panel)) return;
-
-        const top = this.controls.offsetTop + this.controls.offsetHeight + 8;
-        this.panel.style.top = top + 'px';
-        this.panel.style.maxHeight = `calc(100% - ${top + 12}px)`;
-        this.keyBox.style.maxWidth = this.panelOpen() ? `${Math.max(120, this.panel.offsetLeft - 24)}px` : '';
+        const controlsBottom = this.controls.offsetTop + this.controls.offsetHeight;
+        return { top: controlsBottom + 4 };
     }
 
     // with fog shown, the home view frames the uncovered regions of the layer plus the markers a click revealed under
@@ -545,7 +588,7 @@ export class MapView {
     // the marks by their size and the selection's lines by their far ends
     private copyReach(group: string | null, scale: number): number {
         if (group !== `#${this.box.id}-o`) return 0;
-        return MARK_REACH * Math.max(scale, 0.09) + this.linkReach;
+        return MARK_REACH * markScale(scale) + this.linkReach;
     }
 
     // the zoom-out cap is the layer's MAIN_MAP camera box, the view of the in-game overhead map: it fits the box on
@@ -583,7 +626,7 @@ export class MapView {
         const hitList = this.hitTargets();
         const point = this.viewport.toWorld(event);
         const [width, height] = PROG.map.size;
-        const reach = 20 * Math.max(this.viewport.scale().scale, 0.09);
+        const reach = 20 * markScale(this.viewport.scale().scale);
         let hit: Element | null = null;
 
         for (const candidate of hitList) {
@@ -605,7 +648,10 @@ export class MapView {
         return hit;
     }
 
-    private viewChanged(): void {
+    // the layer images follow the view in the same task as the viewBox, so they never lag the svg by a frame
+    private viewChanged(view: ViewCorner | null): void {
+        if (view) this.terrain.place(view);
+
         this.tip.style.display = 'none';
         if (this.layoutFrame) return;
 
@@ -628,7 +674,9 @@ export class MapView {
     // the layer images are smoothed, except once the map is zoomed in past one image pixel per screen pixel: then their
     // pixels are shown as blocks
     private sharpenImages({ scale }: ViewCorner): void {
-        this.terrainGroup.classList.toggle('crisp', scale < 1 / MAP_IMAGE_PIXELS_PER_SQUARE);
+        const crisp = scale < 1 / MAP_IMAGE_PIXELS_PER_SQUARE;
+        this.terrainGroup.classList.toggle('crisp', crisp);
+        this.terrain.setCrisp(crisp);
     }
 
     // the fog's feathered edge keeps about the same width on screen: its blur and growth (a stroke in the fog colour,
@@ -719,31 +767,24 @@ export class MapView {
         return text;
     }
 
-    // a marker's drawn radius in path units (they are scaled by the map once a square is wider than 11 px, else by the
-    // screen)
+    // a marker's drawn radius in mark units
     private endRadius(end: LinkEnd): number {
-        if (isPosition(end)) return 9;
+        if (isPosition(end)) return TOWER_RADIUS + 1;
 
         const style = this.options.style(this.options.markers[end]);
         const focused = this.selection?.focus === end;
-        let radius = levelMarkerRadius(style, focused);
-        if (style.star) {
-            radius = 6.5;
-            if (focused || style.big) radius = 9;
-        }
-
-        return radius + 1;
+        return levelMarkerRadius(style, focused) + 1;
     }
 
     // lines run from marker edge to marker edge; one with no visible stretch left is hidden
     private placeLinks({ scale }: ViewCorner): void {
-        const markerScale = Math.max(scale, 0.09);
+        const unit = markScale(scale);
         const marks = this.shownMarks.linkLines.marks;
 
         this.linkEnds.forEach(([x1, y1, startRadius, x2, y2, endRadius], index) => {
             const length = Math.hypot(x2 - x1, y2 - y1);
-            const startGap = startRadius * markerScale;
-            const endGap = endRadius * markerScale;
+            const startGap = startRadius * unit;
+            const endGap = endRadius * unit;
             const visible = length - startGap - endGap >= 6 * scale;
             const lines = [marks[2 * index].element, marks[2 * index + 1].element];
             for (const line of lines) line.style.display = visible ? '' : 'none';
@@ -777,12 +818,18 @@ export class MapView {
         return !!this.selection?.overlays?.has(overlay.id);
     }
 
-    // starts loading a layer's full image; once it has loaded, the layer's thumbnail is removed (a full image that
-    // fails to load leaves the thumbnail)
-    private loadFullImage(image: SVGImageElement, layer: string): void {
-        const thumbnail = this.svg.querySelector(`image.thumb[data-layer="${layer}"]`);
-        image.addEventListener('load', () => thumbnail?.remove(), { once: true });
-        image.setAttribute('href', layerImageUrl(layer));
+    // runs a view change once the layer shown has its full image decoded, so that the animation does not stall on the
+    // decoding; the thumbnail is on screen meanwhile. A layer switched away from meanwhile is left alone.
+    private afterLayerDecoded(run: () => void): void {
+        const layer = this.currentLayer;
+        if (this.terrain.isDecoded(layer)) {
+            run();
+            return;
+        }
+
+        void this.terrain.decoded(layer).then(() => {
+            if (this.currentLayer === layer) run();
+        });
     }
 
     private drawLayer(): void {
@@ -799,14 +846,7 @@ export class MapView {
         // the slight overlap leaves no seams between neighbours
         this.fogCore.innerHTML = fogParts.map((rect) => rectHtml(...rect, 0.02)).join('');
 
-        // a layer's full image is loaded the first time the layer is shown; its thumbnail stays until then
-        svg.querySelectorAll<SVGImageElement>('image.thumb, image.full').forEach((image) => {
-            const isCurrent = image.dataset.layer === layer;
-            image.style.display = isCurrent ? '' : 'none';
-            if (isCurrent && image.classList.contains('full') && !image.hasAttribute('href')) {
-                this.loadFullImage(image, layer);
-            }
-        });
+        this.terrain.show(layer);
 
         if (options.reach && !(layer in this.reachUrls)) {
             this.reachUrls[layer] = reachImage(mapLayer(layer), options.reach, options.fog);
@@ -845,15 +885,6 @@ export class MapView {
         this.reachEmpty = !reachUrl && !reachFog.length;
     }
 
-    // whether an overlay toggle has nothing to switch on the current layer
-    private overlayEmpty(kind: OverlayKind): boolean {
-        if (kind === 'reach') return this.reachEmpty;
-
-        return !(this.options.overlays || []).some(
-            (overlay) => overlay.kind === kind && overlay.layer === this.currentLayer && this.kept(overlay),
-        );
-    }
-
     // markers that overlap stack by relevance: the selection's focus on top, then its levels, then by style rank
     private stackRank({ marker, style }: StyledMarker): number {
         if (this.selection?.focus === marker.levelIndex) return 1e3;
@@ -881,9 +912,8 @@ export class MapView {
         }
 
         this.box.querySelectorAll<HTMLElement>('[data-ov]').forEach((button) => {
-            const kind = overlayKindOf(button);
-            setButtonPressed(button, overlayOn[kind]);
-            button.classList.toggle('empty', this.overlayEmpty(kind));
+            setButtonPressed(button, overlayOn[overlayKindOf(button)]);
+            button.classList.toggle('empty', this.reachEmpty);
         });
 
         this.homeCache = undefined;
@@ -917,27 +947,39 @@ export class MapView {
             .toSorted((first, second) => (first.style.rank || 0) - (second.style.rank || 0));
 
         this.drawnMarkers = [];
-        const baseMarks: MarkAttributes[] = [];
+        const baseRings: MarkAttributes[] = [];
+        const baseIcons: MarkAttributes[] = [];
 
         for (const { marker, style } of baseLevels) {
             const hidden = isRaised(marker);
             if (!hidden) this.noteDrawn(marker);
-            baseMarks.push(...this.levelMarkAttributes(marker, style, hidden));
+            const parts = this.levelMarkAttributes(marker, style, hidden);
+            baseRings.push(parts.ring);
+            baseIcons.push(...parts.icons);
         }
 
-        const raisedMarks: MarkAttributes[] = [];
+        const raisedRings: MarkAttributes[] = [];
+        const raisedIcons: MarkAttributes[] = [];
 
         for (const { marker, style } of raisedLevels) {
             this.noteDrawn(marker);
-            raisedMarks.push(...this.levelMarkAttributes(marker, style, false));
+            const parts = this.levelMarkAttributes(marker, style, false);
+            raisedRings.push(parts.ring);
+            raisedIcons.push(...parts.icons);
         }
 
         const marks = this.shownMarks;
-        marks.overlayMarks.draw(this.overlayMarkAttributes(drawnLevels));
+        const overlays = this.overlayMarkAttributes(drawnLevels);
+        marks.overlayMarks.draw(overlays.discs);
+        marks.overlayIcons.draw(overlays.icons);
         marks.linkLines.draw(this.linkAttributes());
-        marks.towerMarks.draw(this.towerAttributes());
-        marks.levelMarks.fit(baseMarks);
-        marks.raisedMarks.draw(raisedMarks);
+        const towers = this.towerAttributes();
+        marks.towerMarks.draw(towers.discs);
+        marks.towerIcons.draw(towers.icons);
+        marks.levelMarks.fit(baseRings);
+        marks.levelIcons.fit(baseIcons);
+        marks.raisedMarks.draw(raisedRings);
+        marks.raisedIcons.draw(raisedIcons);
 
         this.drawHero();
         this.drawRing(levels.find((level) => level.style.current && isDrawn(level)));
@@ -965,57 +1007,56 @@ export class MapView {
         this.labelsOn = new Set();
     }
 
-    // gates, signs, teleporters and treasures under everything else; gates, signs and gold rooms (overlay.attr) are
-    // clickable through a larger invisible pad, the rest only carry a tooltip; a gate on a level's entrance
-    // (overlay.merge) is drawn behind that level's marker while the marker is drawn. The ones not drawn stay in their
-    // places, hidden.
-    private overlayMarkAttributes(drawnLevels: Set<number>): MarkAttributes[] {
-        const list: MarkAttributes[] = [];
+    // gates, signs, teleporters and treasures under everything else: a disc with the kind's rim, which carries the
+    // tooltip and, for gates, signs and gold rooms (overlay.panel), the data attribute that makes it clickable, and the
+    // icon on it. A gate on a level's entrance (overlay.merge) is left out while that level's marker is drawn, since
+    // the marker shows it. The ones not drawn stay in their places, hidden.
+    private overlayMarkAttributes(drawnLevels: Set<number>): { discs: MarkAttributes[]; icons: MarkAttributes[] } {
+        const discs: MarkAttributes[] = [];
+        const icons: MarkAttributes[] = [];
 
         for (const overlay of this.options.overlays || []) {
             if (overlay.layer !== this.currentLayer) continue;
 
             let hidden = false;
-            if (isOverlayKind(overlay.kind) && !overlayOn[overlay.kind]) hidden = true;
+            const overlaySwitch = switchOf(overlay);
+            if (overlaySwitch !== null && !overlayOn[overlaySwitch] && !this.isChosen(overlay)) hidden = true;
             if (!this.kept(overlay)) hidden = true;
             if (overlay.merge != null && drawnLevels.has(overlay.merge)) hidden = true;
 
-            const [x, y] = mapXY(overlay.x, overlay.y);
-            let state = '';
-            if (this.isChosen(overlay)) state += ' chosen';
-            if (overlay.done === false) state += ' miss';
+            let dim = overlay.done;
+            if (overlay.dimUntilDone) dim = !overlay.done;
 
-            const style = placedAt(x, y);
-            if (overlay.attr) {
-                const [name, value] = overlay.attr;
-                list.push(
-                    hiddenWhen(hidden, {
-                        class: 'k pad',
-                        d: OVERLAY_PAD,
-                        style,
-                        [name]: value,
-                        'data-tip': overlay.tip,
-                    }),
-                    hiddenWhen(hidden, {
-                        class: `k ${overlay.cls}${state}`,
-                        d: overlay.d,
-                        style,
-                        'pointer-events': 'none',
-                    }),
-                );
-            } else {
-                list.push(
-                    hiddenWhen(hidden, {
-                        class: `k ${overlay.cls}${state}`,
-                        d: overlay.d,
-                        style,
-                        'data-tip': overlay.tip,
-                    }),
-                );
+            const [x, y] = mapXY(overlay.x, overlay.y);
+            let classes = `k ovk o-${overlay.kind}`;
+            if (dim) classes += ' dn';
+            if (overlay.accent) classes += ' ' + overlay.accent;
+            if (this.isChosen(overlay)) classes += ' chosen';
+
+            const position = placedAt(x, y);
+            const disc: MarkAttributes = {
+                class: classes,
+                d: discPath(DISC_RADIUS),
+                style: position,
+                'data-tip': overlay.tip,
+            };
+            if (overlay.panel) {
+                const [panelKind, panelId] = overlay.panel;
+                disc[PANEL_ATTRIBUTES[panelKind]] = panelId;
             }
+
+            let iconClasses = 'k mi';
+            if (dim) iconClasses += ' dn';
+            discs.push(hiddenWhen(hidden, disc));
+            icons.push(
+                hiddenWhen(hidden, {
+                    class: iconClasses,
+                    ...iconAttributes(this.box.id, overlay.icon, iconRadiusOn(DISC_RADIUS), position),
+                }),
+            );
         }
 
-        return list;
+        return { discs, icons };
     }
 
     // a marker's [x, y, z], or undefined for a level marker that is not drawn
@@ -1057,90 +1098,122 @@ export class MapView {
         return list;
     }
 
-    private towerAttributes(): MarkAttributes[] {
-        const list: MarkAttributes[] = [];
+    // the towers: a diamond, or for a tower with a pad the pad's disc with its icon (a pad not discovered is dimmed)
+    private towerAttributes(): { discs: MarkAttributes[]; icons: MarkAttributes[] } {
+        const discs: MarkAttributes[] = [];
+        const icons: MarkAttributes[] = [];
 
         for (const tower of this.options.towers || []) {
             if (mapLayerOf(tower.z) !== this.currentLayer) continue;
 
             const [x, y] = mapXY(tower.x, tower.y);
+            const position = placedAt(x, y);
+            const selected = this.selection?.tower === tower.towerIndex;
             let classes = 'tw';
-            if (tower.activated) classes += ' on';
-            if (this.selection?.tower === tower.towerIndex) classes += ' hl';
+            if (tower.activated && !tower.onPad) classes += ' on';
+            if (selected) classes += ' hl';
             classes += this.overFog(tower.x, tower.y, tower.z);
-            list.push({ class: classes, style: placedAt(x, y), 'data-tw': tower.towerIndex, 'data-tip': tower.tip });
+
+            let iconClasses = 'k mi';
+            if (selected) iconClasses += ' hl';
+            let path = TOWER_DIAMOND;
+            if (tower.onPad) {
+                classes += ' ovk o-towerPads';
+                if (!tower.padFound) {
+                    classes += ' dn';
+                    iconClasses += ' dn';
+                }
+
+                path = discPath(DISC_RADIUS);
+            }
+
+            const disc: MarkAttributes = {
+                class: `k ${classes}`,
+                d: path,
+                style: position,
+                'data-tw': tower.towerIndex,
+                'data-tip': tower.tip,
+            };
+            const hidden = tower.onPad && !overlayOn.towerPads;
+            discs.push(hiddenWhen(hidden, disc));
+
+            const iconHidden = hidden || !tower.onPad;
+            icons.push(
+                hiddenWhen(iconHidden, {
+                    class: iconClasses,
+                    ...iconAttributes(this.box.id, 'tower-pad', iconRadiusOn(DISC_RADIUS), position),
+                }),
+            );
         }
 
-        return list;
+        return { discs, icons };
     }
 
-    // the square of the Freezer on a level's entrance, behind its marker
-    private freezerAttributes(marker: MapMarker, ice: MapFreezer, position: string, hidden: boolean): MarkAttributes {
-        const chosen = this.selection?.overlays?.has(ice.id);
-        let classes = 'k gt';
-        if (ice.open) classes += ' open';
-        if (chosen) classes += ' chosen';
-        else classes += this.selectionClass(marker.levelIndex);
-        classes += this.overFog(marker.x, marker.y, marker.z);
-
-        const radius = this.endRadius(marker.levelIndex) + 0.5;
-        return hiddenWhen(hidden, {
-            class: classes,
-            d: `M${-radius} ${-radius}h${2 * radius}v${2 * radius}h${-2 * radius}Z`,
-            style: position,
-            'data-i': marker.levelIndex,
-        });
-    }
-
-    // the marks of a level in paint order: the Freezer on its entrance, the marker, the achievement badge. A level that
-    // is not drawn keeps its marks, hidden.
-    private levelMarkAttributes(marker: MapMarker, style: MarkerStyle, hidden: boolean): MarkAttributes[] {
+    // the marks of a level: the ring that takes the pointer and shows the selection, then the icons in paint order (the
+    // entry pad, the closed Freezer on its entrance if it has one, the role badge at the lower edge if it has a role). A
+    // level that is not drawn keeps its marks, hidden.
+    private levelMarkAttributes(marker: MapMarker, style: MarkerStyle, hidden: boolean): LevelParts {
         const selection = this.selection;
+        const mapId = this.box.id;
         const [x, y] = mapXY(marker.x, marker.y);
         const focused = selection?.focus === marker.levelIndex;
-        const big = focused || style.big;
+        const radius = levelMarkerRadius(style, focused);
         const position = placedAt(x, y);
         let classes = this.selectionClass(marker.levelIndex);
         if (selection?.frontier?.has(marker.levelIndex)) classes += ' fr';
-        if (style.ring) classes += ' ring';
-        classes += this.overFog(marker.x, marker.y, marker.z);
+        if (marker.ice && selection?.overlays?.has(marker.ice.id)) classes += ' chosen';
+        const fogClass = this.overFog(marker.x, marker.y, marker.z);
+        classes += fogClass;
 
-        const list: MarkAttributes[] = [];
-        if (marker.ice) list.push(this.freezerAttributes(marker, marker.ice, position, hidden || !overlayOn.gates));
-        if (style.star) {
-            list.push(
-                hiddenWhen(hidden, {
-                    class: `lv k star${classes}`,
-                    d: big ? STAR_BIG : STAR,
-                    style: position,
-                    fill: style.color,
-                    'data-i': marker.levelIndex,
-                }),
-            );
-        } else {
-            const shape = SHAPES[style.shape] || SHAPES.circle;
-            list.push(
-                hiddenWhen(hidden, {
-                    class: `lv k${classes}`,
-                    d: shape.path(levelMarkerRadius(style, focused)),
-                    style: position,
-                    fill: style.color,
-                    'data-i': marker.levelIndex,
-                }),
-            );
+        const ring = hiddenWhen(hidden, {
+            class: `lv k${classes}`,
+            d: discPath(radius),
+            style: position,
+            'data-i': marker.levelIndex,
+        });
+
+        let iconClasses = 'k mi lvi';
+        if (selection?.levels.has(marker.levelIndex)) iconClasses += ' sel';
+        iconClasses += fogClass;
+
+        let padClasses = iconClasses;
+        if (style.blocked) padClasses += ' dim';
+        const iconRadius = iconRadiusOn(radius);
+        const pad = hiddenWhen(hidden, {
+            class: padClasses,
+            ...iconAttributes(mapId, style.pad, iconRadius, position),
+        });
+
+        const icons = [pad];
+        if (marker.ice && !marker.ice.open) {
+            let cageIcon: IconName = 'ice-cage';
+            let iceOn = overlayOn.pods;
+            if (marker.ice.doorway) {
+                cageIcon = 'ice-gate';
+                iceOn = overlayOn.doorways;
+            }
+
+            const cage = hiddenWhen(hidden || !iceOn, {
+                class: `${iconClasses} cage`,
+                ...iconAttributes(mapId, cageIcon, iconRadius, position),
+            });
+            icons.push(cage);
         }
 
-        if (style.achievement) {
-            list.push(
-                hiddenWhen(hidden, {
-                    class: `k achb${this.selectionClass(marker.levelIndex)}`,
-                    d: achievementBadgePath(big ? 7 : 5),
-                    style: position,
-                }),
-            );
+        if (style.role) {
+            const badgeRadius = 4;
+            // the stylesheet grows the badge about its centre while the map is zoomed out, so it stays readable
+            const badgeTop = radius - 2 * badgeRadius + 1;
+            const badgeCentre = badgeTop + badgeRadius;
+            const badge = hiddenWhen(hidden, {
+                class: `${iconClasses} rb`,
+                ...iconAttributes(mapId, style.role, badgeRadius, `${position};--cy:${badgeCentre}px`),
+                y: badgeTop,
+            });
+            icons.push(badge);
         }
 
-        return list;
+        return { ring, icons };
     }
 
     // a drawn level marker, for the tooltip of overlapping ones
@@ -1158,7 +1231,8 @@ export class MapView {
         }
 
         const [x, y] = mapXY(hero.x, hero.y);
-        marks.heroMark.set({ class: 'k hero', d: HERO_PATH, style: placedAt(x, y) });
+        const attributes = iconAttributes(this.box.id, 'hero', DISC_RADIUS, placedAt(x, y));
+        marks.heroMark.set({ class: 'k mi hero', ...attributes });
     }
 
     // the ring round the drawn level the save is in, undefined when there is none
@@ -1171,8 +1245,9 @@ export class MapView {
 
         const { marker, style } = current;
         const [x, y] = mapXY(marker.x, marker.y);
-        const big = this.selection?.focus === marker.levelIndex || style.big;
-        marks.ringMark.set({ class: 'k cur', d: SHAPES.circle.path(big ? 11 : 9), style: placedAt(x, y) });
+        const focused = this.selection?.focus === marker.levelIndex;
+        const radius = levelMarkerRadius(style, focused) + 3;
+        marks.ringMark.set({ class: 'k cur', d: discPath(radius), style: placedAt(x, y) });
     }
 
     // the steps of the unlock chain are numbered on top of the markers
@@ -1216,20 +1291,10 @@ export class MapView {
             button.addEventListener('click', () => this.viewport.zoom(Number(button.dataset.z))),
         );
 
-        const heroButton = find(box, '[data-hero]', HTMLElement);
-        heroButton.hidden = !options.hero;
-        heroButton.addEventListener('click', () => {
-            const hero = options.hero;
-            if (!hero) return;
-
-            if (this.selection) this.select(null);
-            this.fitPoints([[hero.x, hero.y, hero.z]]);
-        });
-
         box.querySelectorAll<HTMLElement>('[data-role=layers] button').forEach((button) =>
-            button.addEventListener('click', () => this.setLayer(button.dataset.layer ?? '')),
+            button.addEventListener('click', () => this.switchLayerWhenDecoded(button.dataset.layer ?? '')),
         );
-        find(box, '[data-role=ovl]', HTMLElement).hidden = !options.overlays?.length && !options.reach;
+        find(box, '[data-role=ovl]', HTMLElement).hidden = !options.reach;
         box.querySelectorAll<HTMLElement>('[data-ov]').forEach((button) => {
             const kind = overlayKindOf(button);
             button.hidden = kind === 'reach' && !options.reach;
@@ -1249,10 +1314,9 @@ export class MapView {
 
     // the tooltips of the drawn markers that overlap under the cursor, up to eight
     private nearTips(event: MouseEvent, html: string): string {
-        const { scale } = this.viewport.scale();
         const point = this.viewport.toWorld(event);
         const [width, height] = PROG.map.size;
-        const reach = 7 * Math.max(scale, 0.09);
+        const reach = DISC_RADIUS * markScale(this.viewport.scale().scale);
         const near = this.drawnMarkers.filter((marker) => {
             const dx = wrapDelta(marker.x - point.x, width);
             const dy = wrapDelta(marker.y - point.y, height);
@@ -1366,22 +1430,22 @@ export class MapView {
         this.draw();
     }
 
-    // switches an overlay toggle (remembered like a click); returns whether it was on
-    setOverlay(kind: OverlayKind, enabled: boolean): boolean {
-        const wasEnabled = overlayOn[kind];
-        if (wasEnabled === enabled) return wasEnabled;
+    // switches an overlay toggle (remembered like a click)
+    setOverlay(kind: OverlayKind, enabled: boolean): void {
+        if (overlayOn[kind] === enabled) return;
 
         overlayOn[kind] = enabled;
         setPreference('mapOverlays', JSON.stringify(overlayOn));
         this.draw();
-        return wasEnabled;
     }
 
-    // pulses the overlay marks of one class (path classes) that are not found yet, on the current layer
-    flash(className: string): void {
-        const marks = [...this.shownMarks.root.querySelectorAll(`.k.miss.${className}:not([display])`)];
-        marks.forEach((mark) => mark.classList.add('pulse'));
-        setTimeout(() => marks.forEach((mark) => mark.classList.remove('pulse')), 2400);
+    // closes the selection and frames the hero, on the hero's layer
+    showHero(): void {
+        const hero = this.options.hero;
+        if (!hero) return;
+
+        if (this.selection) this.select(null);
+        this.fitPoints([[hero.x, hero.y, hero.z]]);
     }
 
     // the layer and view, to come back to with setView
@@ -1396,15 +1460,34 @@ export class MapView {
     setView(view: MapViewState): void {
         if (view.layer !== this.currentLayer && this.canShow(view.layer)) this.showLayer(view.layer);
 
-        if (view.vb) this.viewport.goTo(view.vb, view.moved);
-        else this.viewport.reset();
+        this.afterLayerDecoded(() => {
+            if (view.vb) this.viewport.goTo(view.vb, view.moved);
+            else this.viewport.reset();
+        });
     }
 
-    setKey(html: string | undefined): void {
-        this.keyBox.innerHTML = html || '';
-        this.keyShown = !!html;
-        this.placePanel();
-        this.viewport.resize();
+    // a click on the layer toggle switches once the layer's full image is decoded, so that the blocky thumbnail is never
+    // shown at close zoom; the toggle looks busy meanwhile
+    private switchLayerWhenDecoded(layer: string): void {
+        if (layer === this.currentLayer || !this.canShow(layer)) return;
+
+        const toggle = find(this.box, '[data-role=layers]', HTMLElement);
+        if (this.terrain.isDecoded(layer)) {
+            this.pendingLayer = '';
+            toggle.classList.remove('busy');
+            this.setLayer(layer);
+            return;
+        }
+
+        this.pendingLayer = layer;
+        toggle.classList.add('busy');
+        void this.terrain.decoded(layer).then(() => {
+            if (this.pendingLayer !== layer) return;
+
+            this.pendingLayer = '';
+            toggle.classList.remove('busy');
+            this.setLayer(layer);
+        });
     }
 
     setLayer(layer: string): void {
@@ -1450,7 +1533,8 @@ export class MapView {
     // selects a level, tower or overlay and frames it, or clears the selection with null
     select(selection: MapSelection | null, how: SelectHow = {}): void {
         const { panel, options } = this;
-        const inPanel = panel.contains(document.activeElement);
+        const focused = document.activeElement;
+        const inPanel = panel.contains(focused);
 
         // the level in a selected Freezer is selected with it
         if (selection) {
@@ -1463,7 +1547,7 @@ export class MapView {
         }
 
         panel.innerHTML = selection?.html || '';
-        panel.style.display = selection?.html ? '' : 'none';
+        panel.hidden = !selection?.html;
 
         // a level on a layer the fog has not uncovered keeps the current layer
         const before = this.currentLayer;
@@ -1472,13 +1556,12 @@ export class MapView {
             this.keep.layer = this.currentLayer;
         }
 
-        this.placePanel();
         this.draw();
         if (this.currentLayer !== before) options.onLayer?.(this.currentLayer);
 
         panel.querySelector('[data-close]')?.addEventListener('click', () => this.select(null));
         if (selection && !how.still && !how.keepFocus) {
-            if (!inPanel && document.activeElement !== document.body) this.opener = focusableOf(document.activeElement);
+            if (!inPanel && focused !== document.body) this.opener = focusableOf(focused);
             panel.querySelector<HTMLElement>('.hd b')?.focus({ preventScroll: true });
         }
 
@@ -1489,9 +1572,22 @@ export class MapView {
             }
 
             this.opener = null;
+        } else {
+            options.onOpen?.();
         }
 
-        if (selection && !how.still) this.frameSelection(selection);
+        if (selection && !how.still) this.afterLayerDecoded(() => this.frameSelection(selection));
+    }
+
+    // centres the map on the world point (x, y) of a layer key, first moving to that layer
+    frameAt(layer: string, x: number, y: number): void {
+        if (!this.canShow(layer)) return;
+        if (layer !== this.currentLayer) this.showLayer(layer);
+
+        const point = mapXY(x, y);
+        this.afterLayerDecoded(() => {
+            this.viewport.fit(padBox(boxOf([point])), { ...this.insets(), m: FRAME_MARGIN });
+        });
     }
 
     // zooms to world points [x, y, z], first moving to their layer when none is on the current one
@@ -1508,7 +1604,9 @@ export class MapView {
         const onLayer = points
             .filter((point) => mapLayerOf(point[2]) === this.currentLayer)
             .map((point) => mapXY(point[0], point[1]));
-        this.viewport.fit(padBox(boxOf(onLayer)), { ...this.insets(), m: FRAME_MARGIN });
+        this.afterLayerDecoded(() => {
+            this.viewport.fit(padBox(boxOf(onLayer)), { ...this.insets(), m: FRAME_MARGIN });
+        });
     }
 }
 

@@ -5,8 +5,11 @@ import { latestFlag, latestOf } from '../save.ts';
 import type { History } from '../save.ts';
 import type { Area, ProgressLevel } from '../types.ts';
 
-/** An area's name as the game shows it: its `area_*` localization text, which the data build stores as `display`. */
-export const areaName = (area: Area): string => area.display;
+/**
+ * An area's name as the game shows it: its `area_*` localization text, which the data build stores as `display`, with
+ * the Mirror Isles named like the world.
+ */
+export const areaName = (area: Area): string => area.display.replace(/^The Mirror Isles\b/, 'Mirror Isles');
 
 /**
  * Area_Pins the hero has activated: the newest `activated` per pin in the history, plus the ones a new game starts with.

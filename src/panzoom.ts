@@ -29,8 +29,10 @@ export interface PanZoomKeep {
 /**
  * insets(): the pixels covered by overlaid controls. home(): the box of the reset view (Escape; else the cap box).
  * cap(): the cap box (default: the whole content). pick(event): the element a pointer event is on (default: its target;
- * a marker under a double click does not zoom). onView(): after every view change. onIdle(): when a drag, pinch or eased
- * zoom ends. scaled: the elements whose --px follows the zoom (default: the svg). reach(group, scale): how far past the
+ * a marker under a double click does not zoom). onView(view): after every view change, with the view as view() gives it.
+ * onIdle(): when a drag, pinch or eased
+ * zoom ends. scaled: the elements whose --px follows the zoom (default: the svg). onPixelScale(scale): after --px is set
+ * to the squares per pixel `scale`. reach(group, scale): how far past the
  * content box the drawn content of a repeated group (the href of its copies) reaches, in content units at `scale` per
  * pixel (default: 130 pixels and 2 units).
  */
@@ -39,9 +41,10 @@ export interface PanZoomOptions {
     home?: () => Box | null;
     cap?: () => Box | null;
     pick?: (event: PointerEvent) => EventTarget | null;
-    onView?: () => void;
+    onView?: (view: ViewCorner | null) => void;
     onIdle?: () => void;
     scaled?: ElementCSSInlineStyle[];
+    onPixelScale?: (scale: number) => void;
     reach?: (group: string | null, scale: number) => number;
 }
 
@@ -257,6 +260,14 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         }
     };
 
+    const currentView = (): ViewCorner | null => {
+        const { rect: svgRect, scale: viewScale } = scale();
+        if (!(viewScale > 0 && isFinite(viewScale))) return null;
+
+        const topLeft = corner(svgRect, viewScale);
+        return { x0: topLeft.x, y0: topLeft.y, scale: viewScale, rect: svgRect };
+    };
+
     const applyView = (): void => {
         if (!(viewBox.w > 0 && viewBox.h > 0)) return;
 
@@ -277,8 +288,9 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         if (viewScale > 0 && isFinite(viewScale) && !(Math.abs(viewScale - pixelScale) <= pixelScale * 0.02)) {
             pixelScale = viewScale;
             for (const element of scaled) element.style.setProperty('--px', String(viewScale));
+            options.onPixelScale?.(viewScale);
         }
-        options.onView?.();
+        options.onView?.(currentView());
     };
 
     // cancels the eased pan and the eased zoom
@@ -678,13 +690,7 @@ export function panZoom(svg: SVGSVGElement, keep?: PanZoomKeep, options: PanZoom
         get wasDragged() {
             return wasDragged;
         },
-        view() {
-            const { rect: svgRect, scale: viewScale } = scale();
-            if (!(viewScale > 0 && isFinite(viewScale))) return null;
-
-            const topLeft = corner(svgRect, viewScale);
-            return { x0: topLeft.x, y0: topLeft.y, scale: viewScale, rect: svgRect };
-        },
+        view: currentView,
         reset() {
             setMoved(false);
             animTo(nearest(home()));

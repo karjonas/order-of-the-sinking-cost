@@ -1,37 +1,39 @@
-// The map markers and the icons drawn in their shapes: level states, roles, achievements and the overlays
-// (VIEWER.md "Level states (viewer)", "Level roles (viewer)" and "The page (viewer)")
+// The icons of the map's markers and sidebar rows: the rendered images in assets/icons/ next to the page, and the
+// shapes that mark a level's role (VIEWER.md "Level states (viewer)", "Level roles (viewer)" and "The page (viewer)")
+import { LEVEL_ICON_NAMES } from './level-icons.ts';
+import type { OverlayKind } from './map-html.ts';
 
 /** A level's role for a goal: on every route to it, on some of its routes, or not needed for it. */
-export type Role = 'req' | 'one' | 'optional';
+export type Role = keyof typeof ROLES;
 
-export type ShapeName = 'tri' | 'square' | 'hex' | 'circle';
+export type ShapeName = 'tri' | 'square' | 'circle';
 
-export const STATE_COLORS: Record<string, string> = {
-    solved: 'var(--gold)',
-    partial: 'var(--warn)',
-    visited: 'var(--entered)',
-    unlocked: 'var(--open)',
-    blocked: '#a3846a',
-    locked: 'var(--locked)',
-};
+/** The images the map draws, each defined once in the map's markup. */
+export const ICON_NAMES = [
+    'ice-cage',
+    'ice-gate',
+    'sign',
+    'teleporter',
+    'tower-pad',
+    'gold-room',
+    'voice-log',
+    'map-scroll',
+    'treasure',
+    'treasure-taken',
+    'hero',
+    ...LEVEL_ICON_NAMES,
+] as const;
 
-/** Marker shapes: SVG paths around (0, 0) at a radius. */
+/** The rendered images, by file name without the extension. */
+export type IconName = (typeof ICON_NAMES)[number];
+
+/** Role shapes: SVG paths around (0, 0) at a radius. */
 export const SHAPES: Record<ShapeName, { path: (radius: number) => string }> = {
     tri: {
         path: (radius) => `M0 ${-radius * 1.2}L${radius * 1.1} ${radius * 0.8}L${-radius * 1.1} ${radius * 0.8}Z`,
     },
     square: {
         path: (radius) => `M${-radius * 0.9} ${-radius * 0.9}h${radius * 1.8}v${radius * 1.8}h${-radius * 1.8}Z`,
-    },
-    hex: {
-        path: (radius) => {
-            const corner = radius * 1.1;
-            const corners = [0, 1, 2, 3, 4, 5].map((index) => {
-                const angle = (Math.PI / 3) * index - Math.PI / 2;
-                return `${(corner * Math.cos(angle)).toFixed(2)} ${(corner * Math.sin(angle)).toFixed(2)}`;
-            });
-            return 'M' + corners.join('L') + 'Z';
-        },
     },
     circle: {
         path: (radius) =>
@@ -41,20 +43,18 @@ export const SHAPES: Record<ShapeName, { path: (radius: number) => string }> = {
 
 export const ROLE_SHAPES: Record<Role, ShapeName> = { req: 'tri', one: 'square', optional: 'circle' };
 
-const ACHIEVEMENT_COLOR = 'var(--ach)';
+/** The URL of an icon's image, relative to the page. */
+export const iconUrl = (name: IconName): string => `assets/icons/${name}.avif`;
 
-/** Achievement levels carry a small hex at the upper right of a marker of a radius. */
-export function achievementBadgePath(radius: number): string {
-    const offset = radius * 0.9;
-    return SHAPES.hex.path(2.6).replace(/(-?[\d.]+) (-?[\d.]+)/g, (_match, x: string, y: string) => {
-        const badgeX = (Number(x) + offset).toFixed(2);
-        const badgeY = (Number(y) - offset).toFixed(2);
-        return `${badgeX} ${badgeY}`;
-    });
-}
+/** An icon as an image in the sidebar and the lists, larger than the small shape icons. */
+export const iconHtml = (name: IconName, extraClass = ''): string => {
+    let className = 'ico';
+    if (extraClass) className += ' ' + extraClass;
+    return `<img class="${className}" src="${iconUrl(name)}" alt="" width="128" height="128" draggable="false">`;
+};
 
-/** Every marker icon is drawn in the same 16 px box with the map marker's shape. */
-export const svgIcon = (path: string, fill: string, stroke: string, strokeWidth = 1): string => {
+/** Every small icon is drawn in the same 16 px box. */
+const svgIcon = (path: string, fill: string, stroke: string, strokeWidth = 1): string => {
     const paint = `fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"`;
     const shape = `<path d="${path}" ${paint} stroke-linejoin="round" stroke-linecap="round"/>`;
     return `<svg class="ic" viewBox="-8 -8 16 16" aria-hidden="true">${shape}</svg>`;
@@ -62,78 +62,52 @@ export const svgIcon = (path: string, fill: string, stroke: string, strokeWidth 
 
 const ICON_RADIUS = 5.5;
 
-export const ICON_STROKE = 'rgba(5, 10, 14, .75)';
+const ICON_STROKE = 'rgba(5, 10, 14, .75)';
 
-export const shapeIcon = (shape: ShapeName, color: string): string =>
+const shapeIcon = (shape: ShapeName, color: string): string =>
     svgIcon(SHAPES[shape].path(ICON_RADIUS), color, ICON_STROKE);
 
-export const starIcon = (color: string): string => svgIcon(STAR, color, '#4a3505');
-export const ringIcon = svgIcon(SHAPES.circle.path(ICON_RADIUS - 1), 'none', '#fff', 2);
-export const towerIcon = svgIcon(SHAPES.circle.path(ICON_RADIUS), 'none', 'var(--text)', 1.5);
 export const checkIcon = svgIcon('M-4.5 0.5L-1.5 3.5L4.5 -3.5', 'none', 'var(--gold)', 2);
-
-export const eyeIcon = svgIcon(
-    'M-6.5 0Q0 -6.5 6.5 0Q0 6.5 -6.5 0ZM-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0Z',
-    'none',
-    'currentColor',
-    1.5,
-);
 
 export const roleDot = (role: Role | null | undefined): string =>
     role ? shapeIcon(ROLE_SHAPES[role], ROLES[role][1]) : '';
 
 /** Per role, its label and marker colour. */
-export const ROLES: Record<Role, [label: string, color: string]> = {
+export const ROLES = {
     req: ['Required', '#f08a5d'],
     one: ['One of several', '#c6d86a'],
     optional: ['Optional', '#b39ddb'],
+} satisfies Record<string, [label: string, color: string]>;
+
+const isRole = (name: string): name is Role => name in ROLES;
+
+/** The roles, in the order the legend lists them. */
+export const ROLE_NAMES: Role[] = [];
+for (const name of Object.keys(ROLES)) {
+    if (isRole(name)) ROLE_NAMES.push(name);
+}
+
+const OVERLAY_ICON_NAMES: Record<Exclude<OverlayKind, 'reach'>, IconName> = {
+    pods: 'ice-cage',
+    doorways: 'ice-gate',
+    signs: 'sign',
+    tps: 'teleporter',
+    towerPads: 'tower-pad',
+    logs: 'voice-log',
+    maps: 'map-scroll',
+    treasures: 'treasure',
 };
 
-export const achievementIcon = svgIcon(SHAPES.hex.path(3.6), ACHIEVEMENT_COLOR, ICON_STROKE);
+const overlayIconEntries = Object.entries(OVERLAY_ICON_NAMES).map(([kind, name]) => [kind, iconHtml(name)]);
 
-/** Eight-pointed stars in screen pixels, about 13 and 18 px across. */
-export const STAR =
-    'M0 -6.5L1.14 -2.76L4.6 -4.6L2.76 -1.14L6.5 0L2.76 1.14L4.6 4.6L1.14 2.76L0 6.5L-1.14 2.76L-4.6 4.6L-2.76 1.14L-6.5 0L-2.76 -1.14L-4.6 -4.6L-1.14 -2.76Z';
-
-export const STAR_BIG =
-    'M0 -9L1.58 -3.82L6.36 -6.36L3.82 -1.58L9 0L3.82 1.58L6.36 6.36L1.58 3.82L0 9L-1.58 3.82L-6.36 6.36L-3.82 1.58L-9 0L-3.82 -1.58L-6.36 -6.36L-1.58 -3.82Z';
-
-/** The hero: a head over shoulders. */
-export const HERO_PATH = 'M-2.2 -4.6a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0ZM-4.6 6Q-4.6 -0.8 0 -0.8Q4.6 -0.8 4.6 6Z';
-
-// a plaque on a post
-const SIGN_PATH = 'M-4.5 -5.5h9a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-9a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1ZM-1 0.5h2v5.5h-2Z';
-
-/** The invisible pad that makes a small overlay mark easier to click. */
-export const OVERLAY_PAD = 'M-8 -8h16v16h-16Z';
-
-export const OVERLAY_PATHS = {
-    log: 'M-3 -4.5L4.5 0L-3 4.5Z',
-    map: 'M-3.5 -5.5h7v11h-7Z',
-    sign: SIGN_PATH,
-    gate: 'M-3.5 -3.5h7v7h-7Z',
-    tp: SHAPES.circle.path(4.5),
-    gold: SHAPES.circle.path(6.5),
-    treasure: 'M0 -6L4.5 0L0 6L-4.5 0Z',
-};
-
-export const OVERLAY_ICONS = {
-    gates: svgIcon('M-4.5 -4.5h9v9h-9Z', 'var(--ov-gate)', ICON_STROKE),
-    signs: svgIcon(OVERLAY_PATHS.sign, '#9aa3ad', ICON_STROKE),
-    tps: svgIcon(OVERLAY_PATHS.tp, 'none', 'var(--ov-tp)', 2.5),
-    treasures: svgIcon('M0 -7L5.5 0L0 7L-5.5 0Z', 'var(--ov-plinth)', ICON_STROKE),
-    logs: svgIcon('M-3.5 -5L5 0L-3.5 5Z', 'var(--ov-log)', ICON_STROKE),
+/** The icon of each kind of mark the map can show or hide, by overlay kind, for the sidebar's rows and the map's toolbar. */
+export const OVERLAY_ICONS: Record<string, string> = {
+    ...Object.fromEntries(overlayIconEntries),
     reach: svgIcon('M-5.5 -3.5h11v7h-11Z', 'var(--reach)', ICON_STROKE),
 };
 
-/** Sidebar totals: the overlay icons where there is one. */
-export const STATE_ICONS = {
-    ach: shapeIcon('hex', ACHIEVEMENT_COLOR),
-    treasures: OVERLAY_ICONS.treasures,
-    pods: OVERLAY_ICONS.gates,
-    doorways: OVERLAY_ICONS.gates,
-    signs: OVERLAY_ICONS.signs,
-    tps: OVERLAY_ICONS.tps,
-    gold: svgIcon(SHAPES.circle.path(5.5), 'none', 'var(--gold)', 2.5),
-    logs: OVERLAY_ICONS.logs,
-};
+/** The arrow of a heading or row that expands and collapses. */
+export const CHEVRON = '<i class="chev" aria-hidden="true"></i>';
+
+/** The hero's icon. */
+export const heroIcon = iconHtml('hero');
