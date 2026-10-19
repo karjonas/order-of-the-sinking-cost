@@ -129,7 +129,7 @@ An entity whose own cell is solid this way counts as stuck in a wall, and the su
 - Seen in play: a skipping stone that sank in place against a wall ([Skipping stones](#skipping-stones)) holds the hero like a sunk Rock, and a magic-mirror hop ([Magic mirrors](#magic-mirrors)) lands on it ([Routes that need these mechanics](#routes-that-need-these-mechanics)).
 - A Rock that sits at surface − 1 in a river square blocks the river ([Rivers](#rivers)), and so do the other things that settle there. A Rock riding a Lily stands at the surface and does not.
 - A Rock pushed in from above the surface also sinks to surface − 1.
-- The sunk object holds up what stands on the cell above it ([Support](#support)).
+- The sunk object holds up what stands on the cell above it ([Support](#support)). It is the only floor there: the water square keeps its value. An Activator reset of the object's Spawner destroys it, which takes the bridge back ([Activators and Spawners](#activators-and-spawners)).
 
 ## Skipping stones
 
@@ -284,7 +284,8 @@ An entity whose own cell is solid this way counts as stuck in a wall, and the su
 - Respawns happen only on ACTIVATE. A level load binds each Spawner to at most two Activators and builds its prototype, but spawns nothing.
 - A Spawner's clone appears at the Spawner's own cell. The old instance is destroyed first and the clone reuses its id, so there is one instance at a time. The respawn is skipped while the Spawner's cell is blocked, and the old instance then stays. The clone keeps the prototype's movement group. The Spawner sets none of the Lily's direction fields (`kick_direction`, `moving_direction`) when it makes the clone. The clone's first step is chosen by the ordinary rule ([Lilies](#lilies)): `kick_direction`, else the flow under the Lily when it lies at most 0.5 above the surface, else the prototype's `moving_direction` (NONE in the level data). So a clone on a river first drifts with the flow under the Spawner's cell, and a clone on still water does not move.
 - A Lily Spawner usually stands in the Lily's own cell; seven stand along one underworld river row, each beside its own Activator, for one Lily, so the Lily comes back where the hero calls it.
-- A Rock's Spawner almost always stands in the Rock's own starting cell, so a reset puts a Rock back where it started, wherever the hero pushed it, and also takes a Rock that sank in water away.
+- A Rock's Spawner almost always stands in the Rock's own starting cell, so a reset puts a Rock back where it started, wherever the hero pushed it, and also takes a Rock that sank in water away. The sunk Rock is the bridge ([Objects in water](#objects-in-water)); the water square itself is not changed (no OCEAN_CHANGE), so the reset takes the bridge back: the water cell is open again, nothing stays of the sunk floor, and the new Rock stands at the Spawner's cell, where it can be pushed in again. What then happens to a hero standing on the bridge is not seen (probably he falls into the water, [Support](#support)).
+- Seen in play: a skipping stone that had sunk was reset twice by its Activator. Each reset record destroys it at its sunk cell (surface − 1) and creates it at the Spawner's cell, and no object stood in the sunk cell afterwards.
 - The overworld's ocean resets are on the ground and in the underworld: each Activator stands near its map and also respawns the puzzle's pieces, a few Lilies and Rocks, in one a Promesst_Light as well and in one a Mirror.
 
 ## Routes that need these mechanics

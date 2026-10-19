@@ -11,21 +11,22 @@
     "test": "vp test",
     "lint": "vp lint",
     "typecheck": "vp check --no-fmt --no-lint",
-    "fmt": "vp fmt src tests scripts vite.config.js",
-    "fmt:check": "vp fmt --check src tests scripts vite.config.js",
-    "docs:check": "node scripts/check-docs.js",
-    "dump:model": "node scripts/dump-model.js",
-    "icons": "node scripts/build-icons.js",
+    "fmt": "vp fmt src tests scripts vite.config.ts",
+    "fmt:check": "vp fmt --check src tests scripts vite.config.ts",
+    "docs:check": "node scripts/check-docs.ts",
+    "dump:model": "node scripts/dump-model.ts",
+    "icons": "node scripts/build-icons.ts",
     "data": "npm run data:levels && npm run data:areas && npm run data:fog && npm run data:world && npm run data:map && npm run data:progress && npm run data:walk",
-    "data:levels": "node scripts/build-levels.js",
-    "data:areas": "node scripts/build-areas.js",
-    "data:fog": "node scripts/build-fog.js",
-    "data:world": "node scripts/build-world.js",
-    "data:map": "node scripts/build-map.js",
-    "data:progress": "node scripts/build-progress.js",
-    "data:walk": "node scripts/build-walk.js"
+    "data:levels": "node scripts/build-levels.ts",
+    "data:areas": "node scripts/build-areas.ts",
+    "data:fog": "node scripts/build-fog.ts",
+    "data:world": "node scripts/build-world.ts",
+    "data:map": "node scripts/build-map.ts",
+    "data:progress": "node scripts/build-progress.ts",
+    "data:walk": "node scripts/build-walk.ts"
   },
   "devDependencies": {
+    "@types/node": "^24.19.2",
     "vite-plus": "1.0.0"
   }
 }

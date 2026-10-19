@@ -1,5 +1,5 @@
 // The walk results that come from the level data alone, worked out at build time (data/walk.json, written by
-// scripts/build-walk.js): the static level roles, the floor heights the map draws and the room answers the walker
+// scripts/build-walk.ts): the static level roles, the floor heights the map draws and the room answers the walker
 // uses. The walker and the build script do not import this module, so the build script runs before walk.json exists.
 import WALK from '../data/walk.json' with { type: 'json' };
 import { inflate, worldReady } from './data.ts';

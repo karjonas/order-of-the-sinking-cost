@@ -1,5 +1,5 @@
 // The empty save the page shows before any save is loaded: no progress, and the fog and hero of a new campaign walked
-// everywhere it can reach (fog.start, from scripts/build-fog.js). It imports nothing of the page, so scripts and tests
+// everywhere it can reach (fog.start, from scripts/build-fog.ts). It imports nothing of the page, so scripts and tests
 // can build it.
 import { PROG } from './data.ts';
 import type { History } from './history-file.ts';

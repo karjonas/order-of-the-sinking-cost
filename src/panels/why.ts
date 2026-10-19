@@ -4,7 +4,17 @@
 import { hasAchievement } from '../model/achievements.ts';
 import { freezerNoun, freezersNoun } from '../model/freezer-names.ts';
 import { layerName, wayTo } from '../model/layers.ts';
+import type { ProgressModel } from '../model/progress-model.ts';
+import type { ShownProgress } from '../model/progress.ts';
+import type { Reachability } from '../walk/reachability.ts';
 import type { PanelContext } from './context.ts';
+
+/** The members of the panel context that the why text reads. */
+export interface WhyContext extends Pick<PanelContext, 'hide' | 'freezers' | 'iceOf' | 'gateShown' | 'gateArea'> {
+    status: Pick<PanelContext['status'], 'achievements'>;
+    progress: Pick<ShownProgress, 'wayIn' | 'why' | 'access'> & { reach: Pick<Reachability, 'fromSky'> | null };
+    model: Pick<ProgressModel, 'stepShown'>;
+}
 
 /**
  * The pieces of why a level is not reachable: its gates, the mechanics and the layer it needs, whether nothing is known
@@ -27,19 +37,19 @@ const MECHANICS: Record<string, [achievement: string, text: string]> = {
 };
 
 /** A level's way-in gates that fog does not hide. */
-export function wayIn(context: PanelContext, levelIndex: number): number[] {
+export function wayIn(context: WhyContext, levelIndex: number): number[] {
     const gates = context.progress.wayIn?.[levelIndex] || [];
     return gates.filter((freezerIndex) => context.gateShown(context.freezers[freezerIndex]));
 }
 
 // " · <area>" after a gate's text while the gate's area is shown
-function gateAreaSuffix(context: PanelContext, freezerIndex: number): string {
+function gateAreaSuffix(context: WhyContext, freezerIndex: number): string {
     const area = context.gateArea(freezerIndex);
     if (area == null) return '';
     return ' · ' + area;
 }
 
-function gateText(context: PanelContext, levelIndex: number, gates: number[]): string {
+function gateText(context: WhyContext, levelIndex: number, gates: number[]): string {
     if (!gates.length) return '';
 
     const ice = context.iceOf[levelIndex];
@@ -48,7 +58,7 @@ function gateText(context: PanelContext, levelIndex: number, gates: number[]): s
     return `behind ${freezerNoun(gates[0])}${gateAreaSuffix(context, gates[0])}`;
 }
 
-function mechanicsText(context: PanelContext, mechanics: string[]): string {
+function mechanicsText(context: WhyContext, mechanics: string[]): string {
     if (!mechanics.length) return '';
 
     const known = mechanics.filter((key) => !context.hide || hasAchievement(context.status, MECHANICS[key][0]));
@@ -57,7 +67,7 @@ function mechanicsText(context: PanelContext, mechanics: string[]): string {
 }
 
 /** The pieces of why a level the walk cannot reach may still be reachable, as the panels word them. */
-export function whyParts(context: PanelContext, levelIndex: number): WhyParts {
+export function whyParts(context: WhyContext, levelIndex: number): WhyParts {
     const progress = context.progress;
     const mechanics = progress.why?.[levelIndex]?.mech ?? [];
     const layer = progress.access?.[levelIndex];
@@ -80,14 +90,14 @@ export function whyParts(context: PanelContext, levelIndex: number): WhyParts {
 }
 
 /** The tooltip that says the walk model is approximate, naming what it leaves out while spoilers show. */
-export function approxTip(context: PanelContext): string {
+export function approxTip(context: WhyContext): string {
     let leftOut = 'Mirrors, vertical Beams and Dragon fire';
     if (context.hide) leftOut = 'some mechanics';
     return `Approximate: the walk model leaves out ${leftOut}`;
 }
 
 /** Why the walk calls a level unreachable, in one line. */
-export function whyText(context: PanelContext, levelIndex: number): string {
+export function whyText(context: WhyContext, levelIndex: number): string {
     const parts = whyParts(context, levelIndex);
     const text = [parts.gate, parts.mech, parts.layer].filter(Boolean).join(' · ');
     if (text) return text;

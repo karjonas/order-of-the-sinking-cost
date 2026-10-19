@@ -8,8 +8,8 @@ export type Role = keyof typeof ROLES;
 
 export type ShapeName = 'tri' | 'square' | 'circle';
 
-/** The images the map draws, each defined once in the map's markup. */
-export const ICON_NAMES = [
+/** The images the map draws for its marks. */
+const ICON_NAMES = [
     'ice-cage',
     'ice-gate',
     'sign',
@@ -27,6 +27,10 @@ export const ICON_NAMES = [
 /** The rendered images, by file name without the extension. */
 export type IconName = (typeof ICON_NAMES)[number];
 
+/** The URL of each icon's image, relative to the page, by icon name. */
+export const ICON_URLS: Record<string, string> = {};
+for (const name of ICON_NAMES) ICON_URLS[name] = `assets/icons/${name}.avif`;
+
 /** Role shapes: SVG paths around (0, 0) at a radius. */
 export const SHAPES: Record<ShapeName, { path: (radius: number) => string }> = {
     tri: {
@@ -43,14 +47,11 @@ export const SHAPES: Record<ShapeName, { path: (radius: number) => string }> = {
 
 export const ROLE_SHAPES: Record<Role, ShapeName> = { req: 'tri', one: 'square', optional: 'circle' };
 
-/** The URL of an icon's image, relative to the page. */
-export const iconUrl = (name: IconName): string => `assets/icons/${name}.avif`;
-
 /** An icon as an image in the sidebar and the lists, larger than the small shape icons. */
 export const iconHtml = (name: IconName, extraClass = ''): string => {
     let className = 'ico';
     if (extraClass) className += ' ' + extraClass;
-    return `<img class="${className}" src="${iconUrl(name)}" alt="" width="128" height="128" draggable="false">`;
+    return `<img class="${className}" src="${ICON_URLS[name]}" alt="" width="128" height="128" draggable="false">`;
 };
 
 /** Every small icon is drawn in the same 16 px box. */
@@ -79,13 +80,20 @@ export const ROLES = {
     optional: ['Optional', '#b39ddb'],
 } satisfies Record<string, [label: string, color: string]>;
 
-const isRole = (name: string): name is Role => name in ROLES;
-
-/** The roles, in the order the legend lists them. */
-export const ROLE_NAMES: Role[] = [];
-for (const name of Object.keys(ROLES)) {
-    if (isRole(name)) ROLE_NAMES.push(name);
+// a role's badge as an image of its shape in its colour, in the 16 unit box the icons use
+function roleBadgeUrl(role: Role): string {
+    const shape = SHAPES[ROLE_SHAPES[role]].path(5);
+    const paint = `fill="${ROLES[role][1]}" stroke="#0b1218" stroke-width="1.6" stroke-linejoin="round"`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 16 16"><path d="${shape}" ${paint}/></svg>`;
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
+
+/** The image the map draws as the badge of each role. */
+export const ROLE_BADGE_URLS: Record<Role, string> = {
+    req: roleBadgeUrl('req'),
+    one: roleBadgeUrl('one'),
+    optional: roleBadgeUrl('optional'),
+};
 
 const OVERLAY_ICON_NAMES: Record<Exclude<OverlayKind, 'reach'>, IconName> = {
     pods: 'ice-cage',

@@ -88,7 +88,7 @@ The current-area rule applied at each overworld Level_Entry (the rule itself is 
 - `level_entries`: [[level_name, layer, region]] for the overworld Level_Entries that are not broken or disfavored.
 - `area_pins`: [[id, local_area_name, layer, region]].
 - `start`: {hero, regions: {Fog_Of_War pid: [region]}, pins: [Area_Pin pid]}: a fresh campaign whose hero walked
-  everywhere reachable at the start, taken as the fog before a save is loaded. It is a fixed value in `build-fog.js`,
+  everywhere reachable at the start, taken as the fog before a save is loaded. It is a fixed value in `build-fog.ts`,
   read once from such a save ([Fog of war](STATE.md#fog-of-war)).
 
 ### data/map.json
@@ -192,13 +192,13 @@ as `map`, and fog. Level roles (Required / Optional, the Freezers each level sit
 ### data/walk.json
 
 What the walk model ([The walk model (viewer)](VIEWER.md#the-walk-model-viewer)) works out from the level data alone,
-so the page doesn't redo it on every load. `scripts/build-walk.js` runs the room search (`searchRooms()`), then the
+so the page doesn't redo it on every load. `scripts/build-walk.ts` runs the room search (`searchRooms()`), then the
 page's own `staticRoles()` and `floorHeights()` with the room answers in use, over `progress.json`, and writes it last
 in the pipeline.
 
 | Key | Shape |
 |---|---|
-| `inputs` | {`progress.json`, `world.json`}: the SHA-256 (hex) of each input file's bytes. `tests/walk-data.test.js` fails when they no longer match, or when the walk on the current code gives other roles, floors or room answers |
+| `inputs` | {`progress.json`, `world.json`}: the SHA-256 (hex) of each input file's bytes. `tests/walk-data.test.ts` fails when they no longer match, or when the walk on the current code gives other roles, floors or room answers |
 | `roles.need` | {l, g}: one digit per level (`progress.json` `levels` order) and per Freezer (`freezers` order): 2 Required, 1 Required as one of several, 0 Optional ([Level roles (viewer)](VIEWER.md#level-roles-viewer)) |
 | `roles.bg` | {l, g}: per level and per Freezer, the indices into `freezers` of the Freezers it sits behind, ascending |
 | `floors` | {underworld, ground, sky}: per map layer key, zlib + base64 of one byte per map column (W × H = 29640, row-major, row 0 = north, as `map.json`): the highest z where the walk on the level data stands the hero there, plus 128; 0 where it stands him nowhere. The flood: gates as stored, no Freezer closed, every teleporter enabled and discovered, seeded at every Level_Entry, pad and Area_Pin. All values are whole numbers |
@@ -222,7 +222,7 @@ that layer of the overworld with the fog cleared, the hero hidden and the time f
 ## The marker icons
 
 `public/assets/icons/<name>.avif` holds one 128 × 128 image per marker kind and state, rendered from the game's own
-3D models by `scripts/build-icons.js` (`npm run icons`). The pixels are RGBA on a transparent background: the object
+3D models by `scripts/build-icons.ts` (`npm run icons`). The pixels are RGBA on a transparent background: the object
 fills the frame (5 pixels of margin), with a thin dark outline and a soft drop shadow so it reads on any terrain. The
 whole set is about 130 KB.
 

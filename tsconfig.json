@@ -1,21 +1,4 @@
 {
-    "compilerOptions": {
-        "target": "ESNext",
-        "lib": ["ESNext", "DOM"],
-        "module": "NodeNext",
-        "moduleResolution": "NodeNext",
-        "types": [],
-        "resolveJsonModule": false,
-        "strict": true,
-        "noEmit": true,
-        "allowImportingTsExtensions": true,
-        "verbatimModuleSyntax": true,
-        "erasableSyntaxOnly": true,
-        "isolatedModules": true,
-        "noFallthroughCasesInSwitch": true,
-        "noImplicitOverride": true,
-        "noImplicitReturns": true,
-        "skipLibCheck": true
-    },
-    "include": ["src/**/*.ts"]
+    "files": [],
+    "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
 }

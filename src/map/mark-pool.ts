@@ -1,7 +1,8 @@
-// The elements of the map's overlay group, made once and changed in place. The group is repeated by use elements, and
-// the browser rebuilds every copy of it when an element is added, removed or moved inside it, but only restyles the
-// elements whose attributes change. So the marks of a layer are drawn into pools of elements in paint order: a mark that
-// is not drawn is hidden, and a pool grows only when a draw needs more marks than any before it.
+// The elements of the map's overlay group, made once and changed in place. The group as a whole is repeated by use
+// elements, and the browser rebuilds every copy of it when an element is added, removed or moved inside it, but only
+// restyles the elements whose attributes change. So the marks of a layer are drawn into pools of elements in paint
+// order (discs and lines are paths and lines, icons are image elements): a mark that is not drawn is hidden, and a pool
+// grows only when a draw needs more marks than any before it.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** The attributes an element carries: name to value. */
@@ -69,15 +70,15 @@ export class LayerMarks {
 
     constructor() {
         this.overlayMarks = new MarkPool(this.addSection(), 'path');
-        this.overlayIcons = new MarkPool(this.addSection(), 'use');
+        this.overlayIcons = new MarkPool(this.addSection(), 'image');
         this.linkLines = new MarkPool(this.addSection(), 'line');
         this.towerMarks = new MarkPool(this.addSection(), 'path');
-        this.towerIcons = new MarkPool(this.addSection(), 'use');
+        this.towerIcons = new MarkPool(this.addSection(), 'image');
         this.levelMarks = new MarkPool(this.addSection(), 'path');
-        this.levelIcons = new MarkPool(this.addSection(), 'use');
+        this.levelIcons = new MarkPool(this.addSection(), 'image');
         this.raisedMarks = new MarkPool(this.addSection(), 'path');
-        this.raisedIcons = new MarkPool(this.addSection(), 'use');
-        this.heroMark = new Mark(this.addElement('use'));
+        this.raisedIcons = new MarkPool(this.addSection(), 'image');
+        this.heroMark = new Mark(this.addElement('image'));
         this.ringMark = new Mark(this.addElement('path'));
         this.stepMarks = new MarkPool(this.addSection(), 'g', (badge) => {
             const circle = document.createElementNS(SVG_NS, 'circle');

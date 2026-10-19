@@ -8,7 +8,7 @@ import type { PanZoomKeep } from '../panzoom.ts';
 import { readPreference, state } from '../shared.ts';
 import type { MapLayer } from '../types.ts';
 import { escapeHtml } from '../util.ts';
-import { ICON_NAMES, iconUrl, OVERLAY_ICONS, ROLE_NAMES, ROLE_SHAPES, ROLES, SHAPES } from './icons.ts';
+import { OVERLAY_ICONS } from './icons.ts';
 import type { MapOverlay } from './map-view.ts';
 import { wrapCopies } from './torus.ts';
 
@@ -110,25 +110,6 @@ function controlsHtml(layers: MapLayer[]): string {
     return `<div class="ctl">${layerGroup}${reachGroup}${zoomGroup}</div>`;
 }
 
-/** The id of the symbol that draws an icon or a role badge on the map `id`. */
-export const symbolId = (id: string, name: string): string => `${id}-ic-${name}`;
-
-// the icons and role badges the marks draw with use elements, each defined once outside the repeated overlay group
-function symbolsHtml(id: string): string {
-    const icons = ICON_NAMES.map((name) => {
-        const image = `<image href="${iconUrl(name)}" x="-64" y="-64" width="128" height="128"/>`;
-        return `<symbol id="${symbolId(id, name)}" viewBox="-64 -64 128 128">${image}</symbol>`;
-    });
-
-    const roles = ROLE_NAMES.map((role) => {
-        const shape = SHAPES[ROLE_SHAPES[role]].path(5);
-        const paint = `fill="${ROLES[role][1]}" stroke="#0b1218" stroke-width="1.6" stroke-linejoin="round"`;
-        return `<symbol id="${symbolId(id, role)}" viewBox="-8 -8 16 16"><path d="${shape}" ${paint}/></symbol>`;
-    });
-
-    return `<defs>${icons.join('')}${roles.join('')}</defs>`;
-}
-
 /**
  * The markup of the map `id`. `fog`: the fog to hide; layers it has not uncovered get no image and no button. `reach`:
  * whether to include the Reachable overlay images (hidden until mapInit gets the bitmaps in opts.reach).
@@ -141,7 +122,7 @@ export function mapHtml(id: string, fog: Fog | null | undefined, reach: boolean)
     const terrain = `${terrainHtml(id, layers, reach)}${wrapCopies(id, 'w', width, height)}`;
     const overlay = `<g id="${id}-o" class="mw"><g class="ov"></g></g>${wrapCopies(id, 'o', width, height)}`;
     const svgOpen = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">`;
-    const svg = `${svgOpen}${symbolsHtml(id)}${terrain}${overlay}<g class="mw lbl"></g></svg>`;
+    const svg = `${svgOpen}${terrain}${overlay}<g class="mw lbl"></g></svg>`;
 
     const terrainImages = '<div class="terrain"></div>';
     return `<div class="mapbox" id="${id}">${controlsHtml(layers)}\n    ${terrainImages}${svg}\n    <div class="tip"></div></div>`;

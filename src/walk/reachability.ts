@@ -927,7 +927,7 @@ function reachColumns(
 /**
  * Where the hero can stand in the level data (gates as stored, no Freezer closed, every teleporter on): a flood from
  * every level entrance, teleporter and Area_Pin, as reachColumns heights. null until the world cells are loaded.
- * scripts/build-walk.js stores them in data/walk.json for the page.
+ * scripts/build-walk.ts stores them in data/walk.json for the page.
  */
 export function floorHeights(): Record<string, Float32Array> | null {
     if (!WORLD) return null;

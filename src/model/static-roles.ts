@@ -1,4 +1,4 @@
-// Level roles from the walk on the level data (VIEWER.md "Level roles (viewer)"). Imported by scripts/build-walk.js, so
+// Level roles from the walk on the level data (VIEWER.md "Level roles (viewer)"). Imported by scripts/build-walk.ts, so
 // it must not import src/walk-data.ts, which reads the file that script writes.
 import { PROG, WORLD } from '../data.ts';
 import type { Position } from '../types.ts';

@@ -11,12 +11,12 @@ import { setPreference } from '../shared.ts';
 import type { PanelKey, PanelKind } from '../shared.ts';
 import type { MapLayer, Position } from '../types.ts';
 import { $, setButtonPressed } from '../util.ts';
-import { SHAPES } from './icons.ts';
+import { ICON_URLS, ROLE_BADGE_URLS, SHAPES } from './icons.ts';
 import type { IconName, Role } from './icons.ts';
 import { MAP_IMAGE_PIXELS_PER_SQUARE, TerrainImages } from './layer-images.ts';
 import type { LevelIconName } from './level-icons.ts';
 import type { OceanSquares } from './ocean-water.ts';
-import { isOverlayKind, knownLayers, mapKeep, overlayOn, startLayer, switchOf, symbolId } from './map-html.ts';
+import { isOverlayKind, knownLayers, mapKeep, overlayOn, startLayer, switchOf } from './map-html.ts';
 import type { MapKeep, OverlayKind } from './map-html.ts';
 import { LayerMarks } from './mark-pool.ts';
 import type { MarkAttributes } from './mark-pool.ts';
@@ -343,10 +343,10 @@ function levelMarkerRadius(style: MarkerStyle, focused: boolean): number {
 // a circle's path around (0, 0), which the stylesheet draws as a disc or a ring
 const discPath = (radius: number): string => SHAPES.circle.path(radius);
 
-// the attributes of a use element that draws a symbol of the map `mapId` in a square around the mark's position
-function iconAttributes(mapId: string, name: string, radius: number, position: string): MarkAttributes {
+// the attributes of an image element that draws `url` in a square around the mark's position
+function iconAttributes(url: string, radius: number, position: string): MarkAttributes {
     return {
-        href: '#' + symbolId(mapId, name),
+        href: url,
         x: -radius,
         y: -radius,
         width: 2 * radius,
@@ -1051,7 +1051,7 @@ export class MapView {
             icons.push(
                 hiddenWhen(hidden, {
                     class: iconClasses,
-                    ...iconAttributes(this.box.id, overlay.icon, iconRadiusOn(DISC_RADIUS), position),
+                    ...iconAttributes(ICON_URLS[overlay.icon], iconRadiusOn(DISC_RADIUS), position),
                 }),
             );
         }
@@ -1141,7 +1141,7 @@ export class MapView {
             icons.push(
                 hiddenWhen(iconHidden, {
                     class: iconClasses,
-                    ...iconAttributes(this.box.id, 'tower-pad', iconRadiusOn(DISC_RADIUS), position),
+                    ...iconAttributes(ICON_URLS['tower-pad'], iconRadiusOn(DISC_RADIUS), position),
                 }),
             );
         }
@@ -1154,7 +1154,6 @@ export class MapView {
     // level that is not drawn keeps its marks, hidden.
     private levelMarkAttributes(marker: MapMarker, style: MarkerStyle, hidden: boolean): LevelParts {
         const selection = this.selection;
-        const mapId = this.box.id;
         const [x, y] = mapXY(marker.x, marker.y);
         const focused = selection?.focus === marker.levelIndex;
         const radius = levelMarkerRadius(style, focused);
@@ -1181,7 +1180,7 @@ export class MapView {
         const iconRadius = iconRadiusOn(radius);
         const pad = hiddenWhen(hidden, {
             class: padClasses,
-            ...iconAttributes(mapId, style.pad, iconRadius, position),
+            ...iconAttributes(ICON_URLS[style.pad], iconRadius, position),
         });
 
         const icons = [pad];
@@ -1195,7 +1194,7 @@ export class MapView {
 
             const cage = hiddenWhen(hidden || !iceOn, {
                 class: `${iconClasses} cage`,
-                ...iconAttributes(mapId, cageIcon, iconRadius, position),
+                ...iconAttributes(ICON_URLS[cageIcon], iconRadius, position),
             });
             icons.push(cage);
         }
@@ -1207,7 +1206,7 @@ export class MapView {
             const badgeCentre = badgeTop + badgeRadius;
             const badge = hiddenWhen(hidden, {
                 class: `${iconClasses} rb`,
-                ...iconAttributes(mapId, style.role, badgeRadius, `${position};--cy:${badgeCentre}px`),
+                ...iconAttributes(ROLE_BADGE_URLS[style.role], badgeRadius, `${position};--cy:${badgeCentre}px`),
                 y: badgeTop,
             });
             icons.push(badge);
@@ -1231,7 +1230,7 @@ export class MapView {
         }
 
         const [x, y] = mapXY(hero.x, hero.y);
-        const attributes = iconAttributes(this.box.id, 'hero', DISC_RADIUS, placedAt(x, y));
+        const attributes = iconAttributes(ICON_URLS['hero'], DISC_RADIUS, placedAt(x, y));
         marks.heroMark.set({ class: 'k mi hero', ...attributes });
     }
 
