@@ -57,6 +57,9 @@ const ROCK_BITS = ROCK | SUPPORT | BEAMSTOP;
 // what a pushed Gem takes with it
 const GEM_BITS = MOVABLE | BEAMSTOP;
 
+// what a pushed Promesst_Light takes off its cell
+const LIGHT_BITS = MOVABLE | BEAMSTOP;
+
 // the pushes of beam-stopping Rocks one flood makes, at most
 const MAX_ROCK_PUSHES = 256;
 
@@ -130,8 +133,10 @@ interface LightSpot {
 
 /**
  * What a flood's pushes for the beams have done: its undo steps, the Gem_Slots it pushed Gems onto, the cells the
- * Gems left, the light pushes made, the light spots not cast yet and whether a spot or a Gem was added since they were
- * last tried, the beams it cast and its Rock pushes. `turnMisses`: per Gem turn, its last failed search.
+ * Gems left, the light pushes made, the lights taken off their cells, the light spots not cast yet and whether a spot or
+ * a Gem was added since they were last tried, the beams it cast and its Rock pushes. `turnMisses`: per Gem turn, its
+ * last failed search. `lengthened`: the beams, cast by the walker or the flood, that a longer beam of the flood has
+ * replaced.
  */
 export interface BeamFlood {
     undo: Undo;
@@ -139,9 +144,11 @@ export interface BeamFlood {
     gemsMoved: Set<number>;
     turnMisses: Array<PressMiss | undefined>;
     lightsPushed: Uint8Array;
+    lightsMoved: Uint8Array;
     uncast: LightSpot[];
     spotsToTry: boolean;
     casts: CastBeam[];
+    lengthened: Set<CastBeam>;
     rockPushes: number;
 }
 
@@ -477,7 +484,10 @@ function walkBeamAgain(walkGrid: WalkGrid, floodState: FloodState, cast: CastBea
     }
 }
 
-/** Runs on each beam that a pushed object stopped in `cell`, now that it has left. */
+/**
+ * Runs on each beam that a pushed object stopped in `cell`, now that it has left: the longer beam replaces it among
+ * the beams whose Rocks are pushed (`lengthened`).
+ */
 function freeCell(walkGrid: WalkGrid, floodState: FloodState, beamFlood: BeamFlood, cell: number): void {
     const stopped = [...(walkGrid.beamMoves.castsByStop.get(cell) ?? [])];
 
@@ -488,6 +498,7 @@ function freeCell(walkGrid: WalkGrid, floodState: FloodState, beamFlood: BeamFlo
     for (const cast of stopped) {
         const longer = extendBeam(walkGrid, cast, beamFlood.undo);
         beamFlood.casts.push(longer);
+        beamFlood.lengthened.add(cast);
         walkBeamAgain(walkGrid, floodState, longer);
     }
 
@@ -630,7 +641,10 @@ function pushTurnedGems(walkGrid: WalkGrid, floodState: FloodState, beamFlood: B
     return moved;
 }
 
-/** Pushes the Promesst_Lights the hero reaches along their lines: each cell a light gets to is a spot for its beam. */
+/**
+ * Pushes the Promesst_Lights the hero reaches along their lines: each cell a light gets to is a spot for its beam. A
+ * light's first push takes it off its cell, which then stops no beam; it is not placed in the cells it gets to.
+ */
 function pushLights(walkGrid: WalkGrid, floodState: FloodState, beamFlood: BeamFlood): boolean {
     const { lightPushes } = walkGrid.beamMoves;
     let moved = false;
@@ -644,8 +658,15 @@ function pushLights(walkGrid: WalkGrid, floodState: FloodState, beamFlood: BeamF
         beamFlood.lightsPushed[index] = 1;
         beamFlood.spotsToTry = true;
 
+        const { light, objectCell } = lightPush;
+        if (!beamFlood.lightsMoved[light]) {
+            beamFlood.lightsMoved[light] = 1;
+            clearBits(walkGrid.grid, objectCell, walkGrid.grid[objectCell] & LIGHT_BITS, beamFlood.undo);
+            freeCell(walkGrid, floodState, beamFlood, objectCell);
+        }
+
         for (const cell of lightPush.path.slice(0, pushedThrough)) {
-            beamFlood.uncast.push({ light: lightPush.light, cell, vacated: lightPush.objectCell, triedWithGems: -1 });
+            beamFlood.uncast.push({ light, cell, vacated: objectCell, triedWithGems: -1 });
             moved = true;
         }
     });
@@ -774,14 +795,17 @@ function swapRockOff(
 }
 
 /**
- * Pushes or swaps away the Rocks that stop the flood's beams, MAX_ROCK_PUSHES moves at most. Returns whether any
- * moved.
+ * Pushes or swaps away the Rocks that stop the flood's beams, MAX_ROCK_PUSHES moves at most. A beam a longer one has
+ * replaced is left out: a Rock that comes back into its old stop stands inside the longer beam, which stays laid, so
+ * moving it again opens nothing. Returns whether any moved.
  */
 function pushRocks(walkGrid: WalkGrid, floodState: FloodState, beamFlood: BeamFlood): boolean {
     let moved = false;
 
     for (const cast of [...walkGrid.beamMoves.rockStopped, ...beamFlood.casts]) {
         if (beamFlood.rockPushes >= MAX_ROCK_PUSHES) break;
+
+        if (beamFlood.lengthened.has(cast)) continue;
 
         const stop = stopOf(walkGrid, cast);
         if (!stoppedByRock(walkGrid, stop)) continue;
@@ -811,9 +835,11 @@ function startBeamFlood(walkGrid: WalkGrid): BeamFlood {
         gemsMoved: new Set(),
         turnMisses: [],
         lightsPushed: new Uint8Array(lightPushes.length),
+        lightsMoved: new Uint8Array(lights.length),
         uncast,
         spotsToTry: uncast.length > 0,
         casts: [],
+        lengthened: new Set(),
         rockPushes: 0,
     };
 }

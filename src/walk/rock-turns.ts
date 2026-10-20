@@ -77,20 +77,31 @@ export function respawnedRocksOf(walkGrid: WalkGrid): RockTurn[] {
 }
 
 /**
+ * Whether `cell` holds a pushable for the pushes of the objects that turn: the cell of a Rock that has sunk, with turns
+ * or in its straight bridge, is empty.
+ */
+export function pushableIn(walkGrid: WalkGrid, floodState: FloodState, cell: number): boolean {
+    if (!(walkGrid.grid[cell] & PUSH)) return false;
+
+    const rockIndex = walkGrid.triggers.rockAt.get(cell);
+    return rockIndex === undefined || !rockSunk(walkGrid, floodState, rockIndex);
+}
+
+/**
  * Where a Rock in `from` ends when pushed on side `side`, as movesOnto reads it from the other end: it enters the next
  * cell and lands there if the cell holds it, else falls through open air at most PRESS_FALL cells onto the first cell
  * that holds it, or sinks in the first cell of water level with its height, where it becomes a bridge. A fall stops
  * short of a cell the water cancels the step into (waterStopsFall). null where the push fails or the Rock never lands.
  */
 export function landingOf(walkGrid: WalkGrid, floodState: FloodState, from: number, side: number): Landing | null {
-    const { grid, layerCells } = walkGrid;
+    const { layerCells } = walkGrid;
     const fromZ = Math.floor(from / layerCells) - Z_BIAS;
     let cell = cellOnSide(walkGrid, from, side);
     const column = cell % layerCells;
 
     for (let fallen = 0; fallen <= PRESS_FALL && cell >= layerCells; fallen++) {
         const z = fromZ - fallen;
-        if (walled(walkGrid, floodState, cell) || grid[cell] & PUSH) return null;
+        if (walled(walkGrid, floodState, cell) || pushableIn(walkGrid, floodState, cell)) return null;
         if (fallen > 0 && waterStopsFall(walkGrid, column, z)) return null;
         if (holdsStone(walkGrid, floodState, cell, z)) return { cell, sinks: false };
         if (levelWater(walkGrid, cell, z) && fallen < PRESS_FALL) return { cell, sinks: true };
@@ -210,7 +221,7 @@ export function pushReach(
 ): PushReach {
     const positions = [rockCell];
     for (const swapped of swappedTo(floodState, rockCell)) {
-        if (!(walkGrid.grid[swapped] & PUSH)) positions.push(swapped);
+        if (!pushableIn(walkGrid, floodState, swapped)) positions.push(swapped);
     }
 
     const seen = new Set(positions);
@@ -291,16 +302,18 @@ export function rockStands(walkGrid: WalkGrid, floodState: FloodState, rockIndex
     return !activators || activators.some((activatorCell) => walkGrid.visited[activatorCell] !== 0);
 }
 
-/**
- * Whether the Rock can still sink: it stands, it has not sunk, and its straight bridge has not sunk it either
- * (`bridgeTaken`).
- */
-export function rockFree(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
-    if (floodState.rockSpent[rockIndex] || !rockStands(walkGrid, floodState, rockIndex)) return false;
+/** Whether the Rock has sunk: with turns, or in its straight bridge (`bridgeTaken`). */
+function rockSunk(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
+    if (floodState.rockSpent[rockIndex]) return true;
 
     const { triggers } = walkGrid;
     const bridgeIndex = triggers.bridgeIndexOf.get(triggers.rocks[rockIndex].pid);
-    return bridgeIndex === undefined || !floodState.bridgeTaken[bridgeIndex];
+    return bridgeIndex !== undefined && floodState.bridgeTaken[bridgeIndex] === 1;
+}
+
+/** Whether the Rock can still sink: it stands and has not sunk. */
+export function rockFree(walkGrid: WalkGrid, floodState: FloodState, rockIndex: number): boolean {
+    return !rockSunk(walkGrid, floodState, rockIndex) && rockStands(walkGrid, floodState, rockIndex);
 }
 
 /**

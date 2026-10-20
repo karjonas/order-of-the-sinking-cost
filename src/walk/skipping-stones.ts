@@ -9,7 +9,7 @@ import { exists } from './groups.ts';
 import { kickRide, lilyRide } from './lilies-and-rivers.ts';
 import { deep, levelWater, waterAt } from './ocean.ts';
 import { push, requeue, visitReached } from './queue.ts';
-import { landingOf } from './rock-turns.ts';
+import { landingOf, pushableIn } from './rock-turns.ts';
 import type { Landing } from './rock-turns.ts';
 import { doorIn, doorOut, WIZARD } from './skills.ts';
 import { blocked, heldFromBelow, holdsStone, standable } from './support.ts';
@@ -536,9 +536,9 @@ export function stoneLandingOf(
     side: number,
     z: number,
 ): Landing | null {
-    const { grid, driftCells, flowSide } = walkGrid;
+    const { driftCells, flowSide } = walkGrid;
     const firstWater = cellOnSide(walkGrid, from, side);
-    const pushableInto = (grid[firstWater] & PUSH) !== 0;
+    const pushableInto = pushableIn(walkGrid, floodState, firstWater);
     const entersWater =
         !walled(walkGrid, floodState, firstWater) &&
         !pushableInto &&
@@ -551,7 +551,7 @@ export function stoneLandingOf(
     for (let stepsOut = 0; stepsOut < walkGrid.width + walkGrid.height; stepsOut++) {
         const next = cellOnSide(walkGrid, current, side);
 
-        const pushableAhead = (grid[next] & PUSH) !== 0;
+        const pushableAhead = pushableIn(walkGrid, floodState, next);
         if (fenced(walkGrid, current, side, next) || blocked(walkGrid, floodState, next) || pushableAhead) {
             if (flowSide.has(current)) return null;
             return { cell: current, sinks: true };

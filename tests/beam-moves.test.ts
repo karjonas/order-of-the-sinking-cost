@@ -23,6 +23,7 @@ const Z_OFFSET = 64,
     ROCK = 12,
     THROUGH = 1,
     DOUBLE = 3,
+    SQUEEZE = 9,
     PROTECTED = 1;
 const LIGHT_KIND = 1,
     GEM_KIND = 0;
@@ -191,6 +192,78 @@ describe('a Rock that stops a beam', () => {
     });
 });
 
+describe('a Rock pushed back into the old stop of a lengthened beam', () => {
+    // SMASH lights (a color whose power the walk lays nowhere) at (1, 3) and (1, 4) face east, stopped by the Rocks at
+    // (3, 3) and (3, 4); the hero stands in (2, 3) and (2, 4). The first Rock goes east to (4, 3) and its beam runs on
+    // through (3, 3); the second goes north into (3, 3), pushed from (3, 5), and its beam runs on through (3, 4); then
+    // the first beam's old stop holds it, pushed from (3, 2). Both push cells are walls outside the flood, which a
+    // thawed Freezer lets push from. Once (3, 4) is free the hero walks on past the Rock in (4, 4) to (6, 3), and
+    // only then pushes the Rock at (6, 2) off a THROUGH beam that runs east through the walls to (10, 2): a push the
+    // flood makes only while it has Rock pushes left.
+    const SMASH = 2;
+    const SECOND_LIGHT = 15;
+    const THROUGH_LIGHT = 19;
+    const SECOND_ROCK = 16;
+    const THROUGH_ROCK = 17;
+    const CORRIDOR_ROCK = 18;
+    const FREEZER = 13;
+    const open = new Set([
+        '1,1',
+        '1,3',
+        '1,4',
+        '2,3',
+        '2,4',
+        '3,3',
+        '3,4',
+        '4,3',
+        '4,4',
+        '5,2',
+        '5,4',
+        '6,1',
+        '6,2',
+        '6,3',
+        '6,4',
+        '7,1',
+    ]);
+
+    test('is not pushed off again, which would use up the Rock pushes', () => {
+        const walls: Array<[number, number]> = [];
+        for (let i = 1; i <= 7; i++) {
+            for (let j = 1; j <= 4; j++) {
+                if (!open.has(`${i},${j}`)) walls.push([i, j]);
+            }
+        }
+
+        world({
+            walls,
+            extra: {
+                lights: [
+                    [LIGHT, 1, 3, 0, 0, 0, 0, 0, SMASH],
+                    [SECOND_LIGHT, 1, 4, 0, 0, 0, 0, 0, SMASH],
+                    [THROUGH_LIGHT, 5, 2, 0, 0, 0, 0, 0, THROUGH],
+                ],
+                rocks: [
+                    [ROCK, 3, 3, 0],
+                    [SECOND_ROCK, 3, 4, 0],
+                    [THROUGH_ROCK, 6, 2, 0],
+                    [CORRIDOR_ROCK, 4, 4, 0],
+                ],
+                gem_slots: [[SLOT, 7, 1, 0, 0]],
+            },
+        });
+        PROG.freezers = [{ pid: FREEZER, p: [1, 1, 0], l: 0, req: [] }];
+
+        const walkGrid = walker(latest(true), [], [true]);
+        const freezerCell = walkGrid.cellOf(1, 1, 0);
+        walkGrid.thaw(freezerCell);
+        const outside = new Set([walkGrid.cellOf(3, 2, 0), walkGrid.cellOf(3, 5, 0)]);
+        const reached = walkGrid.flood([walkGrid.cellOf(2, 3, 0), walkGrid.cellOf(2, 4, 0)], outside);
+        walkGrid.freeze(freezerCell, 0);
+
+        expect(reached.has(walkGrid.cellOf(10, 2, 0))).toBe(true);
+    });
+});
+
 describe('a push from the cells a flood stays out of', () => {
     // the Gem's push cell (2, 1) is left out of a flood from (7, 2); a Freezer stands in (6, 4)
     const FREEZER = 13;
@@ -227,5 +300,21 @@ describe('a pushed light', () => {
         const walkGrid = walk(true);
         expect(walkGrid.beam.size).toBe(0);
         expect(reaches(walkGrid, heroAt(walkGrid, 2, 4), 10, 2)).toBe(true);
+    });
+    test('stops no other beam in the cell it left', () => {
+        // the THROUGH light at (1, 2) faces east into a SQUEEZE light at (5, 2), which faces west; pushed north from
+        // (5, 3) it stands in (5, 1), and the THROUGH beam runs on along row 2
+        const squeezeLight = 14;
+        world({
+            extra: {
+                lights: [
+                    [LIGHT, 1, 2, 0, 0, 0, 0, 0, THROUGH],
+                    [squeezeLight, 5, 2, 0, 2, 0, 0, 0, SQUEEZE],
+                ],
+                movables: [[squeezeLight, 5, 2, 0, LIGHT_KIND]],
+            },
+        });
+        const walkGrid = walk(true);
+        expect(reaches(walkGrid, heroAt(walkGrid, 2, 3), 10, 2)).toBe(true);
     });
 });

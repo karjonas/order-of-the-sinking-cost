@@ -227,6 +227,31 @@ describe('rock bridges', () => {
             ]),
         ).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     });
+    test("a Rock that sank with turns leaves its cell to the next Rock's pushes", () => {
+        // water at columns 5 and 7, a wall at 10; heroes at 1 and 3. The Rock at 4 sinks at 5, and the Rock at 2 is
+        // pushed through 4 and over that bridge to sink at 7
+        world(
+            11,
+            { 10: [0, 1] },
+            {
+                oceans: [
+                    [30, 0, 0, 5, 0, 1, 1],
+                    [31, 0, 0, 7, 0, 1, 1],
+                ],
+                rocks: [
+                    [40, 4, 0, 0],
+                    [41, 2, 0, 0],
+                ],
+            },
+            { 5: [0], 7: [1] },
+        );
+        const walkGrid = walker(NONE, [], []);
+        const reached = walkGrid.flood([
+            [walkGrid.cellOf(1, 0, 0), 0],
+            [walkGrid.cellOf(3, 0, 0), 0],
+        ]);
+        expect(xs(walkGrid, reached, 0)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    });
 });
 
 describe('switch gates', () => {
