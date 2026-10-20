@@ -64,6 +64,11 @@ export interface BaseProgress {
     why: Array<WhyBlocked | null>;
     /** Per level the walk cannot reach, its way-in gates; null for the others. */
     wayIn: Array<number[] | null>;
+    /**
+     * Per level the walk cannot reach, its way-in gates that open onto nothing but more closed Freezers, each with the
+     * ways through it: the gates all needed together; null for a level with none.
+     */
+    wayInChains: Array<Map<number, number[][]> | null>;
     /** The levels whose way in is the level data's alone. */
     wayInFixed: Set<number>;
     /** Per level the walk cannot reach, the layer it needs a way onto; null for the others. */
@@ -92,12 +97,13 @@ export const stateLabel = (progress: { reach: Reachability | null }, state: Leve
     return STATE_LABELS[state];
 };
 
-// per status: the history, the progress, the ROLE it was computed under and how to redo progress.wayIn under another
+// per status: the history, the progress, the ROLE it was computed under and how to redo progress.wayIn and
+// progress.wayInChains under another
 interface CachedProgress {
     history: History | null;
     progress: CampaignProgress;
     role: StoredRoles | null;
-    wayIn: () => Array<number[] | null>;
+    wayIn: () => Pick<BaseProgress, 'wayIn' | 'wayInChains'>;
 }
 
 let progressCache = new WeakMap<object, CachedProgress>();
@@ -105,6 +111,10 @@ let progressCache = new WeakMap<object, CachedProgress>();
 export const setProgressCache = (cache: WeakMap<object, CachedProgress>): void => {
     progressCache = cache;
 };
+
+/** Whether the progress of a status and history is worked out already. */
+export const progressCached = (status: ProgressStatus, history: History | null): boolean =>
+    progressCache.get(status)?.history === history;
 
 // the walk over the overworld state; null for the empty save, which has no walked places to start the fill from
 function reachOf(
@@ -128,7 +138,9 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         // roles computed since: only the parts built on them change
         if (cached.role !== ROLE) {
             cached.role = ROLE;
-            cached.progress.wayIn = cached.wayIn();
+            const { wayIn, wayInChains } = cached.wayIn();
+            cached.progress.wayIn = wayIn;
+            cached.progress.wayInChains = wayInChains;
             cached.progress.plans = planAll(cached.progress);
             cached.progress.needed = nextSteps(cached.progress, status);
             cached.progress.goals = goalLadder(cached.progress, status);
@@ -161,6 +173,7 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         gateOpen,
         towers,
     });
+    const { wayIn, wayInChains } = wayInOf();
 
     const baseProgress: BaseProgress = {
         state,
@@ -175,7 +188,8 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         reach,
         behind,
         why,
-        wayIn: wayInOf(),
+        wayIn,
+        wayInChains,
         wayInFixed,
         access: accessOf(state, reach),
         ice,

@@ -206,7 +206,7 @@ in the pipeline.
 
 ## The map images
 
-`public/assets/map-<layer>.avif` holds one image per map layer (`underworld`, `ground`, `sky`), each a top-down render of
+`src/assets/map-<layer>.avif` holds one image per map layer (`underworld`, `ground`, `sky`), each a top-down render of
 that layer of the overworld with the fog cleared, the hero hidden and the time frozen.
 
 - An image is 32 pixels per square: 190 × 156 squares are 6080 × 4992 pixels. Pixel row 0 is the north edge.
@@ -217,11 +217,11 @@ that layer of the overworld with the fog cleared, the hero hidden and the time f
   ([Fog of war](STATE.md#fog-of-war)).
 - `src/map/thumbs/<layer>.avif` is the same layer at one pixel per square (190 × 156, each pixel the average colour
   of its square, row 0 north). The page embeds the thumbnails and draws a layer's thumbnail pixelated until its full
-  image, published next to the page, has loaded and decoded.
+  image, published in the page's `assets/` folder, has loaded and decoded.
 
 ## The marker icons
 
-`public/assets/icons/<name>.avif` holds one 128 × 128 image per marker kind and state, rendered from the game's own
+`src/assets/icons/<name>.avif` holds one 128 × 128 image per marker kind and state, rendered from the game's own
 3D models by `scripts/build-icons.ts` (`npm run icons`). The pixels are RGBA on a transparent background: the object
 fills the frame (5 pixels of margin), with a thin dark outline and a soft drop shadow so it reads on any terrain. The
 whole set is about 130 KB.

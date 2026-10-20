@@ -12,12 +12,13 @@ import { setSpoilersHidden, state } from '../src/shared.ts';
 import { showDemo } from '../src/files.ts';
 import { progressModel } from '../src/model/progress-model.ts';
 import type { ProgressModel } from '../src/model/progress-model.ts';
+import { freezerTowers } from '../src/model/goals.ts';
 import type { GoalKind } from '../src/model/goals.ts';
 import type { PlanStep } from '../src/model/requirements.ts';
 import { achievementName } from '../src/model/achievements.ts';
 
 // the page, without its DOM
-vi.mock('../src/view.ts', () => ({ show() {} }));
+vi.mock('../src/view.ts', () => ({ show() {}, async showSave() {} }));
 // layer keys stand for their names
 vi.mock('../src/model/layers.ts', async (importOriginal) => ({
     ...(await importOriginal()),
@@ -63,6 +64,7 @@ function goalTexts(model: ProgressModel) {
     ]);
 }
 const groundTowers = () => new Set((PROG.gold_rooms || []).map((room) => room.tower));
+const freezerTowerSet = () => new Set(freezerTowers().keys());
 function checkHidden(model: ProgressModel) {
     const { progress, levels } = model;
     const texts = goalTexts(model).join('\n');
@@ -74,14 +76,9 @@ function checkHidden(model: ProgressModel) {
     // the levels listed are not under fog
     for (const goal of model.goals)
         for (const entry of model.goalLevels(goal)) expect(progress.hidden[entry.i]).toBe(false);
-    // the towers and the achievements count only the ones not under fog; the ground towers are the first ending's,
-    // and the towers are left out while all of the others are under fog
-    const towers = goalOfKind(model, 'towers');
+    // the achievements count only the ones not under fog; the ground towers are the first ending's
     const achievements = goalOfKind(model, 'achievements');
     const ground = groundTowers();
-    const otherTowersShown = progress.towers.filter((tower, ti) => !ground.has(ti) && !progress.towerHidden[ti]);
-    if (otherTowersShown.length) expect(towers!.progress![1]).toBe(otherTowersShown.length);
-    else expect(towers).toBeUndefined();
     // the first ending lists only ground towers not under fog, and counts its Antipode teleporters only while the
     // Sign that counts them is not under fog
     const firstEnding = model.goals[0];
@@ -97,7 +94,10 @@ function checkHidden(model: ProgressModel) {
         expect(firstEnding.progress[1]).toBe(PROG.signs[sign].gold);
     }
     expect(achievements!.progress![1]).toBe(achievements!.children!.length);
-    for (const child of achievements!.children!) expect(model.achievementHidden(child.name!)).toBe(false);
+    for (const child of achievements!.children!) {
+        expect(model.achievementHidden(child.name!)).toBe(false);
+        if (child.tower != null) expect(progress.towerHidden[child.tower]).toBe(false);
+    }
     // Completionist counts the levels not under fog
     expect(goalOfKind(model, 'completionist')!.progress![1]).toBe(
         levels.filter((level, i) => !progress.hidden[i]).length,
@@ -173,7 +173,11 @@ describe('goals with spoilers hidden', () => {
         const firstEnding = model.goals[0];
         expect(firstEnding.children!.map((child) => child.tower).toSorted()).toEqual([...groundTowers()].toSorted());
         expect(firstEnding.progress).toEqual([0, 4]);
-        expect(goalOfKind(model, 'towers')!.progress![1]).toBe(PROG.towers.length - groundTowers().size);
+        // the second ending lists the towers whose Signs open Freezers, none under fog here
+        const secondEnding = model.goals[1];
+        expect(secondEnding.children!.map((child) => child.tower).toSorted()).toEqual(
+            [...freezerTowerSet()].toSorted(),
+        );
         setSpoilersHidden(true);
     });
 });

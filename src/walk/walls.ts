@@ -2,7 +2,7 @@
 import { latestF32, rawU16 } from '../save.ts';
 import type { Creation } from '../save.ts';
 import type { CellRow } from '../types.ts';
-import { BEAMSTOP, cellOf, FLOOR, mod, MOVABLE, ROCK, SOLID, SUPPORT } from './cells.ts';
+import { BEAMSTOP, cellOf, FLOOR, LINE_STOP, mod, MOVABLE, ROCK, SOLID, SUPPORT } from './cells.ts';
 import { place, put } from './groups.ts';
 import type { WalkGrid } from './walker.ts';
 
@@ -49,6 +49,13 @@ export function placeWallSets(walkGrid: WalkGrid): void {
 /** Notes a TELEPORT line target at `cell`: anything the hero swaps with but a Mirror. */
 export function noteTarget(walkGrid: WalkGrid, cell: number): void {
     walkGrid.swapTargets.add(cell);
+    walkGrid.cellFlags[cell] |= LINE_STOP;
+}
+
+/** Notes the Mirror at `cell` with the sides a TELEPORT line meets it on and turns at. */
+function noteMirror(walkGrid: WalkGrid, cell: number, openSides: number): void {
+    walkGrid.mirrorSides.set(cell, openSides);
+    walkGrid.cellFlags[cell] |= LINE_STOP;
 }
 
 /** Whether a Mirror with this facing is flat; one with no facing is taken to be flat. */
@@ -150,7 +157,7 @@ export function placeEntities(walkGrid: WalkGrid): Set<number> {
 
             if (bits & MOVABLE) {
                 if (movableKind === MIRROR_KIND) {
-                    walkGrid.mirrorSides.set(cell, openSidesOf(walkGrid, pid, mirrorFacings.get(pid)));
+                    noteMirror(walkGrid, cell, openSidesOf(walkGrid, pid, mirrorFacings.get(pid)));
                 } else {
                     noteTarget(walkGrid, cell);
                 }

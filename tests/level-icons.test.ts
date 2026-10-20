@@ -32,7 +32,7 @@ describe('levelIconName', () => {
             for (const state of STATES) expect(LEVEL_ICON_NAMES).toContain(levelIconName(level, state));
         }
         for (const name of LEVEL_ICON_NAMES) {
-            const path = new URL(`../public/assets/icons/${name}.avif`, import.meta.url);
+            const path = new URL(`../src/assets/icons/${name}.avif`, import.meta.url);
             expect(existsSync(path), name).toBe(true);
         }
     });

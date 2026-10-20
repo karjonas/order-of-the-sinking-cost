@@ -801,9 +801,9 @@ export class MapView {
         });
     }
 
-    // markers a click revealed inside the fog get a dark halo
-    private overFog(x: number, y: number, z: number): string {
-        if (this.fogOn && this.options.fog?.at(this.currentLayer, x, y, z)) return ' fg';
+    // markers drawn over fog get a dark halo: one a click revealed, or one uncovered below a fog box the map draws over it
+    private overFog(x: number, y: number): string {
+        if (this.fogOn && this.options.fog?.cover(this.currentLayer, x, y)) return ' fg';
         return '';
     }
 
@@ -1047,6 +1047,7 @@ export class MapView {
 
             let iconClasses = 'k mi';
             if (dim) iconClasses += ' dn';
+            iconClasses += this.overFog(overlay.x, overlay.y);
             discs.push(hiddenWhen(hidden, disc));
             icons.push(
                 hiddenWhen(hidden, {
@@ -1112,7 +1113,7 @@ export class MapView {
             let classes = 'tw';
             if (tower.activated && !tower.onPad) classes += ' on';
             if (selected) classes += ' hl';
-            classes += this.overFog(tower.x, tower.y, tower.z);
+            classes += this.overFog(tower.x, tower.y);
 
             let iconClasses = 'k mi';
             if (selected) iconClasses += ' hl';
@@ -1161,7 +1162,7 @@ export class MapView {
         let classes = this.selectionClass(marker.levelIndex);
         if (selection?.frontier?.has(marker.levelIndex)) classes += ' fr';
         if (marker.ice && selection?.overlays?.has(marker.ice.id)) classes += ' chosen';
-        const fogClass = this.overFog(marker.x, marker.y, marker.z);
+        const fogClass = this.overFog(marker.x, marker.y);
         classes += fogClass;
 
         const ring = hiddenWhen(hidden, {

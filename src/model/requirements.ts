@@ -44,9 +44,10 @@ export type PlanStep = IndexedStep | NamedStep | SignStep;
  *   level, solved: met. Playable now (entered, partly solved or reachable): a step with no parts (`front`).
  *   level, locked: its unsolved requirements (all, or the cheapest one for an OR gate), and a closed Freezer it is
  *     frozen in.
- *   level, not reachable: the cheapest of its way-in gates (progress.wayIn) and the levels by a pad that reveals one in its
- *     pocket; with none, on a layer the walk reaches nowhere, the way onto that layer (a); else, when it has none, or
- *     none has a plan and each gate only leads to such a pad, a step of its own.
+ *   level, not reachable: the cheapest of its way-in gates (progress.wayIn; for a doorway, the cheapest way through it,
+ *     all of its gates: progress.wayInChains) and the levels by a pad that reveals one in its pocket; with none, on a
+ *     layer the walk reaches nowhere, the way onto that layer (a); else, when it has none, or none has a plan and each
+ *     gate only leads to such a pad, a step of its own.
  *   Freezer, open: met. Closed: its unmet levels and signs (all, or the cheapest one for an OR gate; an OR gate with one
  *     met opens at the next overworld load, a step with no parts).
  *   sign: a tower sign whose tower is not active needs the tower; a rank sign the rank; the gold room sign the
@@ -120,6 +121,12 @@ export function requirementGraph(progress: BaseProgress): Graph {
     const accessId = (layer: string) => access.get(layer)!;
     access.set('sky', graph.add('a:sky', { t: 'a', id: 'sky' }, 'and', [rankId.get(1)!]));
     access.set('underworld', graph.add('a:underworld', { t: 'a', id: 'underworld' }, 'and', [accessId('sky')]));
+
+    // the way onto a layer is met once the walk reaches a cell on it
+    for (const [layer, id] of access) {
+        const layerCols = progress.reach?.cols[layer];
+        if (layerCols?.some((value) => value)) graph.met[id] = true;
+    }
 
     for (const [name, rank, layer] of MARKER_RANKS) {
         const id = graph.add('e:' + name, { t: 'e', id: name }, 'and', [accessId(layer)]);
@@ -218,9 +225,27 @@ export function requirementGraph(progress: BaseProgress): Graph {
         const gateIndices = progress.wayIn[levelIndex] || [];
         const viaLevels = progress.wayInFixed?.has(levelIndex) ? [] : progress.why[levelIndex]?.via || [];
         const viaTowers = progress.wayInFixed?.has(levelIndex) ? [] : progress.why[levelIndex]?.viaTowers || [];
+        const levelChains = progress.wayInChains[levelIndex];
+
+        // a doorway is entered by one of the ways through it, each needing all of its gates
+        const wayParts = (freezerIndex: number) => {
+            const chains = levelChains?.get(freezerIndex);
+            if (!chains) return [gateId[freezerIndex]];
+
+            return chains.map((chain) => {
+                const key = 'w' + levelIndex + ':' + chain.join(',');
+                return graph.add(
+                    key,
+                    null,
+                    'and',
+                    chain.map((gate) => gateId[gate]),
+                );
+            });
+        };
+
         graph.kind[id] = 'or';
         graph.parts[id] = [
-            ...gateIndices.map((freezerIndex) => gateId[freezerIndex]),
+            ...gateIndices.flatMap(wayParts),
             ...viaLevels.map((via) => levelId[via]),
             ...viaTowers.map((tower) => towerId[tower]),
         ];

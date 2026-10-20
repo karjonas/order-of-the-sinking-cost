@@ -6,6 +6,7 @@ import type { AchievementRule } from './achievements.ts';
 import { freezerNoun } from './freezer-names.ts';
 import { goalRoutes, roleFor } from './goal-roles.ts';
 import type { GoalRoles } from './goal-roles.ts';
+import { freezerTowers } from './goals.ts';
 import type { AchievementGoal, AntipodeGoal, EndingGoal, GoalKind, TowerGoal } from './goals.ts';
 import { roleOf } from './level-roles.ts';
 import { downKeyOf, levelGroup, orderNextSteps } from './next-steps.ts';
@@ -44,7 +45,7 @@ export interface GoalView {
     children?: GoalView[];
     /** The step onto an active ground tower's Antipode teleporter. */
     next?: string | null;
-    /** Whether a ground tower's teleporter is on the first ending's cheapest plan. */
+    /** Whether an ending's child is on its cheapest plan: a ground tower's teleporter, or a tower's Freezer. */
     onPlan?: boolean;
 }
 
@@ -139,7 +140,7 @@ function towerLevels(context: GoalsContext, tower: number, into: Set<number>): v
 }
 
 // the levels that serve a goal: an ending's are on its routes (its roles), a tower's and an achievement's are its
-// levels and their plans, Completionist's every level; the towers and the achievements gather their children's
+// levels and their plans, Completionist's every level; the achievements gather their children's
 function levelsOf(context: GoalsContext, goal: GoalView): Set<number> {
     const { levels, graph } = context;
     const into = new Set<number>();
@@ -279,7 +280,7 @@ function solvedLevelsOf(context: GoalsContext, goal: GoalView, into: Set<number>
     } else if (goal.kind === 'achievement') {
         const rule = context.achievementRule(goal.name!);
         for (const level of rule?.tower?.normal || rule?.levels || []) into.add(level);
-    } else if (goal.kind === 'towers' || goal.kind === 'achievements') {
+    } else if (goal.kind === 'achievements') {
         for (const child of goal.children!) solvedLevelsOf(context, child, into);
     } else {
         for (let level = 0; level < context.levels.length; level++) into.add(level);
@@ -450,12 +451,52 @@ function addAntipodes(context: GoalsContext, goal: GoalView, raw: EndingGoal, ra
     if (shown.length < rawChildren.length) goal.fogged = true;
 }
 
+// the towers whose Signs open Freezers under an ending, the ones not under fog and on its routes first. A tower is on
+// them when it is done or one of its Signs' Freezers is needed by the ending; with no plan every tower counts as on
+// them. The ending's own progress stays its plan steps.
+function addFreezerTowers(context: GoalsContext, goal: GoalView, raw: EndingGoal, rawChildren: TowerGoal[]): void {
+    const { plans } = context;
+    const gatesOf = freezerTowers();
+    const id = raw.targets[0];
+    const hasPlan = id !== undefined && plans.settled[id] >= 0;
+    const need = raw.roles?.g;
+
+    const onRoutes = (child: TowerGoal) => {
+        if (child.done || !hasPlan || !need) return true;
+        const gates = gatesOf.get(child.tower) ?? [];
+        return gates.some((gate) => need[gate] > 0);
+    };
+
+    const shown = rawChildren.filter((child) => towerShown(context, child.tower));
+    const children = shown.map((child) => {
+        const view = towerGoal(context, child);
+        view.onPlan = onRoutes(child);
+        return view;
+    });
+
+    const onPlan = children.filter((child) => child.onPlan);
+    const offPlan = children.filter((child) => !child.onPlan);
+    goal.children = [...onPlan, ...offPlan];
+
+    const firstOpen = goal.children.find((child) => !child.done);
+    for (const child of goal.children) {
+        child.active = child === firstOpen;
+    }
+
+    if (shown.length < rawChildren.length) goal.fogged = true;
+}
+
 function endingGoal(context: GoalsContext, raw: EndingGoal): GoalView {
     const goal = baseGoal(raw, achievementName(raw.name), null, 'steps');
     const { left, fogged } = stepsLeft(context, raw);
     goal.left = left;
     goal.fogged = fogged;
-    if (raw.children) addAntipodes(context, goal, raw, raw.children);
+    if (!raw.children) return goal;
+
+    const antipodes = raw.children.filter((child) => child.kind === 'antipode');
+    const freezerTowerGoals = raw.children.filter((child) => child.kind === 'tower');
+    if (antipodes.length) addAntipodes(context, goal, raw, antipodes);
+    if (freezerTowerGoals.length) addFreezerTowers(context, goal, raw, freezerTowerGoals);
     return goal;
 }
 
@@ -468,9 +509,11 @@ function achievementGoal(context: GoalsContext, raw: AchievementGoal): GoalView 
     const rule = context.achievementRule(raw.name);
     let goalProgress: FoundOfTotal = [raw.done ? 1 : 0, 1];
     let unit = 'achievements';
+    let tower: number | undefined;
     if (rule?.tower) {
         goalProgress = [Math.min(rule.tower.solvedNormal, rule.tower.req), rule.tower.req];
         unit = 'levels';
+        tower = context.progress.towers.indexOf(rule.tower);
     } else if (rule?.levels) {
         const solvedLevels = rule.levels.filter((level) => context.progress.state[level] === 'solved');
         goalProgress = [solvedLevels.length, rule.levels.length];
@@ -478,10 +521,12 @@ function achievementGoal(context: GoalsContext, raw: AchievementGoal): GoalView 
     }
 
     if (raw.done) goalProgress = [goalProgress[1], goalProgress[1]];
-    return baseGoal(raw, achievementName(raw.name), goalProgress, unit);
+    const goal = baseGoal(raw, achievementName(raw.name), goalProgress, unit);
+    goal.tower = tower;
+    return goal;
 }
 
-// the towers and the achievements count the children not under fog, as the totals do
+// the achievements count the children not under fog, as the totals do
 function parentGoal<Child extends { done: boolean }>(
     raw: LadderGoalFields & { children: Child[] },
     label: string,
@@ -509,21 +554,12 @@ function completionistGoal(context: GoalsContext, raw: LadderGoalFields): GoalVi
     return baseGoal(raw, achievementName('COMPLETIONIST'), [progress.solved, shown], 'levels', fogged);
 }
 
-// the listed goals as the page shows them; the towers are left out while every one of them is under fog
+// the listed goals as the page shows them
 function ladderOf(context: GoalsContext): GoalView[] {
     const { progress, endings } = context;
     const listed = (progress.goals || []).filter((raw) => raw.kind !== 'ending' || endings[raw.ending].shown);
-    const ladder = listed.map((raw) => {
+    return listed.map((raw) => {
         if (raw.kind === 'ending') return endingGoal(context, raw);
-        if (raw.kind === 'towers') {
-            return parentGoal(
-                raw,
-                'Towers',
-                'towers',
-                (child) => towerShown(context, child.tower),
-                (child) => towerGoal(context, child),
-            );
-        }
         if (raw.kind === 'achievements') {
             return parentGoal(
                 raw,
@@ -535,16 +571,14 @@ function ladderOf(context: GoalsContext): GoalView[] {
         }
         return completionistGoal(context, raw);
     });
-
-    return ladder.filter((goal) => goal.kind !== 'towers' || goal.children!.length > 0);
 }
 
 /**
  * The goals ladder as the page shows it (VIEWER.md "Goals (viewer)"), from progress.goals:
  * - goals: per goal key, kind, label, done, active, progress ([got, total]; for an ending null, or the first ending's
  *   Antipode teleporters visited of the ones its Sign needs), left (what is still to do, in `unit`: an ending's plan
- *   steps, else towers, achievements or levels), fogged (more of it is under fog) and, for the first ending, the towers
- *   and the achievements, the children not under fog;
+ *   steps, else achievements or levels), fogged (more of it is under fog) and, for the first two endings and the
+ *   achievements, the children not under fog;
  * - goalLevels(goal): the unsolved levels not under fog that serve the goal, in list order, each with its group
  *   (levelGroup), its role for the goal, what it leads to and whether it is on the goal's cheapest plans;
  * - goalSolved(goal): the solved levels not under fog in the goal's scope;
@@ -557,8 +591,7 @@ export function goalsView(view: GoalsViewInput): GoalsView {
     const context: GoalsContext = { ...view, plans, graph: plans.G };
     const goals = ladderOf(context);
 
-    // a goal by its key, a child of the first ending, the towers or the achievements too; null when none has it (a
-    // tower now under fog)
+    // a goal by its key, a child of an ending or the achievements too; null when none has it (a tower now under fog)
     const goalByKey = (key: string) => {
         for (const goal of goals) {
             if (goal.key === key) return goal;

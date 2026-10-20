@@ -8,7 +8,7 @@ import { stateLabel } from '../model/progress.ts';
 import { towerName } from '../model/towers.ts';
 import type { TowerProgress } from '../model/towers.ts';
 import type { Area } from '../types.ts';
-import { refreshSideAreas, syncSide } from '../sidebar.ts';
+import { syncSide } from '../sidebar.ts';
 import { refreshSideGoals } from '../sidebar/goals.ts';
 import type { ListedLevel, PanelContext } from './context.ts';
 import { drawFindList } from './find-list.ts';
@@ -290,7 +290,7 @@ export function layerChanged(context: PanelContext, layerKey: string): void {
     context.mapLayer = layerKey;
     applyFilters(context, false);
 
-    refreshSideAreas();
+    refreshSideGoals();
     if (context.selected !== null) markSelected(context, context.selected);
 }
 

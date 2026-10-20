@@ -1,5 +1,5 @@
-// The sidebar's goals ladder: a row per goal with its mark and count, the first ending's ground towers, the towers and
-// the achievements listed inline, and the picking of a goal for the list and the map (VIEWER.md "The page (viewer)",
+// The sidebar's goals ladder: a row per goal with its mark and count, the first two endings' towers, the achievements and
+// the areas listed inline, and the picking of a goal or an area for the list and the map (VIEWER.md "The page (viewer)",
 // "Goals (viewer)")
 import { $, escapeHtml } from '../util.ts';
 import { hooks, showGoalList } from '../shared.ts';
@@ -8,6 +8,7 @@ import { CHEVRON, checkIcon } from '../map/icons.ts';
 import type { GoalView } from '../model/goals-view.ts';
 import type { ProgressModel } from '../model/progress-model.ts';
 import { show } from '../view.ts';
+import { areaRowsHtml, hasListedAreas } from './areas.ts';
 import { isGoalOpen } from './sections.ts';
 
 // "23 left" for an ending (plan steps left), "1 / 4" for the first ending's Antipode teleporters visited, "teleporter"
@@ -63,9 +64,15 @@ function goalMark(goal: GoalView, otherwise: string): string {
     return otherwise;
 }
 
+/** Whether a goal's row folds open, and whether its children are listed. */
+interface GoalFold {
+    foldable: boolean;
+    open: boolean;
+}
+
 // a goal's row: its mark, name, a chevron after the name on a goal with children, and the count at the right; the
 // current goal has a thin progress bar under it. A child of a single item has no count.
-function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, open: boolean): string {
+function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, fold: GoalFold): string {
     const classes = ['plain', 'gl'];
     if (goal.done) classes.push('done');
     if (goal.onPlan === false) classes.push('off');
@@ -81,9 +88,9 @@ function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, open
 
     let chevron = '';
     let expanded = '';
-    if (goal.children?.length) {
+    if (fold.foldable) {
         chevron = CHEVRON;
-        expanded = ` aria-expanded="${open}"`;
+        expanded = ` aria-expanded="${fold.open}"`;
     }
 
     const key = escapeHtml(goal.key);
@@ -110,6 +117,23 @@ function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, open
     return `<div class="${rowClass}">${row}${progressBar}</div>`;
 }
 
+/**
+ * Whether a goal folds open: one with children does, and Completionist does while an area is listed, the areas being
+ * its children.
+ */
+export function goalFolds(model: ProgressModel, goal: GoalView): boolean {
+    if (goal.children?.length) return true;
+    return goal.kind === 'completionist' && hasListedAreas(model);
+}
+
+// the children of an open goal: its goals, or Completionist's areas
+function goalKidsHtml(model: ProgressModel, goal: GoalView, selectedKey: string): string {
+    if (goal.kind === 'completionist') return areaRowsHtml(model);
+
+    const noFold: GoalFold = { foldable: false, open: false };
+    return (goal.children ?? []).map((child) => goalRowHtml(child, selectedKey, true, noFold)).join('');
+}
+
 export function sideGoalsHtml(model: ProgressModel): string {
     const head = '<div class="sh">Goals</div>';
     if (!model.goals.length) return `${head}<div class="muted">Working out the goals…</div>`;
@@ -118,13 +142,10 @@ export function sideGoalsHtml(model: ProgressModel): string {
     if (!selected) return head;
 
     const rows = model.goals.map((goal) => {
-        const open = isGoalOpen(goal.key);
-        let html = goalRowHtml(goal, selected.key, false, open);
-        if (open) {
-            const kids = (goal.children ?? []).map((child) => goalRowHtml(child, selected.key, true, false)).join('');
-            html += `<div class="kids">${kids}</div>`;
-        }
-
+        const foldable = goalFolds(model, goal);
+        const open = foldable && isGoalOpen(goal.key);
+        let html = goalRowHtml(goal, selected.key, false, { foldable, open });
+        if (open) html += `<div class="kids">${goalKidsHtml(model, goal, selected.key)}</div>`;
         return html;
     });
 
@@ -138,24 +159,54 @@ export function refreshSideGoals(): void {
     element.innerHTML = sideGoalsHtml(hooks.side);
 }
 
+// makes a goal the one the list shows, with its tower chip if it has one; the active goal is stored as none, so the
+// default follows progress
+function selectGoal(model: ProgressModel, goal: GoalView): void {
+    const filters = model.F;
+    const isActiveTopLevel = model.goals.some((each) => each === goal && each.active);
+    if (isActiveTopLevel) filters.goal = '';
+    else filters.goal = goal.key;
+
+    const towerIndex = goal.tower;
+    if (towerIndex != null) filters.tower = String(towerIndex);
+    else filters.tower = '';
+}
+
 /**
- * Picks a goal for the list and the map; the list of the goal shows in place of a kind of mark's. A tower (a ground tower
- * under the first ending too) also adds its chip and is framed on the map. The active goal is stored as none, so the
- * default follows progress.
+ * Picks an area, or drops it when it is the picked one; the list shows the area's levels under Completionist, whose
+ * children the areas are, and the map frames the area.
+ */
+export function pickArea(model: ProgressModel, area: string): void {
+    const filters = model.F;
+    if (filters.area === area) filters.area = '';
+    else filters.area = area;
+
+    if (filters.area !== '') {
+        const completionist = model.goals.find((goal) => goal.kind === 'completionist');
+        if (completionist) selectGoal(model, completionist);
+    }
+
+    showGoalList(filters);
+    if (hooks.apply) hooks.apply();
+    else show();
+
+    refreshSideGoals();
+    $(`#sideGoals [data-area="${area}"]`)?.focus({ preventScroll: true });
+    if (filters.area !== '') hooks.area?.();
+}
+
+/**
+ * Picks a goal for the list and the map; the list of the goal shows in place of a kind of mark's. A tower (one under an
+ * ending too, or a tower's achievement) also adds its chip and is framed on the map.
  */
 export function pickGoal(model: ProgressModel, key: string): void {
     const goal = model.goalByKey(key);
     if (!goal) return;
 
     const filters = model.F;
-    const isActiveTopLevel = model.goals.some((each) => each === goal && each.active);
-    if (isActiveTopLevel) filters.goal = '';
-    else filters.goal = key;
+    selectGoal(model, goal);
 
     const towerIndex = goal.tower;
-    if (towerIndex != null) filters.tower = String(towerIndex);
-    else filters.tower = '';
-
     showGoalList(filters);
     if (hooks.apply) hooks.apply();
     else show();

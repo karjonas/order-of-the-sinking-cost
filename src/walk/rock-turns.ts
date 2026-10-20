@@ -176,6 +176,12 @@ export function joinsNewGround(
     return joinsReached && joinsNew;
 }
 
+/** What a push search of a Rock found: the cells it was pushed to, and the water cell it sank in, else -1. */
+export interface PushReach {
+    positions: number[];
+    waterCell: number;
+}
+
 /**
  * The first water cell `accepts` where the Rock in `rockCell` sinks, else -1: the cells the Rock is pushed to from its
  * own cell or a cell a swap put it in, nearest first over at most PRESS_CELLS cells, by a hero who stands in a cell the
@@ -190,6 +196,18 @@ export function sinkOf(
     accepts: (waterCell: number) => boolean,
     skips = false,
 ): number {
+    return pushReach(walkGrid, floodState, rockCell, miss, accepts, skips).waterCell;
+}
+
+/** The search of sinkOf, with the cells the Rock was pushed to. */
+export function pushReach(
+    walkGrid: WalkGrid,
+    floodState: FloodState,
+    rockCell: number,
+    miss: PressMiss,
+    accepts: (waterCell: number) => boolean,
+    skips = false,
+): PushReach {
     const positions = [rockCell];
     for (const swapped of swappedTo(floodState, rockCell)) {
         if (!(walkGrid.grid[swapped] & PUSH)) positions.push(swapped);
@@ -222,7 +240,7 @@ export function sinkOf(
         if (waterCell >= 0) break;
     }
 
-    return waterCell;
+    return { positions, waterCell };
 }
 
 /**

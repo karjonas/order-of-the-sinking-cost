@@ -41,6 +41,7 @@ const PROGRESS_FIELDS = [
     'state',
     'why',
     'wayIn',
+    'wayInChains',
     'wayInFixed',
     'access',
     'ice',

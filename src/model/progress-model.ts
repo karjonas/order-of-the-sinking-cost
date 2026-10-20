@@ -13,7 +13,7 @@ import { activePins, areaName, heroAreaAt, levelAreaOf } from './areas.ts';
 import { goalsView } from './goals-view.ts';
 import type { EndingStatus, GoalLevel, GoalView } from './goals-view.ts';
 import { FOG_LAYER_KEYS, mapLayerOf, wrapDelta } from './layers.ts';
-import { computeProgress } from './progress.ts';
+import { computeProgress, progressCached } from './progress.ts';
 import type { ShownProgress } from './progress.ts';
 import type { PlanStep } from './requirements.ts';
 import { totalsOf } from './totals.ts';
@@ -76,6 +76,15 @@ export interface ProgressModel {
     inLevel: number | null;
     F: ProgressFilters;
     demo: boolean;
+}
+
+/** Whether a campaign's progress is worked out already, so its model is quick to build; true for one without a status. */
+export function progressReady(camp: string): boolean {
+    const status = statusEntry(camp)?.parsed;
+    if (!status) return true;
+
+    const history = historyEntry(camp)?.parsed || null;
+    return progressCached(status, history);
 }
 
 /** The progress model of one campaign (a folder name in the loaded saves). */

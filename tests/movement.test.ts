@@ -1,6 +1,7 @@
 // Fire, pushes, elevators and rock bridges on tiny synthetic overworlds (one row of cells)
 import { describe, expect, test, vi } from 'vitest';
 import { PROG, WORLD } from '../src/data.ts';
+import type { LatestValues } from '../src/save.ts';
 import type { Position } from '../src/types.ts';
 import type { FloodOptions } from '../src/walk/flood.ts';
 import { walker } from '../src/walk/walker.ts';
@@ -322,6 +323,49 @@ describe('closing Gates', () => {
     });
     test('an object on every other Switch of the flavor lets the hero hold the last one', () => {
         expect(run({ more: { switches: second, rocks: [[64, 2, 0, 1]] } })).toEqual([5, 6, 7, 8, 9, 10]);
+    });
+});
+
+describe('Rod launches', () => {
+    // a shut Gate at column 1 with floor beyond it at column 0; the hero starts at column 2, a Wardrobe at column 3
+    // whose door faces east, a Rock at column 5 and a Switch of the Gate's flavor at column 7, past a wall at column 6
+    interface RodRun {
+        rod?: number[];
+        latest?: LatestValues;
+        walls?: Columns;
+        more?: Rows;
+    }
+    const run = ({ rod = [40], latest = NONE, walls = { 6: [0, 1] }, more = {} }: RodRun = {}) => {
+        world(12, floor(12, walls), {
+            wardrobes: [[40, 3, 0, 1, 0, 0]],
+            rod,
+            rocks: [[64, 5, 0, 1]],
+            switches: [[60, 7, 0, 7, 0, 1]],
+            gates: [[61, 1, 0, 1, 0, 0, 7, 0, 5]],
+            ...more,
+        });
+        const walkGrid = walker(latest, [], []);
+        return xs(walkGrid, fill(walkGrid, 2, 1), 1);
+    };
+    test('a hero without the Rod cannot push the Rock past the wall onto the Switch', () => {
+        expect(run({ rod: [] })).toEqual([2, 3, 4]);
+    });
+    test("a hero who left the Rod Wardrobe's door launches the Rock over the wall onto the Switch", () => {
+        expect(run()).toEqual([0, 1, 2, 3, 4]);
+    });
+    test('a hero who holds the Rod in the save launches it too', () => {
+        const holdsRod: LatestValues = {
+            ...NONE,
+            get: (pid, field) =>
+                field === 'inventory_flags' ? new Uint8Array(new Uint32Array([0x400]).buffer) : undefined,
+        };
+        expect(run({ rod: [], latest: holdsRod })).toEqual([0, 1, 2, 3, 4]);
+    });
+    test('a launch ignores a Fence between the Rock and the Switch', () => {
+        // no wall; the Switch at column 6, behind a Fence on the Rock's east edge
+        const fenced = { walls: {}, more: { switches: [[60, 7, 0, 6, 0, 1]], fences: [[70, 5, 0, 1, 0]] } };
+        expect(run({ rod: [], ...fenced })).toEqual([2, 3, 4]);
+        expect(run(fenced)).toEqual([0, 1, 2, 3, 4]);
     });
 });
 

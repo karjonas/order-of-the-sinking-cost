@@ -18,7 +18,7 @@ import { showDemo } from '../src/files.ts';
 import { progressModel } from '../src/model/progress-model.ts';
 
 // the page, without its DOM
-vi.mock('../src/view.ts', () => ({ show() {} }));
+vi.mock('../src/view.ts', () => ({ show() {}, async showSave() {} }));
 
 const LIVE = 'default';
 const hasSave = (camp: string) =>
@@ -64,6 +64,7 @@ function totalsAtRank(rank: number, shownAt: ShownAt, known: string[] | null, re
         behind: [],
         why: [],
         wayIn: [],
+        wayInChains: [],
         wayInFixed: new Set(),
         access: [],
         ice: [],

@@ -31,13 +31,16 @@ export interface ViaPads {
  * hero where he walks on to the level lead through. `dead`: the kept hero positions inside a wall. `reached`: the cells
  * the main flood reached. `cols`: the reached cells per map layer and column, less the Lily drift cells the hero only
  * rides through. `signFaced`: per Sign, 1 when a reached cell next to it has no Fence between and the Sign's own cell
- * holds no closed Freezer: a hero there can face the Sign and read it.
+ * holds no closed Freezer: a hero there can face the Sign and read it. `chains`: per level, the closed Freezers on the
+ * edge of its pockets that open onto nothing but more closed Freezers, each with the ways through it: the Freezer and
+ * one Freezer beyond it, both needed.
  */
 export interface Reachability {
     reached: Set<number>;
     level: boolean[];
     leads: Map<number, number[]>;
     pocket: Map<number, number[]>;
+    chains: Map<number, Map<number, number[][]>>;
     from: Map<number, Set<number>>;
     mech: Uint8Array;
     fromSky: Uint8Array;
@@ -55,13 +58,15 @@ interface PadPocket {
 
 /**
  * A level's pocket flood: the closed Freezers it bumps into, its levels, and the Freezers and levels its revealing pads
- * add (those of the revealing pads' pockets that it does not hold itself).
+ * add (those of the revealing pads' pockets that it does not hold itself). `doorways`: per Freezer it bumps into that
+ * opens onto nothing but more closed Freezers, those Freezers.
  */
 interface PocketWays {
     bumped: Set<number>;
     members: Set<number>;
     viaPad: Set<number>;
     viaLevel: Set<number>;
+    doorways: Map<number, number[]>;
 }
 
 /**
@@ -362,12 +367,16 @@ function padPocketOf(context: ReachContext, padPockets: Map<number, PadPocket>, 
     return padPocket;
 }
 
-/** What floodPockets carries from level to level: the pockets found so far and the pads' pockets flooded so far. */
+/**
+ * What floodPockets carries from level to level: the pockets found so far with their cells (`pocketCells`, by index
+ * in `pockets.ways`) and the pads' pockets flooded so far.
+ */
 interface PocketFloods {
     context: ReachContext;
     byGate: Map<number, Set<number>>;
     mech: Uint8Array;
     pockets: Pockets;
+    pocketCells: Array<Set<number>>;
     done: Uint8Array;
     enteredFromSky: (cells: Iterable<number>) => boolean;
     pads: PadRevealers;
@@ -375,6 +384,8 @@ interface PocketFloods {
     roverFreezers: Set<number>;
     roverFlooded: Set<number>;
 }
+
+const POCKET_OPTIONS: FloodOptions = { reveal: false, pocket: true, frozenHolds: false, topDrops: true };
 
 /**
  * What the pads revealed from a pocket's cells add to it: the Freezers on the edge of the revealing pads' pockets that
@@ -426,8 +437,7 @@ function floodPocketOfLevel(state: PocketFloods, position: number): void {
     }
 
     const bumped = new Set<number>();
-    const pocketOptions = { reveal: false, pocket: true, frozenHolds: false, topDrops: true };
-    const cells = walk.flood([restCells[position]], reached, bumped, pocketOptions);
+    const cells = walk.flood([restCells[position]], reached, bumped, POCKET_OPTIONS);
     const pocketLevels = restLevelsIn(context, cells);
     const mechanicsBits = walk.mechAt(cells);
     const members = new Set(pocketLevels);
@@ -435,7 +445,8 @@ function floodPocketOfLevel(state: PocketFloods, position: number): void {
     const { viaPad, viaLevel } = padWaysOf(state, cells, bumped, members);
 
     const pocketIndex = pockets.ways.length;
-    pockets.ways.push({ bumped, members, viaPad, viaLevel });
+    pockets.ways.push({ bumped, members, viaPad, viaLevel, doorways: new Map() });
+    state.pocketCells.push(cells);
 
     // a way into any pocket that holds a level leads on to it, so a level in several pockets takes the
     // mechanics and the sky entrance of each
@@ -455,7 +466,85 @@ function floodPocketOfLevel(state: PocketFloods, position: number): void {
         }
     }
 
-    addRoverGateLevels(state, bumped, pocketOptions);
+    addRoverGateLevels(state, bumped);
+}
+
+/**
+ * The Freezers a pocket bumps into that may be doorways: those not on the edge of the reached cells that no pocket
+ * holding a level outside it bumps into (such a pocket lies beyond the Freezer).
+ */
+function doorwayCandidates(state: PocketFloods, pocketIndex: number, bumpedBy: Map<number, number[]>): number[] {
+    const { ways } = state.pockets;
+    const { bumped, members } = ways[pocketIndex];
+
+    return [...bumped].filter((freezerIndex) => {
+        if (state.context.front.has(freezerIndex)) return false;
+
+        for (const other of bumpedBy.get(freezerIndex) ?? []) {
+            const holdsOtherLevel = [...ways[other].members].some((levelIndex) => !members.has(levelIndex));
+            if (holdsOtherLevel) return false;
+        }
+
+        return true;
+    });
+}
+
+/**
+ * The far side of closed Freezers: the walk from their cells with them open, which never enters the reached cells, and
+ * the closed Freezers it bumps into besides them.
+ */
+function farSideOf(context: ReachContext, freezerIndices: number[]): { cells: Set<number>; bumped: Set<number> } {
+    const { walk, reached } = context;
+    const gateCells = freezerIndices.map((freezerIndex) => walk.cellOf(...PROG.freezers[freezerIndex].p));
+    const bumped = new Set<number>();
+
+    for (const gateCell of gateCells) walk.thaw(gateCell);
+    const cells = walk.flood(gateCells, reached, bumped, POCKET_OPTIONS);
+    freezerIndices.forEach((freezerIndex, position) => walk.freeze(gateCells[position], freezerIndex));
+
+    for (const freezerIndex of freezerIndices) bumped.delete(freezerIndex);
+    return { cells, bumped };
+}
+
+/**
+ * Doorways: a closed Freezer a pocket bumps into whose far side, walked with the pocket's cells counted as reached,
+ * holds no level and bumps into closed Freezers the pocket does not. Per doorway, those Freezers are recorded in the
+ * pocket's `doorways`: a way in through the doorway needs one of them open too. The far side of all the candidates at
+ * once comes first: when it bumps into no new Freezer, neither does any one of them.
+ */
+function addDoorways(state: PocketFloods): void {
+    const { context } = state;
+    const { ways } = state.pockets;
+    const bumpedBy = new Map<number, number[]>();
+
+    ways.forEach(({ bumped }, pocketIndex) => {
+        for (const freezerIndex of bumped) addTo(bumpedBy, freezerIndex, pocketIndex);
+    });
+
+    ways.forEach(({ bumped, members, doorways }, pocketIndex) => {
+        const candidates = doorwayCandidates(state, pocketIndex, bumpedBy);
+        if (candidates.length === 0) return;
+
+        // the pocket's cells join the reached cells while its Freezers' far sides are walked, and leave them after
+        const pocketCells = state.pocketCells[pocketIndex];
+        for (const cell of pocketCells) context.reached.add(cell);
+
+        const allFarSides = farSideOf(context, candidates);
+        const newFreezers = [...allFarSides.bumped].some((other) => !bumped.has(other));
+
+        if (newFreezers) {
+            for (const freezerIndex of candidates) {
+                const farSide = candidates.length === 1 ? allFarSides : farSideOf(context, [freezerIndex]);
+                const farLevels = restLevelsIn(context, farSide.cells);
+                if (farLevels.some((levelIndex) => !members.has(levelIndex))) continue;
+
+                const beyond = [...farSide.bumped].filter((other) => !bumped.has(other));
+                if (beyond.length > 0) doorways.set(freezerIndex, beyond);
+            }
+        }
+
+        for (const cell of pocketCells) context.reached.delete(cell);
+    });
 }
 
 // the world.json movables kind of a Rover
@@ -484,7 +573,7 @@ function roverFreezersOf(): Set<number> {
  * does not go. The first pocket to bump such a Freezer floods from the Freezer's cell with it open, and the levels of
  * that flood that are not frozen in (`frozenIn`) sit behind the Freezer, whichever pocket bumps it.
  */
-function addRoverGateLevels(state: PocketFloods, bumped: Set<number>, pocketOptions: FloodOptions): void {
+function addRoverGateLevels(state: PocketFloods, bumped: Set<number>): void {
     const { context, byGate, roverFreezers, roverFlooded } = state;
     const { walk, reached, frozenIn } = context;
 
@@ -495,7 +584,7 @@ function addRoverGateLevels(state: PocketFloods, bumped: Set<number>, pocketOpti
 
         const gateCell = walk.cellOf(...PROG.freezers[freezerIndex].p);
         walk.thaw(gateCell);
-        const thawedCells = walk.flood([gateCell], reached, new Set(), pocketOptions);
+        const thawedCells = walk.flood([gateCell], reached, new Set(), POCKET_OPTIONS);
         walk.freeze(gateCell, freezerIndex);
 
         const behind = levelsBehind(byGate, freezerIndex);
@@ -646,6 +735,7 @@ function floodPockets(context: ReachContext, byGate: Map<number, Set<number>>, m
         byGate,
         mech,
         pockets,
+        pocketCells: [],
         done: new Uint8Array(levelCount),
         enteredFromSky: sky.into,
         pads: padRevealersOf(context),
@@ -655,6 +745,7 @@ function floodPockets(context: ReachContext, byGate: Map<number, Set<number>>, m
     };
 
     context.rest.forEach((_, position) => floodPocketOfLevel(state, position));
+    addDoorways(state);
     addSkyWalk(context, sky.landings, pockets);
     addLandingWays(context, pockets, byGate);
 
@@ -702,6 +793,55 @@ function viaPadsOf(pockets: Pockets): Map<number, ViaPads> {
     }
 
     return viaPads;
+}
+
+/**
+ * chains: per level not frozen in a closed Freezer, the doorways of the pockets that hold it, each with its ways
+ * through: [doorway, a Freezer beyond it]. A doorway that another of those pockets bumps into without being one there
+ * leads in alone, so it has no chains.
+ */
+function chainsOf(context: ReachContext, pockets: Pockets): Map<number, Map<number, number[][]>> {
+    const chains = new Map<number, Map<number, number[][]>>();
+
+    for (const [levelIndex, pocketIndices] of pockets.ofLevel) {
+        if (context.frozenIn[levelIndex] !== undefined) continue;
+
+        const plain = new Set<number>();
+        const beyondOf = new Map<number, Set<number>>();
+
+        for (const pocketIndex of pocketIndices) {
+            const { bumped, doorways } = pockets.ways[pocketIndex];
+
+            for (const freezerIndex of bumped) {
+                const beyond = doorways.get(freezerIndex);
+                if (!beyond) {
+                    plain.add(freezerIndex);
+                    continue;
+                }
+
+                let known = beyondOf.get(freezerIndex);
+                if (!known) {
+                    known = new Set();
+                    beyondOf.set(freezerIndex, known);
+                }
+                for (const other of beyond) known.add(other);
+            }
+        }
+
+        const levelChains = new Map<number, number[][]>();
+
+        for (const [freezerIndex, beyond] of beyondOf) {
+            if (plain.has(freezerIndex)) continue;
+            levelChains.set(
+                freezerIndex,
+                [...beyond].map((other) => [freezerIndex, other]),
+            );
+        }
+
+        if (levelChains.size > 0) chains.set(levelIndex, levelChains);
+    }
+
+    return chains;
 }
 
 /** A level in a closed gate's cell belongs to that gate alone, not to the pocket next to it. */
@@ -808,6 +948,7 @@ export function reachability(
         level,
         leads: gateLists(byGate, front, true),
         pocket: gateLists(byGate, front, false),
+        chains: chainsOf(context, pockets),
         from,
         mech,
         fromSky: pockets.fromSky,

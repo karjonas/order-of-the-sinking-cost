@@ -84,8 +84,10 @@ export function components(nodeCount: number, edges: number[][]): Int32Array {
 
 /**
  * The closed gates that are no way in: their requirements can be met only from behind the gate itself, through any
- * chain of gates and levels (VIEWER.md "Next steps"). Requirements (nodes: levels 0..L-1, then gates):
- * - a level the walk cannot reach needs one of its way-in gates or of the levels by a pad (`via`);
+ * chain of gates and levels (VIEWER.md "Next steps"). Requirements (nodes: levels 0..L-1, then gates, then the ways
+ * through a doorway):
+ * - a level the walk cannot reach needs one of its way-in gates or of the levels by a pad (`via`); in place of a
+ *   doorway, one of the ways through it (`chains`), and a way through needs all of its gates;
  * - a locked level its unsolved requirements (all, or one for an OR level) or the closed Freezer it is frozen in;
  * - a closed Freezer its unmet levels (all, or one for an OR gate; an OR gate with a met option or a sign needs none).
  *
@@ -95,6 +97,7 @@ export function components(nodeCount: number, edges: number[][]): Int32Array {
 export function gatesBehindThemselves({
     state,
     wayIn,
+    chains = [],
     via,
     ice,
     gateOpen,
@@ -102,6 +105,7 @@ export function gatesBehindThemselves({
 }: {
     state: LevelState[];
     wayIn: Array<number[] | null>;
+    chains?: Array<Map<number, number[][]> | null>;
     via: (level: number) => number[] | undefined;
     ice: Array<number | undefined>;
     gateOpen: boolean[];
@@ -109,14 +113,33 @@ export function gatesBehindThemselves({
 }): Set<number> {
     const levels = PROG.levels;
     const freezers = PROG.freezers;
-    const nodeCount = levels.length + freezers.length;
+    let chainCount = 0;
+    for (const levelChains of chains) {
+        for (const ways of levelChains?.values() ?? []) chainCount += ways.length;
+    }
+
+    const nodeCount = levels.length + freezers.length + chainCount;
     const any = Array.from({ length: nodeCount }, (): number[] => []);
     const all = Array.from({ length: nodeCount }, (): number[] => []);
     const gateNode = (freezerIndex: number) => levels.length + freezerIndex;
+    let nextChainNode = levels.length + freezers.length;
+
+    // a way through a doorway is held back by any one of its gates
+    const wayNodes = (level: number, freezerIndex: number) => {
+        const ways = chains[level]?.get(freezerIndex);
+        if (!ways) return [gateNode(freezerIndex)];
+
+        return ways.map((chain) => {
+            const node = nextChainNode++;
+            any[node] = chain.map(gateNode);
+            return node;
+        });
+    };
 
     levels.forEach((level, i) => {
         if (state[i] === 'blocked') {
-            all[i] = [...(wayIn[i] || []).map(gateNode), ...(via(i) || [])];
+            const gateNodes = (wayIn[i] || []).flatMap((freezerIndex) => wayNodes(i, freezerIndex));
+            all[i] = [...gateNodes, ...(via(i) || [])];
             return;
         }
         if (state[i] !== 'locked') return;
@@ -155,9 +178,17 @@ export function gatesBehindThemselves({
 
     const candidates = new Set<number>();
 
+    const addCandidate = (freezerIndex: number) => {
+        if (size[component[gateNode(freezerIndex)]] > 1) candidates.add(freezerIndex);
+    };
+
     for (const gates of wayIn) {
-        for (const freezerIndex of gates || []) {
-            if (size[component[gateNode(freezerIndex)]] > 1) candidates.add(freezerIndex);
+        for (const freezerIndex of gates || []) addCandidate(freezerIndex);
+    }
+
+    for (const levelChains of chains) {
+        for (const ways of levelChains?.values() ?? []) {
+            for (const chain of ways) chain.forEach(addCandidate);
         }
     }
 
@@ -233,9 +264,9 @@ export function gatesBehind(reach: Reachability | null): number[][] {
 
 /**
  * The levels the walk cannot reach: why (per level, the gates and mechanics that may still lead in), wayInOf() (per
- * level, its way-in gates under the current level roles), wayInFixed (the levels whose way in is the level data's
- * alone) and ice (per level, the closed Freezer it is frozen in). solved(i): whether level i is solved; unlocks:
- * unlocksOf(); behind: gatesBehind(reach).
+ * level, its way-in gates under the current level roles, and per doorway among them the ways through it), wayInFixed
+ * (the levels whose way in is the level data's alone) and ice (per level, the closed Freezer it is frozen in).
+ * solved(i): whether level i is solved; unlocks: unlocksOf(); behind: gatesBehind(reach).
  */
 export function wayInModel({
     levelFlags,
@@ -344,27 +375,77 @@ export function wayInModel({
 
     const gateMet = (freezer: Freezer, level: number) => gateOptionMet(freezer, level, levelFlags);
 
-    // the way-in gates, less the ones whose requirements can be met only from behind them (gatesBehindThemselves)
+    // the doorways among a level's way-in gates, each with the ways through it whose gates beyond it inner() leaves; a
+    // doorway with none left is no way in
+    const chainsOf = (level: number, gates: number[]) => {
+        const levelChains = new Map<number, number[][]>();
+        const walkChains = reach?.chains.get(level);
+        if (!walkChains) return { gates, levelChains };
+
+        const needing = levelsNeeding(level);
+        const kept = gates.filter((freezerIndex) => {
+            const chains = walkChains.get(freezerIndex);
+            if (!chains) return true;
+
+            const open = chains.filter((chain) =>
+                chain.every((gate) => gate === freezerIndex || !inner(gate, level, needing)),
+            );
+            if (open.length === 0) return false;
+            levelChains.set(freezerIndex, open);
+            return true;
+        });
+        return { gates: kept, levelChains };
+    };
+
+    // the way-in gates and their chains, less the gates whose requirements can be met only from behind them
+    // (gatesBehindThemselves): a doorway loses the ways through such a gate, and once it has none it is no way in
     const wayInOf = () => {
+        const wayInChains = state.map((): Map<number, number[][]> | null => null);
         const wayIn = state.map((levelState, i): number[] | null => {
             if (levelState !== 'blocked') return null;
 
             const table = endgameWayIn.get(i);
             const tableGates = table ? table.gates.filter((freezerIndex) => !gateOpen[freezerIndex]) : [];
             if (table?.replace) return tableGates;
-            const gates = walkWayIn(i);
-            return gates.length ? gates : tableGates;
+            const { gates, levelChains } = chainsOf(i, walkWayIn(i));
+            if (!gates.length) return tableGates;
+            if (levelChains.size) wayInChains[i] = levelChains;
+            return gates;
         });
         const behindThemselves = gatesBehindThemselves({
             state,
             wayIn,
+            chains: wayInChains,
             via: (level) => (wayInFixed.has(level) ? [] : why[level]?.via),
             ice,
             gateOpen,
             met: gateMet,
         });
-        if (!behindThemselves.size) return wayIn;
-        return wayIn.map((gates) => gates && gates.filter((freezerIndex) => !behindThemselves.has(freezerIndex)));
+        if (!behindThemselves.size) return { wayIn, wayInChains };
+
+        const isOpenWay = (chain: number[]) => chain.every((freezerIndex) => !behindThemselves.has(freezerIndex));
+        const keptChains = wayInChains.map((levelChains) => {
+            if (!levelChains) return null;
+
+            const kept = new Map<number, number[][]>();
+            for (const [freezerIndex, chains] of levelChains) {
+                const open = chains.filter(isOpenWay);
+                if (open.length) kept.set(freezerIndex, open);
+            }
+            if (!kept.size) return null;
+            return kept;
+        });
+        const keptWayIn = wayIn.map((gates, i) => {
+            if (!gates) return null;
+
+            const levelChains = keptChains[i];
+            return gates.filter((freezerIndex) => {
+                if (behindThemselves.has(freezerIndex)) return false;
+                if (!wayInChains[i]?.has(freezerIndex)) return true;
+                return !!levelChains?.has(freezerIndex);
+            });
+        });
+        return { wayIn: keptWayIn, wayInChains: keptChains };
     };
 
     return { why, wayInOf, wayInFixed, ice };

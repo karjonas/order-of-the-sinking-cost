@@ -5,7 +5,7 @@ import { apolloDate } from './util.ts';
 import { parseHistory, parseStatus } from './save.ts';
 import type { History } from './save.ts';
 import { state } from './shared.ts';
-import { show } from './view.ts';
+import { show, showSave } from './view.ts';
 import type { DemoStatus, Status } from './status-file.ts';
 
 /**
@@ -140,8 +140,13 @@ export async function addFiles(list: SaveFile[]): Promise<void> {
 
     // follows the campaign the game saved last until one is picked by hand
     if (!state.campPicked || state.camp === null || !camps.includes(state.camp)) state.camp = newestCampaign(camps);
-    if (state.camp != null) show();
-    else void showDemo();
+    if (state.camp === null) {
+        void showDemo();
+        return;
+    }
+
+    const note = state.rendered === state.camp ? 'Updating…' : 'Working out your save…';
+    await showSave(note);
 }
 
 /** Where the game keeps its saves. */

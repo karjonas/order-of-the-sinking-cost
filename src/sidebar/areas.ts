@@ -1,9 +1,8 @@
-// The sidebar's area list: the areas by layer with their solved counts, the map's layer first
+// The areas listed under Completionist: the areas by layer with their solved counts, the map's layer first
 // (VIEWER.md "The page (viewer)", "Level areas (viewer)")
 import { PROG } from '../data.ts';
 import { escapeHtml } from '../util.ts';
 import { readPreference, setPreference } from '../shared.ts';
-import { areaListOpen } from './sections.ts';
 import { CHEVRON, checkIcon } from '../map/icons.ts';
 import { viewLayer } from '../map/map-html.ts';
 import { areaName } from '../model/areas.ts';
@@ -77,44 +76,54 @@ function areaCounts(model: ProgressModel, areas: Area[]): AreaCount[] {
 
 const layerOfArea = (area: Area): string => area.layer || 'ground';
 
-export function sideAreasHtml(model: ProgressModel): string {
+// the areas with a level not under fog, whose pin is not under fog, in the game's order
+function listedAreasOf(model: ProgressModel, areas: Area[], counts: AreaCount[]): number[] {
+    return [...areas.keys()]
+        .filter((areaIndex) => counts[areaIndex].all && model.areaShown(areaIndex))
+        .toSorted((first, second) => (areas[first].order ?? 1e9) - (areas[second].order ?? 1e9));
+}
+
+/** Whether any area is listed, which is what makes Completionist fold. */
+export function hasListedAreas(model: ProgressModel): boolean {
+    const areas = PROG.areas || [];
+    return listedAreasOf(model, areas, areaCounts(model, areas)).length > 0;
+}
+
+/** The areas under Completionist: a row each with its solved count, grouped by layer when more than one has areas. */
+export function areaRowsHtml(model: ProgressModel): string {
     const areas = PROG.areas || [];
     if (!areas.length) return '';
 
     const counts = areaCounts(model, areas);
     const finished = (areaIndex: number): boolean => counts[areaIndex].solved === counts[areaIndex].all;
-    const listed = [...areas.keys()]
-        .filter((areaIndex) => counts[areaIndex].all && model.areaShown(areaIndex))
-        .toSorted((first, second) => (areas[first].order ?? 1e9) - (areas[second].order ?? 1e9));
-    const finishedTotal = `${listed.filter(finished).length} / ${listed.length}`;
-    const count = `<span class="cnt" title="Areas with every level solved">${finishedTotal}</span>`;
-    const headContent = `<span class="sh">Areas</span>${CHEVRON}${count}`;
-    const open = areaListOpen();
-    const head = `<button class="plain fold" data-areas aria-expanded="${open}">${headContent}</button>`;
-    if (!open) return head;
+    const listed = listedAreasOf(model, areas, counts);
 
     const listedLayers = new Set(listed.map((areaIndex) => layerOfArea(areas[areaIndex])));
     const extraLayers = [...listedLayers].filter((key) => !AREA_LAYERS.includes(key));
     const layers = layerFirst(AREA_LAYERS.concat(extraLayers));
 
-    // with one layer listed, the panel's own header already gives its count
+    // with one layer listed, the rows stand under Completionist without layer subheads
     const grouped = listedLayers.size > 1;
+    const pickedArea = model.F.area;
     const rowHtml = (areaIndex: number): string => {
         const done = finished(areaIndex);
         const { solved, all } = counts[areaIndex];
         const name = escapeHtml(areaName(areas[areaIndex]));
-        let doneClass = '';
+        const picked = String(areaIndex) === pickedArea;
+        let extraClasses = '';
         let check = '';
         if (done) {
-            doneClass = ' done';
+            extraClasses += ' done';
             check = checkIcon;
         }
 
-        const attributes = `data-area="${areaIndex}" aria-pressed="false" title="${name}"`;
+        if (picked) extraClasses += ' on';
+
+        const attributes = `data-area="${areaIndex}" aria-pressed="${picked}" title="${name}"`;
         const markHtml = `<span class="mk" title="All levels solved">${check}</span>`;
         const nameHtml = `<span class="n">${name}</span>`;
         const countHtml = `<span class="cnt">${solved} / ${all}</span>`;
-        return `<button class="plain${doneClass}" ${attributes}>${markHtml}${nameHtml}${countHtml}</button>`;
+        return `<button class="plain gl${extraClasses}" ${attributes}>${markHtml}${nameHtml}${countHtml}</button>`;
     };
 
     // finished areas fold into one row under the open ones
@@ -143,5 +152,5 @@ export function sideAreasHtml(model: ProgressModel): string {
         return layerGroupHtml(layerKey, `${done.length} / ${inLayer.length}`, rows);
     };
 
-    return head + layers.map(layerHtml).join('');
+    return layers.map(layerHtml).join('');
 }

@@ -34,7 +34,7 @@ import {
     Z_BIAS,
 } from './cells.ts';
 import type { FloodState } from './flood.ts';
-import { bringObjectOnto, missChanged, pressInputs } from './gates.ts';
+import { bringObjectOnto, missChanged, pressInputs, rodHolderIn } from './gates.ts';
 import type { PressMiss } from './gates.ts';
 import { exists } from './groups.ts';
 import { requeue, visitReached } from './queue.ts';
@@ -531,9 +531,9 @@ function gemPushable(walkGrid: WalkGrid, floodState: FloodState, beamFlood: Beam
 }
 
 /**
- * The cell of a free Gem of the turn's room that the walk can bring onto its slot by any pushes (the walk back from
- * the slot, within the slot's screen room) or that a hero with TELEPORT swaps onto it, else -1. The hero pushes from
- * the cells the flood reached in layer 0.
+ * The cell of a free Gem of the turn's room that the walk can bring onto its slot by any pushes and Rod launches (the
+ * walk back from the slot, within the slot's screen room) or that a hero with TELEPORT swaps onto it, else -1. The hero
+ * pushes from the cells the flood reached in layer 0.
  */
 function gemToSlot(
     walkGrid: WalkGrid,
@@ -552,6 +552,7 @@ function gemToSlot(
             return !blocked(walkGrid, floodState, from);
         },
         stays: (from) => roomOf(walkGrid, from) === room,
+        heroLaunches: rodHolderIn(walkGrid, floodState),
     });
 }
 

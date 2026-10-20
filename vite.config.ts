@@ -7,21 +7,12 @@ import { savesDir } from './scripts/saves.ts';
 const ROOT = import.meta.dirname;
 const DIST = resolve(ROOT, 'dist');
 
-// The dev server opens the page at /, and /saves/<campaign>/<file> reads the game's save folder: GET and HEAD only, and anything that
-// resolves outside the folder (backslashes, drive letters, ..) is not found
+// On the dev server /saves/<campaign>/<file> reads the game's save folder: GET and HEAD only, and anything that resolves
+// outside the folder (backslashes, drive letters, ..) is not found
 function saves(): Plugin {
     return {
         name: 'soko:saves',
         configureServer(server) {
-            server.middlewares.use((req, res, next) => {
-                if (req.url !== '/') {
-                    next();
-                    return;
-                }
-                res.statusCode = 302;
-                res.setHeader('Location', '/viewer.html');
-                res.end();
-            });
             server.middlewares.use('/saves', (req, res) => {
                 if (req.method !== 'GET' && req.method !== 'HEAD') {
                     res.statusCode = 405;
@@ -73,28 +64,6 @@ function schemaForPage(): Plugin {
     };
 }
 
-// The page's script is a classic script loaded with defer, which also runs when viewer.html is opened from disk, where
-// browsers refuse module scripts. The bundle has no imports or exports, and a banner and footer wrap it in a function;
-// the iife format would put the styles in the script instead of viewer.css. Vite writes the script as a module script
-// and the styles with crossorigin attributes.
-function classicScript(): Plugin {
-    return {
-        name: 'soko:classic-script',
-        apply: 'build',
-        transformIndexHtml: {
-            order: 'post',
-            handler(html) {
-                return html
-                    .replace(
-                        /<script type="module" crossorigin src="[^"]*viewer\.js"><\/script>/,
-                        '<script defer src="viewer.js"></script>',
-                    )
-                    .replace(/(<link rel="stylesheet") crossorigin /, '$1 ');
-            },
-        },
-    };
-}
-
 // The build has exactly one script, and its source map lists the sources relative to the repository, with the contents
 // of the JSON data files left out
 function scriptMap(): Plugin {
@@ -125,18 +94,19 @@ function scriptMap(): Plugin {
     };
 }
 
-// Fixed file names, so publishing the build again overwrites the same paths
+// Every file in assets/ has the hash of its content in its name, so it can be cached for good (public/_headers); the
+// page's styles are one file, named like the script
 function assetFileName(asset: { names?: string[]; name?: string }): string {
     const name = asset.names?.[0] ?? asset.name ?? '';
-    if (name.endsWith('.css')) return 'viewer.css';
-    return 'assets/[name][extname]';
+    if (name.endsWith('.css')) return 'assets/viewer-[hash].css';
+    return 'assets/[name]-[hash][extname]';
 }
 
 export default defineConfig({
     root: resolve(ROOT, 'src'),
     base: './',
     publicDir: resolve(ROOT, 'public'),
-    plugins: [saves(), schemaForPage(), classicScript(), scriptMap()],
+    plugins: [saves(), schemaForPage(), scriptMap()],
     json: { namedExports: false, stringify: true },
     server: { host: '127.0.0.1', port: 8765, strictPort: true },
     build: {
@@ -145,18 +115,18 @@ export default defineConfig({
         // the script is minified in rolldownOptions below, keeping its names
         minify: false,
         cssMinify: true,
+        // the icons and map images stay files, which get a hash in their names; the thumbnails are inlined by their import
+        assetsInlineLimit: 0,
         sourcemap: true,
         modulePreload: { polyfill: false },
         reportCompressedSize: false,
         rolldownOptions: {
-            input: resolve(ROOT, 'src/viewer.html'),
+            input: resolve(ROOT, 'src/index.html'),
             output: {
                 format: 'es',
-                banner: '(function () {',
-                footer: '})();',
                 minify: { compress: true, mangle: false, codegen: { removeWhitespace: true } },
-                entryFileNames: 'viewer.js',
-                chunkFileNames: 'viewer-[name].js',
+                entryFileNames: 'assets/viewer-[hash].js',
+                chunkFileNames: 'assets/viewer-[name]-[hash].js',
                 assetFileNames: assetFileName,
             },
         },

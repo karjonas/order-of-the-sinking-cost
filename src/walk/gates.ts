@@ -1,7 +1,7 @@
 // Gates and Switches: the latches that switch presses change, the moves that bring an object onto a Switch, and an
 // OPEN beam bumping a Gate open (MOVEMENT.md "Gates, switches and buttons", "Promesst beams and powers")
 import { latestFlag } from '../save.ts';
-import { attackedAt } from './attacks.ts';
+import { attackedAt, GOBLIN } from './attacks.ts';
 import {
     addTo,
     cellOnSide,
@@ -20,7 +20,7 @@ import { exists, place, put } from './groups.ts';
 import { deep, waterStopsFall } from './ocean.ts';
 import { push, requeue, settle, visitReached } from './queue.ts';
 import { reachedEntries } from './room-answers.ts';
-import { LAYER_COUNT } from './skills.ts';
+import { LAYER_COUNT, PROTECTED } from './skills.ts';
 import { landingsOf, skipsOver } from './skipping-stones.ts';
 import { blocked, gateShutNow, holdsStone, standable } from './support.ts';
 import type { WalkGrid } from './walker.ts';
@@ -30,9 +30,12 @@ import { fenced, latestCell } from './walls.ts';
 export const PRESS_CELLS = 2048;
 export const PRESS_FALL = 8;
 
-// the ways on from a cell of a walk back: it skips, and a skip on it is a stone a hero with CHARM launches
+// the ways on from a cell of a walk back: it skips, a skip on it is a stone a hero with CHARM launches, and a hero with
+// no PROTECTION stands beside the object on it, which a goblin would kill; a move onto a cell is also a Rod launch
 const SKIPS = 1;
 const CHARMED = 2;
+const EXPOSED = 4;
+const LAUNCHED = 8;
 
 // the world.json movables kind of a Friendly_Dragon
 const DRAGON_KIND = 4;
@@ -59,22 +62,25 @@ export interface GateLift {
 }
 
 /**
- * A move that brings an object onto a cell: pushed from `from` by the hero in `pushCell`, whether it skips, and
- * whether it is a skip launched by a hero with CHARM, who stands in `pushCell` and steps on beside the stone.
+ * A move that brings an object onto a cell: pushed from `from` by the hero in `heroCell`, with `move` its SKIPS,
+ * CHARMED (a skip launched by a hero with CHARM, who stands in `heroCell` and steps on beside the stone) and LAUNCHED
+ * (a Rod launch by a hero who stays in `heroCell`) bits.
  */
-type PushWay = (from: number, pushCell: number, skip: boolean, charmed: boolean) => void;
+type PushWay = (from: number, heroCell: number, move: number) => void;
 
 // how far from a stone a hero with CHARM charms it, in cells along each axis
 const CHARM_RANGE = 2;
 
 /**
  * A flavor whose press failed: what the search saw (pressInputs), the push cells it turned down because the walk had
- * not reached them and the solid cells that stopped a skip (`wallStops`). The same search finds nothing new until one
+ * not reached them in layer 0, the cells a Rod launch needed the hero in that the walk had not reached in any layer
+ * (`launchCells`), and the solid cells that stopped a skip (`wallStops`). The same search finds nothing new until one
  * of those changes.
  */
 export interface PressMiss {
     inputs: number;
     pushCells: number[];
+    launchCells?: number[];
     wallStops: number[];
 }
 
@@ -176,7 +182,7 @@ export function walled(walkGrid: WalkGrid, floodState: FloodState, cell: number)
 }
 
 /**
- * Calls way(from, bardCell, true, true) for each cell a hero with CHARM can launch the stone in `from` from, `side`
+ * Calls way(from, bardCell, SKIPS | CHARMED) for each cell a hero with CHARM can launch the stone in `from` from, `side`
  * into water (SKILLS.md "CHARM"): a cell standable within CHARM_RANGE of the stone in each direction, one layer up or
  * down included, from which his step on `side` is open, since a charm move pushes nothing. The step may go to the
  * stone's own cell, which the stone leaves.
@@ -206,7 +212,7 @@ function charmLaunches(walkGrid: WalkGrid, floodState: FloodState, from: number,
             if (fenced(walkGrid, bardCell, side, stepCell)) continue;
             if (stepCell !== from && (grid[stepCell] & PUSH || !standable(walkGrid, floodState, stepCell))) continue;
 
-            way(from, bardCell, true, true);
+            way(from, bardCell, SKIPS | CHARMED);
         }
     }
 }
@@ -258,7 +264,7 @@ function skipFrom(
     const landings = landingsOf(walkGrid, floodState, side, firstWater, z, wallStops);
     if (!landings.includes(target)) return;
 
-    if (!pushFenced) way(from, pushCell, true, false);
+    if (!pushFenced) way(from, pushCell, SKIPS);
     if (charmed) charmLaunches(walkGrid, floodState, from, side, way);
 }
 
@@ -307,7 +313,7 @@ const sidePushCells = new Int32Array(4);
 
 /**
  * The pushes into cell `into` at height intoZ, which the object then stands in or falls from onto `target`: way(from,
- * pushCell, false, false) for each side whose cell holds an object that can be pushed.
+ * pushCell, 0) for each side whose cell holds an object that can be pushed.
  */
 function pushesInto(
     walkGrid: WalkGrid,
@@ -332,17 +338,65 @@ function pushesInto(
 
         if (!holdsStone(walkGrid, floodState, from, intoZ) || walled(walkGrid, floodState, from)) continue;
         if (fenced(walkGrid, from, side, into) || fenced(walkGrid, pushCell, side, from)) continue;
-        way(from, pushCell, false, false);
+        way(from, pushCell, 0);
     }
 }
 
 /**
- * The moves that bring an object onto cell `target`: way(from, pushCell, skip, charmed) for each cell `from` an object
- * is pushed from (the hero standing in pushCell) to end up in `target`. A push moves it one cell onto a cell that holds
+ * The Rod launches that land an object in cell `into` at height intoZ (SKILLS.md "TRANSMUTE and the other skills"):
+ * way(from, heroCell, LAUNCHED) for each side. The launch sends the object in the cell ahead of the hero to the first
+ * cell past it that is not walled, so along each side the object stands in the first cell behind `into` past the
+ * walled cells right behind it, and the hero behind the object. Fences are not looked at. A launch that would wrap back
+ * to `into` or the hero's cell is left out.
+ */
+function launchesInto(walkGrid: WalkGrid, floodState: FloodState, into: number, intoZ: number, way: PushWay): void {
+    const lineLength = walkGrid.width + walkGrid.height;
+
+    for (let side = 0; side < 4; side++) {
+        const back = (side + 2) % 4;
+        let from = cellOnSide(walkGrid, into, back);
+        let wallsPassed = 0;
+
+        while (from !== into && wallsPassed < lineLength && walled(walkGrid, floodState, from)) {
+            from = cellOnSide(walkGrid, from, back);
+            wallsPassed++;
+        }
+
+        if (from === into || walled(walkGrid, floodState, from)) continue;
+        if (!holdsStone(walkGrid, floodState, from, intoZ)) continue;
+
+        const heroCell = cellOnSide(walkGrid, from, back);
+        if (heroCell === into) continue;
+
+        // a Fence between the hero and the object spares him a goblin's attack
+        let move = LAUNCHED;
+        if (!fenced(walkGrid, heroCell, side, from)) move |= EXPOSED;
+        way(from, heroCell, move);
+    }
+}
+
+/**
+ * Whether a Rod launch may land an object on the Switch in `cell` with no hero reaching it: a cell beside it is solid,
+ * a shut Gate or a closed Freezer, which the launch jumps, or a Fence parts it from one, which the launch ignores.
+ */
+export function rodLandsOn(walkGrid: WalkGrid, cell: number): boolean {
+    for (let side = 0; side < 4; side++) {
+        const neighbour = cellOnSide(walkGrid, cell, side);
+        if (walkGrid.grid[neighbour] & (SOLID | GATE) || walkGrid.marks[neighbour] & FROZEN_MARK) return true;
+        if (fenced(walkGrid, cell, side, neighbour)) return true;
+    }
+
+    return false;
+}
+
+/**
+ * The moves that bring an object onto cell `target`: way(from, heroCell, move) for each cell `from` an object is
+ * pushed from (the hero standing in heroCell) to end up in `target`. A push moves it one cell onto a cell that holds
  * it, or off a ledge, and it falls through open air onto the first cell that does; a skipping stone pushed into level
  * water skips on to a cell it can stop on (landingsOf, as in skipLanes), and with `charm` a hero with CHARM launches
- * the stone in a place of charmStones the same way. An object passes the Gates the flood has opened and not the ones
- * a switch press has shut. The solid cells that stop a skip go to `wallStops`.
+ * the stone in a place of charmStones the same way; with `rod` a hero holding the Rod launches it onto the cell or
+ * the air above it (launchesInto). An object passes the Gates the flood has opened and not the ones a switch press
+ * has shut. The solid cells that stop a skip go to `wallStops`.
  */
 function movesOnto(
     walkGrid: WalkGrid,
@@ -351,6 +405,7 @@ function movesOnto(
     wallStops: number[],
     way: PushWay,
     charm: boolean,
+    rod: boolean,
 ): void {
     const { grid, layerCells } = walkGrid;
     const z = Math.floor(target / layerCells) - Z_BIAS;
@@ -365,6 +420,7 @@ function movesOnto(
     }
 
     pushesInto(walkGrid, floodState, target, target, z, way);
+    if (rod) launchesInto(walkGrid, floodState, target, z, way);
 
     // an object that falls into water sinks to the surface - 1, so a fall reaches a cell only if the water does not
     // cancel the step into it or into a cell below
@@ -375,6 +431,7 @@ function movesOnto(
         if (walled(walkGrid, floodState, into) || grid[into] & PUSH) break;
         if (holdsStone(walkGrid, floodState, into, intoZ)) break;
         pushesInto(walkGrid, floodState, target, into, intoZ, way);
+        if (rod) launchesInto(walkGrid, floodState, into, intoZ, way);
         into += layerCells;
     }
 
@@ -408,14 +465,25 @@ export function openGateAhead(
  * a cell. `accepts`: whether the pushable in `from` is an object the walk is after, given whether the way on from it
  * skips and whether a skip on the way is a stone a hero with CHARM launches; any other pushable ends its branch.
  * `stays`: whether an object may be pushed through the cell `from` (all cells when left out). `charms`: whether a hero
- * with CHARM launches skipping stones (left out: none). A push from an attacked cell is never made: the hero steps into
- * it and dies.
+ * with CHARM launches skipping stones (left out: none). `heroLaunches`: whether a hero holding the Rod stands in a
+ * cell (left out: no Rod launches). A push from an attacked cell is never made: the hero steps into it and dies. A
+ * goblin is never moved by a hero beside it without PROTECTION.
  */
 export interface WalkBackRule {
     heroPushes: (pushCell: number) => boolean;
     accepts: (from: number, skips: boolean, charmed: boolean) => boolean;
     stays?: (from: number) => boolean;
     charms?: boolean;
+    heroLaunches?: (heroCell: number) => boolean;
+}
+
+/** Whether a living goblin stands in `cell`. */
+function goblinAt(walkGrid: WalkGrid, cell: number): boolean {
+    for (const monster of walkGrid.monsters) {
+        if (monster.cell === cell && monster.facing === GOBLIN) return true;
+    }
+
+    return false;
 }
 
 /**
@@ -451,46 +519,62 @@ export function bringObjectOnto(
     miss: PressMiss,
     rule: WalkBackRule,
 ): number {
-    const grid = walkGrid.grid;
-    const { heroPushes, accepts, stays, charms = false } = rule;
+    const { grid, visited } = walkGrid;
+    const { heroPushes, accepts, stays, charms = false, heroLaunches } = rule;
 
-    // [cell, the way on from it] pairs, the way being SKIPS when it skips and CHARMED when a skip on it is a stone a
-    // hero with CHARM launches; `seen` keys them as cell * 4 + way
+    // [cell, the way on from it] pairs, the way holding SKIPS when it skips, CHARMED when a skip on it is a stone a
+    // hero with CHARM launches and EXPOSED when a hero without PROTECTION stands beside the object on it; `seen` keys
+    // them as cell * 8 + way, and a way that is EXPOSED is no further way where the same way without it was seen
     const todo = [target, 0];
-    const seen = new Set([target * 4]);
+    const seen = new Set([target * 8]);
     let found = -1;
 
     let wayLater = 0;
 
-    const visitWay: PushWay = (from, pushCell, skip, charmed) => {
+    const visitWay: PushWay = (from, heroCell, move) => {
         if (found >= 0) return;
-        if (!charmed && attackedAt(walkGrid, from)) return;
 
-        if (!heroPushes(pushCell)) {
-            miss.pushCells.push(pushCell);
-            return;
+        let way = wayLater | (move & (SKIPS | CHARMED));
+
+        if (move & LAUNCHED) {
+            if (!heroLaunches?.(heroCell)) {
+                miss.launchCells ??= [];
+                miss.launchCells.push(heroCell);
+                return;
+            }
+
+            const protectedThere = (visited[heroCell] & (1 << PROTECTED)) !== 0;
+            if (move & EXPOSED && !protectedThere) way |= EXPOSED;
+        } else {
+            if (!(move & CHARMED) && attackedAt(walkGrid, from)) return;
+
+            if (!heroPushes(heroCell)) {
+                miss.pushCells.push(heroCell);
+                return;
+            }
+
+            way |= EXPOSED;
         }
 
         if (stays && !stays(from)) return;
 
-        let way = wayLater;
-        if (skip) way |= SKIPS;
-        if (charmed) way |= CHARMED;
-
         if (grid[from] & PUSH) {
+            if (way & EXPOSED && goblinAt(walkGrid, from)) return;
             if (accepts(from, (way & SKIPS) !== 0, (way & CHARMED) !== 0)) found = from;
             return;
         }
 
-        const key = from * 4 + way;
-        if (seen.has(key)) return;
+        const key = from * 8 + way;
+        if (seen.has(key) || seen.has(key & ~EXPOSED)) return;
         seen.add(key);
         todo.push(from, way);
     };
 
+    const rod = heroLaunches !== undefined;
+
     for (let pairStart = 0; pairStart < todo.length && pairStart < 2 * PRESS_CELLS; pairStart += 2) {
         wayLater = todo[pairStart + 1];
-        movesOnto(walkGrid, floodState, todo[pairStart], miss.wallStops, visitWay, charms);
+        movesOnto(walkGrid, floodState, todo[pairStart], miss.wallStops, visitWay, charms, rod);
 
         if (found >= 0) break;
     }
@@ -555,7 +639,20 @@ function objectOnto(
             return presses && skipped && (!charmed || charmStones.has(from));
         },
         charms: floodState.charming,
+        heroLaunches: rodHolderIn(walkGrid, floodState),
     });
+}
+
+/**
+ * Whether a hero holding the Rod stands in a cell: one the flood reached in any walk layer, or that lies `outside` it.
+ * Undefined while the flood's hero holds no Rod.
+ */
+export function rodHolderIn(walkGrid: WalkGrid, floodState: FloodState): ((heroCell: number) => boolean) | undefined {
+    if (!floodState.rodHeld) return undefined;
+
+    const { visited } = walkGrid;
+    const outside = floodState.outside;
+    return (heroCell) => visited[heroCell] !== 0 || outside?.has(heroCell) === true;
 }
 
 /**
@@ -571,16 +668,26 @@ function pressingObjects(
 ): Set<number> | null {
     if (floodState.latched.has(flavor)) return null;
     const switchCells = walkGrid.unpressed.get(flavor) ?? [];
-    if (!switchCells.every((cell) => switchReached(walkGrid, cell))) return null;
+    if (!switchCells.every((cell) => switchReached(walkGrid, floodState, cell))) return null;
     return objectsOntoAll(walkGrid, floodState, switchCells, miss);
 }
 
 /**
  * Whether the walk has reached the Switch cell `cell`, or needs not: no hero reaches a Switch under water, nor one on
- * an islet a charmed stone lands on, so only the search for an object onto it decides.
+ * an islet a charmed stone lands on, nor, while he holds the Rod, one a launch may land an object on with no hero
+ * there, so only the search for an object onto it decides.
  */
-function switchReached(walkGrid: WalkGrid, cell: number): boolean {
-    return walkGrid.visited[cell] !== 0 || deep(walkGrid, cell) || walkGrid.charmIslets.has(cell);
+function switchReached(walkGrid: WalkGrid, floodState: FloodState, cell: number): boolean {
+    if (walkGrid.visited[cell] !== 0 || deep(walkGrid, cell) || walkGrid.charmIslets.has(cell)) return true;
+    return rodLanding(floodState) && walkGrid.triggers.rodSwitches.has(cell);
+}
+
+/**
+ * Whether a flood counts a Switch a Rod launch may land an object on as reached: its hero holds the Rod, and it is no
+ * flood that stays `outside` cells, which presses only the Switches it reaches itself.
+ */
+function rodLanding(floodState: FloodState): boolean {
+    return floodState.rodHeld && !floodState.outside;
 }
 
 /** The cells of the separate objects the walk can bring onto each of the Switch cells `switchCells`, else null. */
@@ -615,7 +722,7 @@ function heldAlone(
     index: number,
 ): boolean {
     const otherSwitches = (walkGrid.unpressed.get(flavor) ?? []).filter((cell) => cell !== switchCell);
-    if (!otherSwitches.every((cell) => switchReached(walkGrid, cell))) return false;
+    if (!otherSwitches.every((cell) => switchReached(walkGrid, floodState, cell))) return false;
 
     const miss = misses[index];
     if (miss && !missChanged(walkGrid, floodState, miss)) return false;
@@ -698,8 +805,8 @@ function hopOffSwitches(walkGrid: WalkGrid, floodState: FloodState): boolean {
 /**
  * A count that grows whenever the flood changes something the press search reads besides the reached cells and the
  * walls a THROUGH beam lets the hero into: the Gates it opened or shut, the objects its pushes moved, the hero taking
- * CHARM, the crystals a TRANSMUTE hero made, the water cells it bridged, which then hold pushed objects, and the
- * swaps it noted onto a Switch or a Gem_Slot.
+ * CHARM or the Rod, the crystals a TRANSMUTE hero made, the water cells it bridged, which then hold pushed objects,
+ * and the swaps it noted onto a Switch or a Gem_Slot.
  */
 export function pressInputs(floodState: FloodState): number {
     const inputs =
@@ -709,7 +816,8 @@ export function pressInputs(floodState: FloodState): number {
         floodState.transmuted.size +
         floodState.bridged.size +
         floodState.ontoSwaps +
-        Number(floodState.charming);
+        Number(floodState.charming) +
+        Number(floodState.rodHeld);
 
     const beamFlood = floodState.beamFlood;
     if (!beamFlood) return inputs;
@@ -717,14 +825,15 @@ export function pressInputs(floodState: FloodState): number {
 }
 
 /**
- * Whether a failed press may go another way now: what the search reads has changed, a push cell it turned down is
- * reached, or a THROUGH beam now runs through a solid cell that stopped one of its skips. Within a flood the reached
- * cells and the THROUGH beams only grow. `extraInputs`: what the search reads besides pressInputs, counted as the
- * search made the miss.
+ * Whether a failed press may go another way now: what the search reads has changed, a push cell or a Rod launch's
+ * hero cell it turned down is reached, or a THROUGH beam now runs through a solid cell that stopped one of its skips.
+ * Within a flood the reached cells and the THROUGH beams only grow. `extraInputs`: what the search reads besides
+ * pressInputs, counted as the search made the miss.
  */
 export function missChanged(walkGrid: WalkGrid, floodState: FloodState, miss: PressMiss, extraInputs = 0): boolean {
     if (miss.inputs !== pressInputs(floodState) + extraInputs) return true;
     if (miss.pushCells.some((cell) => (walkGrid.visited[cell] & 1) !== 0)) return true;
+    if (miss.launchCells?.some((cell) => walkGrid.visited[cell] !== 0)) return true;
     return miss.wallStops.some((cell) => (walkGrid.cellFlags[cell] & THRU) !== 0);
 }
 
@@ -752,13 +861,18 @@ export function press(walkGrid: WalkGrid, floodState: FloodState): boolean {
     const hopped = walkGrid.triggers.hops.length > 0 && hopOffSwitches(walkGrid, floodState);
     if (hopped && floodState.queue.length) return true;
 
-    const flavors = walkGrid.triggers.flavors;
+    const { flavors, rodSwitchCount } = walkGrid.triggers;
     const misses = floodState.pressMisses;
     let more = false;
 
     for (let flavorIndex = 0; flavorIndex < flavors.length; flavorIndex++) {
         const { flavor, open, shut } = flavors[flavorIndex];
-        if (floodState.switchesLeft[flavorIndex] > 0) continue;
+
+        // while the hero holds the Rod, the Switches a launch may land an object on need not be reached
+        let switchesLeft = floodState.switchesLeft[flavorIndex];
+        if (rodLanding(floodState)) switchesLeft -= rodSwitchCount[flavorIndex];
+        if (switchesLeft > 0) continue;
+
         const miss = misses[flavorIndex];
         if (miss && !missChanged(walkGrid, floodState, miss)) continue;
 

@@ -1,8 +1,8 @@
-// The sidebar: the save with its progress, No spoilers and where the hero is, the goals, the areas, the kinds of mark to
-// find on the map and the save's stats (VIEWER.md "The page (viewer)")
+// The sidebar: the save with its progress, No spoilers and where the hero is, the goals with the areas under
+// Completionist, the kinds of mark to find on the map and the save's stats (VIEWER.md "The page (viewer)")
 import { PROG } from './data.ts';
 import { $, apolloDate, apolloSeconds, duration, escapeHtml, setButtonPressed } from './util.ts';
-import { hooks, revealedOf, setPreference, setSpoilersHidden, showGoalList, spoilersHidden, state } from './shared.ts';
+import { hooks, revealedOf, setPreference, setSpoilersHidden, spoilersHidden, state } from './shared.ts';
 import type { ProgressFilters } from './shared.ts';
 import { baseName, campaignOf, campaigns, campaignLabel, realFiles, statusEntry } from './files.ts';
 import { isFindKind } from './model/find-kinds.ts';
@@ -11,20 +11,13 @@ import type { ProgressModel } from './model/progress-model.ts';
 import { CHEVRON } from './map/icons.ts';
 import { isOverlayKind, overlayOn } from './map/map-html.ts';
 import type { DemoStatus, Status } from './status-file.ts';
-import { show } from './view.ts';
+import { show, showSave } from './view.ts';
 import { dirHandle, dropsLive, pickFolder, refresh, savedTitle } from './folder.ts';
 import { inLevelHtml, solvedHtml, statsHtml } from './sidebar/summary.ts';
-import { pickGoal, refreshSideGoals, sideGoalsHtml } from './sidebar/goals.ts';
-import { sideAreasHtml, toggleFinished, toggleLayerGroup } from './sidebar/areas.ts';
+import { goalFolds, pickArea, pickGoal, refreshSideGoals, sideGoalsHtml } from './sidebar/goals.ts';
+import { toggleFinished, toggleLayerGroup } from './sidebar/areas.ts';
 import { findListShown, overlayActionText, sideFindHtml } from './sidebar/find.ts';
-import {
-    areaListOpen,
-    findSectionOpen,
-    isGoalOpen,
-    setAreaListOpen,
-    setFindSectionOpen,
-    setOpenGoal,
-} from './sidebar/sections.ts';
+import { findSectionOpen, isGoalOpen, setFindSectionOpen, setOpenGoal } from './sidebar/sections.ts';
 
 /**
  * A fogged level the viewer clicked open stays shown for the rest of the visit; everything naming it is drawn again.
@@ -175,7 +168,7 @@ function onCampaignMenuClick(event: Event): void {
 
     state.camp = camp;
     state.campPicked = true;
-    show();
+    void showSave('Working out your save…');
 }
 
 // a click anywhere else, or Escape, closes the campaign menu
@@ -201,13 +194,9 @@ function findSectionHtml(model: ProgressModel): string {
     return `<div class="np find${openClass}" id="sideFind">${rows}</div>`;
 }
 
-// the panels under the campaign: the goals, the areas, the kinds of mark to find and the stats
+// the panels under the campaign: the goals with the areas under Completionist, the kinds of mark to find and the stats
 function panelsHtml(model: ProgressModel): string {
     let html = `<div class="np goals" id="sideGoals">${sideGoalsHtml(model)}</div>`;
-
-    let areasOpenClass = '';
-    if (areaListOpen()) areasOpenClass = ' open';
-    html += `<div class="np alist${areasOpenClass}" id="sideAreas">${sideAreasHtml(model)}</div>`;
     html += findSectionHtml(model);
 
     if (!model.demo) html += statsHtml(model);
@@ -229,7 +218,6 @@ function onStatsToggle(event: Event): void {
 // a change of the open sections (see sections.ts) draws the sections again
 function refreshSections(): void {
     refreshSideGoals();
-    refreshSideAreas();
     refreshSideFind();
 }
 
@@ -237,11 +225,35 @@ function onGoalsClick(event: Event, model: ProgressModel): void {
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    const group = target.closest<HTMLElement>('[data-grp]');
+    if (group) {
+        const layerKey = group.dataset.grp ?? '';
+        toggleLayerGroup(layerKey);
+        refreshSideGoals();
+        $(`#sideGoals [data-grp="${layerKey}"]`)?.focus({ preventScroll: true });
+        return;
+    }
+
+    const finished = target.closest<HTMLElement>('[data-fin]');
+    if (finished) {
+        toggleFinished();
+        refreshSideGoals();
+        $(`#sideGoals [data-fin="${finished.dataset.fin}"]`)?.focus({ preventScroll: true });
+        return;
+    }
+
+    const area = target.closest<HTMLElement>('[data-area]');
+    if (area) {
+        pickArea(model, area.dataset.area ?? '');
+        return;
+    }
+
     const goalKey = target.closest<HTMLElement>('[data-goal]')?.dataset.goal;
     if (goalKey === undefined) return;
 
-    // a goal with children opens its list, and closes it when it was the pick and its list was open
-    if (model.goalByKey(goalKey)?.children?.length) {
+    // a goal that folds opens its list, and closes it when it was the pick and its list was open
+    const goal = model.goalByKey(goalKey);
+    if (goal && goalFolds(model, goal)) {
         const wasPicked = model.goalFor(model.F.goal)?.key === goalKey;
         if (!isGoalOpen(goalKey)) {
             setOpenGoal(goalKey);
@@ -276,45 +288,6 @@ function onFindClick(event: Event): void {
     if (findKind !== undefined && isFindKind(findKind)) hooks.find?.(findKind);
 }
 
-function onAreasClick(event: Event, filters: ProgressFilters, changed: () => void): void {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-
-    if (target.closest('[data-areas]')) {
-        setAreaListOpen(!areaListOpen());
-        refreshSections();
-        $('#sideAreas [data-areas]')?.focus({ preventScroll: true });
-        return;
-    }
-
-    const group = target.closest<HTMLElement>('[data-grp]');
-    if (group) {
-        const layerKey = group.dataset.grp ?? '';
-        toggleLayerGroup(layerKey);
-        refreshSideAreas();
-        $(`#sideAreas [data-grp="${layerKey}"]`)?.focus({ preventScroll: true });
-        return;
-    }
-
-    const finished = target.closest<HTMLElement>('[data-fin]');
-    if (finished) {
-        toggleFinished();
-        refreshSideAreas();
-        $(`#sideAreas [data-fin="${finished.dataset.fin}"]`)?.focus({ preventScroll: true });
-        return;
-    }
-
-    const area = target.closest<HTMLElement>('[data-area]');
-    if (!area) return;
-
-    const picked = area.dataset.area ?? '';
-    if (filters.area === picked) filters.area = '';
-    else filters.area = picked;
-    showGoalList(filters);
-    changed();
-    if (filters.area !== '') hooks.area?.();
-}
-
 export function renderSide(model?: ProgressModel | null): void {
     const side = $('#sidePanels');
     const campaignList = campaigns();
@@ -346,11 +319,6 @@ export function renderSide(model?: ProgressModel | null): void {
     $('#heroLine')?.addEventListener('click', () => hooks.hero?.());
 
     const filters = model.F;
-    const changed = (): void => {
-        if (hooks.apply) hooks.apply();
-        else show();
-    };
-
     hooks.side = model;
     setButtonPressed($('#pgSpoil'), model.hide);
     $('#pgSpoil').addEventListener('click', () => {
@@ -362,17 +330,7 @@ export function renderSide(model?: ProgressModel | null): void {
     $('#statsTog')?.addEventListener('click', onStatsToggle);
     $('#sideGoals').addEventListener('click', (event) => onGoalsClick(event, model));
     $('#sideFind')?.addEventListener('click', onFindClick);
-    $('#sideAreas')?.addEventListener('click', (event) => onAreasClick(event, filters, changed));
     syncSide(filters);
-}
-
-export function refreshSideAreas(): void {
-    const element = $('#sideAreas');
-    if (!element || !hooks.side) return;
-
-    element.innerHTML = sideAreasHtml(hooks.side);
-    element.classList.toggle('open', areaListOpen());
-    syncSide(hooks.side.F);
 }
 
 function refreshSideFind(): void {
@@ -409,7 +367,7 @@ export function syncSide(filters: ProgressFilters): void {
     $('#sidebar')
         .querySelectorAll<HTMLElement>('[data-find]')
         .forEach((button) => setButtonPressed(button, findListShown(filters, button.dataset.find ?? '')));
-    $('#sideAreas')
+    $('#sideGoals')
         ?.querySelectorAll<HTMLElement>('[data-area]')
         .forEach((area) => setButtonPressed(area, area.dataset.area === filters.area));
 }

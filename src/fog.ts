@@ -15,13 +15,16 @@ export interface Fog {
     /** Map layer keys with at least one fog region cleared. */
     knownLayers: () => string[];
     levelHidden: (name: string, position?: Position | null) => boolean;
-    /** Whether a world point of one map layer lies under fog. */
+    /** Whether a world point of one map layer lies under fog: in a region not cleared, or inside a FILLED fog box. */
     at: (key: string, x: number, y: number, z: number) => boolean;
     /** Fogged rectangles of one map layer, in world coordinates. */
     rects: (key: string) => FogRect[];
     /** Cleared regions of one map layer, in world coordinates. */
     open: (key: string) => FogRect[];
-    /** Whether a square of one map layer is fogged at any height. */
+    /**
+     * Whether the map draws fog over a square of one map layer: a region not cleared, or a FILLED fog box at any height,
+     * since the map draws a box over its whole footprint.
+     */
     cover: (key: string, x: number, y: number) => boolean;
 }
 
@@ -107,6 +110,8 @@ export function fogOf(camp: string): Fog | null {
         x >= box.min[0] && x < box.max[0] && y >= box.min[1] && y < box.max[1];
     const inBox = (layer: number, x: number, y: number, z: number) =>
         boxes.some((box) => box.filled && box.layer === layer && inXY(box, x, y) && z >= box.min[2] && z < box.max[2]);
+    const underBox = (layer: number, x: number, y: number) =>
+        boxes.some((box) => box.filled && box.layer === layer && inXY(box, x, y));
     const regionRect = (region: number): FogRect => [
         cornerX + screenWidth * (region % columns),
         cornerY + screenHeight * Math.floor(region / columns),
@@ -156,9 +161,7 @@ export function fogOf(camp: string): Fog | null {
         },
         cover: (key, x, y) => {
             const layer = FOG_LAYER_KEYS.indexOf(key);
-            if (layer < 0) return false;
-            if (fogged(layer, regionAt(x, y))) return true;
-            return boxes.some((box) => box.filled && box.layer === layer && inXY(box, x, y));
+            return layer >= 0 && (fogged(layer, regionAt(x, y)) || underBox(layer, x, y));
         },
     };
 

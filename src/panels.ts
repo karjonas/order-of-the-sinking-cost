@@ -8,7 +8,8 @@ import { mapInit } from './map/map-view.ts';
 import type { MapOptions } from './map/map-view.ts';
 import { oceanWater } from './map/ocean-water.ts';
 import type { ProgressModel } from './model/progress-model.ts';
-import { refreshSideAreas, syncSide } from './sidebar.ts';
+import { syncSide } from './sidebar.ts';
+import { refreshSideGoals } from './sidebar/goals.ts';
 import { bannerMessage, copyPath, folderAction, folderLabel, savePathHtml } from './folder.ts';
 import { PanelContext } from './panels/context.ts';
 import { applyFilters, layerChanged, markSelected } from './panels/list.ts';
@@ -110,6 +111,6 @@ export function renderProgress(model: ProgressModel): void {
     wirePage(context);
     if (context.map) context.mapLayer = context.map.layer;
     applyFilters(context);
-    refreshSideAreas();
+    refreshSideGoals();
     openKeptPanel(context);
 }

@@ -64,6 +64,7 @@
 //   teleport: [pid]   the Wardrobes whose skill_flags hold TELEPORT
 //   charm: [pid]   the Wardrobes whose skill_flags hold CHARM
 //   transmute: [pid]   the Wardrobes whose skill_flags hold TRANSMUTE
+//   rod: [pid]   the Wardrobes whose inventory_flags hold WAND (the Rod)
 //   trees: [[pid, i, j, z(, exists)]]   Trees: they stop dragon fire and beams while they exist (TRANSMUTE turns one into
 //          a crystal Rock: a CREATION record destroys it)
 //   lights: [[pid, i, j, z, side, up, down, powered, color(, exists)]]   every Promesst_Light; side as `fences` (its
@@ -499,11 +500,9 @@ function collectRoverFacings(world: World): [pid: number, quarterTurns: number][
     });
 }
 
-// The pids of the Wardrobes whose skill_flags hold `skill`
-function wardrobesWithSkill(world: World, skill: string): number[] {
-    const wardrobes = world
-        .ofType('Wardrobe')
-        .filter((wardrobe) => flagsOf(wardrobe.fields, 'skill_flags').includes(skill));
+// The pids of the Wardrobes whose `field` (skill_flags or inventory_flags) holds `flag`
+function wardrobesWithFlag(world: World, field: string, flag: string): number[] {
+    const wardrobes = world.ofType('Wardrobe').filter((wardrobe) => flagsOf(wardrobe.fields, field).includes(flag));
     return wardrobes.map((wardrobe) => wardrobe.pid).toSorted((first, second) => first - second);
 }
 
@@ -1007,9 +1006,10 @@ function buildWorld(pkg: Package) {
         mirror_facings: collectMirrorFacings(world),
         rover_facings: collectRoverFacings(world),
         skippable: skippableRocks.map((rock) => rock.pid).toSorted((first, second) => first - second),
-        teleport: wardrobesWithSkill(world, 'TELEPORT'),
-        charm: wardrobesWithSkill(world, 'CHARM'),
-        transmute: wardrobesWithSkill(world, 'TRANSMUTE'),
+        teleport: wardrobesWithFlag(world, 'skill_flags', 'TELEPORT'),
+        charm: wardrobesWithFlag(world, 'skill_flags', 'CHARM'),
+        transmute: wardrobesWithFlag(world, 'skill_flags', 'TRANSMUTE'),
+        rod: wardrobesWithFlag(world, 'inventory_flags', 'WAND'),
         trees: world.ofType('Tree').map((tree) => world.cellRow(tree)),
         lights: world
             .ofType('Promesst_Light')

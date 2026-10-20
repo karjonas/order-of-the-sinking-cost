@@ -1,7 +1,11 @@
 // The room answers against the walk's own searches, which run on a walker built without the answers. What those searches
 // find from the start region of a room (the Rocks' bridges, the objects that reach the Switches and the Gem_Slots, the
 // Monsters that die) is held by the answer of the room: the stored one (data/walk.json `rooms`) in a room the save leaves
-// as the level data has it, else the one searched on the walker's own grid.
+// as the level data has it, else the one searched on the walker's own grid. The Rocks the room search does not push are
+// left out: a crystal Rock and a Rock a Spawner puts back stand in no cell of the grid it searches, and a skipping stone
+// it pushes into water makes no bridge. The live searches take every cell of the start region as a push cell for every
+// push of a Rock, where the room search walks the hero over the cells as the earlier pushes left them, so a bridge the
+// answer lacks passes when the Rock pushed alone, as the room search pushes it, never sinks there.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
@@ -13,43 +17,26 @@ import { DEMO_STATUS, demoHistory } from '../src/demo-save.ts';
 import { computeProgress, setProgressCache } from '../src/model/progress.ts';
 import type { ProgressStatus } from '../src/model/progress.ts';
 import type { History, LatestValues } from '../src/save.ts';
+import { attackedAt } from '../src/walk/attacks.ts';
+import { cellOnSide, MONSTER, MOVABLE, ROCK, SUPPORT, Z_BIAS } from '../src/walk/cells.ts';
 import { newFloodState } from '../src/walk/flood.ts';
-import { bringObjectOnto } from '../src/walk/gates.ts';
+import { bringObjectOnto, walled } from '../src/walk/gates.ts';
 import type { PressMiss } from '../src/walk/gates.ts';
 import { pushedToDeath } from '../src/walk/monster-pushes.ts';
 import { NO_HISTORY } from '../src/walk/reachability.ts';
-import { sinkOf } from '../src/walk/rock-turns.ts';
+import { landingOf, sinkOf } from '../src/walk/rock-turns.ts';
+import type { Landing } from '../src/walk/rock-turns.ts';
 import { boundaryFreezers, roomAnswers, setRoomAnswers } from '../src/walk/room-answers.ts';
 import type { RoomEntry, StoredRoom } from '../src/walk/room-answers.ts';
 import { startRegion } from '../src/walk/room-search.ts';
+import { holdsStone } from '../src/walk/support.ts';
 import { teleporterStatesOf } from '../src/walk/teleporters.ts';
 import type { TeleporterState } from '../src/walk/teleporters.ts';
 import { buildWalkGrid } from '../src/walk/walker.ts';
 import type { WalkGrid } from '../src/walk/walker.ts';
+import { fenced } from '../src/walk/walls.ts';
 
 const STATUS_FILE = 'Status.sokoban_status';
-
-// What the live searches still find that the room answers lack: a Rock that is pushed on from a cell the hero can no
-// longer reach once the Rock has left its first cell. The live walk back keeps the hero's cells of the start for every
-// push; the room search, stored or run on a walker's grid, walks him over the cells as the earlier pushes left them. So a
-// room searched on the walker's grid has the same exception as its stored answer. Each is `bridges <Rock cell> <water
-// cell>`.
-const CUT_OFF_PUSHES = new Set([
-    'bridges 2384248 2384060',
-    'bridges 2384248 2383869',
-    'bridges 2384248 2384055',
-    'bridges 2384248 2383677',
-    'bridges 2384248 2383678',
-    'bridges 2384248 2383676',
-    'bridges 2384248 2383863',
-    // rooms searched on a walker's grid: the Rock turns on its way and the hero is cut off from the cell behind it
-    'bridges 2394897 2394894',
-    'bridges 2394897 2395083',
-    'bridges 2394897 2394514',
-    'bridges 2394897 2394323',
-    'bridges 1755708 1755515',
-    'bridges 2377833 2378408',
-]);
 
 /** What a walker is built from: the save's latest values, the pads' states and the closed Freezers. */
 interface WalkerState {
@@ -230,8 +217,8 @@ function liveFinds(live: WalkGrid, room: SearchedRoom, entry: RoomEntry): RoomFi
     try {
         const floodState = newFloodState(live.triggers, live.lanes.length, null, true, false, true, false);
 
-        for (const { cell, target, skips } of live.triggers.rocks) {
-            if (target !== undefined || skips || !roomCells.has(cell)) continue;
+        for (const { cell, target, activators, skips } of live.triggers.rocks) {
+            if (target !== undefined || activators || skips || !roomCells.has(cell)) continue;
 
             const waterCells = new Set<number>();
             sinkOf(live, floodState, cell, newMiss(), (waterCell) => {
@@ -290,10 +277,107 @@ function liveFinds(live: WalkGrid, room: SearchedRoom, entry: RoomEntry): RoomFi
     return found;
 }
 
-/** The names of the items of `found` that `held` lacks, and how many items `found` has. */
-function lacking(found: RoomFinds<Set<number>>, held: RoomFinds<number[]>) {
+/** The pushes the hero makes of the Rock in `from` from the cells `heroCells`, as the room search has them. */
+function rockLandings(live: WalkGrid, from: number, heroCells: Set<number>): Landing[] {
+    const floodState = live.noFlood;
+    const z = Math.floor(from / live.layerCells) - Z_BIAS;
+    if (attackedAt(live, from) || walled(live, floodState, from) || !holdsStone(live, floodState, from, z)) return [];
+
+    const landings: Landing[] = [];
+
+    for (let side = 0; side < 4; side++) {
+        const heroCell = cellOnSide(live, from, (side + 2) % 4);
+        const into = cellOnSide(live, from, side);
+        if (!heroCells.has(heroCell)) continue;
+        if (fenced(live, from, side, into) || fenced(live, heroCell, side, from)) continue;
+
+        const landing = landingOf(live, floodState, from, side);
+        if (landing) landings.push(landing);
+    }
+
+    return landings;
+}
+
+/**
+ * The water cells where the Rock in `rockCell` sinks when it alone is pushed, as the room search pushes it: from the
+ * cells the hero stands in after each push, from the start cells of `entry` and the cell the push left.
+ */
+function replayedBridges(live: WalkGrid, room: SearchedRoom, entry: RoomEntry, rockCell: number): Set<number> {
+    interface ReplayState {
+        rockCell: number;
+        heroCells: Set<number>;
+    }
+
+    const { grid } = live;
+    let rockBits = grid[rockCell] & (ROCK | MONSTER | MOVABLE);
+    if (rockBits & ROCK) rockBits |= SUPPORT;
+
+    let rockAt = rockCell;
+    const moveRock = (cell: number): void => {
+        grid[rockAt] &= ~rockBits;
+        grid[cell] |= rockBits;
+        rockAt = cell;
+    };
+
+    const keyOf = (cell: number, heroCells: number[]): string => {
+        const ascending = heroCells.toSorted((first, second) => first - second);
+        return `${cell}:${ascending.join(',')}`;
+    };
+
+    const startCells = startRegion(live, room.cells, entry.reps);
+    const queue: ReplayState[] = [{ rockCell, heroCells: new Set(startCells) }];
+    const seen = new Set([keyOf(rockCell, startCells)]);
+    const waterCells = new Set<number>();
+
+    try {
+        for (let index = 0; index < queue.length; index++) {
+            const { rockCell: from, heroCells } = queue[index];
+            moveRock(from);
+
+            for (const landing of rockLandings(live, from, heroCells)) {
+                if (landing.sinks) {
+                    waterCells.add(landing.cell);
+                    continue;
+                }
+
+                moveRock(landing.cell);
+                const nextHeroCells = startRegion(live, room.cells, [...entry.reps, from]);
+                moveRock(from);
+
+                const key = keyOf(landing.cell, nextHeroCells);
+                if (seen.has(key)) continue;
+
+                seen.add(key);
+                queue.push({ rockCell: landing.cell, heroCells: new Set(nextHeroCells) });
+            }
+        }
+    } finally {
+        moveRock(rockCell);
+    }
+
+    return waterCells;
+}
+
+/**
+ * The names of the items the live searches find from the start region of `entry` that the answers of `room` lack, but
+ * for the bridges the Rock pushed alone as the room search pushes it never makes, and how many items they find.
+ */
+function lacking(live: WalkGrid, room: SearchedRoom, entry: RoomEntry) {
+    const found = liveFinds(live, room, entry);
+    const held = heldWith(room, entry);
+    const replayed = new Map<number, Set<number>>();
     const names: string[] = [];
     let total = 0;
+
+    const replayReaches = (rockCell: number, waterCell: number): boolean => {
+        let waterCells = replayed.get(rockCell);
+        if (!waterCells) {
+            waterCells = replayedBridges(live, room, entry, rockCell);
+            replayed.set(rockCell, waterCells);
+        }
+
+        return waterCells.has(waterCell);
+    };
 
     for (const field of FIND_FIELDS) {
         for (const [key, values] of found[field]) {
@@ -301,7 +385,10 @@ function lacking(found: RoomFinds<Set<number>>, held: RoomFinds<number[]>) {
 
             for (const value of values) {
                 total++;
-                if (!heldValues.includes(value)) names.push(`${field} ${key} ${value}`);
+                if (heldValues.includes(value)) continue;
+                if (field === 'bridges' && !replayReaches(key, value)) continue;
+
+                names.push(`${field} ${key} ${value}`);
             }
         }
     }
@@ -374,14 +461,10 @@ describe('room answers', () => {
                     if (!used.has(entry)) continue;
 
                     counts.entries++;
-                    const fromLive = liveFinds(live, room, entry);
-                    const missing = lacking(fromLive, heldWith(room, entry));
+                    const missing = lacking(live, room, entry);
 
                     counts.live += missing.total;
-
-                    for (const item of missing.names) {
-                        if (!CUT_OFF_PUSHES.has(item)) outside.push(item);
-                    }
+                    outside.push(...missing.names);
                 }
             }
 
@@ -391,6 +474,48 @@ describe('room answers', () => {
             if (name === 'no history' || name === 'snapshot') expect(searched.length).toBeGreaterThan(0);
         });
     }
+
+    test('an answer that lacks a bridge the Rock makes alone fails the check', () => {
+        const fresh = freshCampaign();
+        const { latest, pads, closed } = stateOf(fresh.status, fresh.history);
+        const used = usedEntries(buildWalkGrid(latest, pads, closed));
+
+        setRoomAnswers(null);
+        const live = buildWalkGrid(latest, pads, closed);
+        setRoomAnswers(stored);
+
+        const withoutBridge = (entry: RoomEntry, rockCell: number, waterCell: number): RoomEntry => {
+            const bridges = new Map(entry.bridges);
+            const waterCells = bridges.get(rockCell) ?? [];
+            const kept = waterCells.filter((cell) => cell !== waterCell);
+            if (kept.length < waterCells.length) bridges.set(rockCell, kept);
+
+            return { ...entry, bridges };
+        };
+
+        for (const room of stored) {
+            for (const entry of room.entries) {
+                if (!used.has(entry)) continue;
+
+                for (const [rockCell, waterCells] of liveFinds(live, room, entry).bridges) {
+                    const reached = replayedBridges(live, room, entry, rockCell);
+                    const waterCell = [...waterCells].find((cell) => reached.has(cell));
+                    if (waterCell === undefined) continue;
+
+                    expect(lacking(live, room, entry).names).toEqual([]);
+
+                    const entries = room.entries.map((other) => withoutBridge(other, rockCell, waterCell));
+                    const mutated = { cells: room.cells, entries };
+                    const mutatedEntry = entries[room.entries.indexOf(entry)];
+
+                    expect(lacking(live, mutated, mutatedEntry).names).toEqual([`bridges ${rockCell} ${waterCell}`]);
+                    return;
+                }
+            }
+        }
+
+        throw new Error('no answer in use holds a bridge the Rock makes alone');
+    });
 
     test('a room the save changed gets an answer searched on its grid', () => {
         const fresh = freshCampaign();

@@ -14,11 +14,11 @@ you what is left to do, what to play next and how to get there, without showing 
 
 ## What it shows
 
-Open the viewer, then drag your save folder onto the page or use **Open save folder**. The folder is
-`%USERPROFILE%\Saved Games\Order of the Sinking Star`.
+Open the viewer at [sinkingstar.xpaw.me](https://sinkingstar.xpaw.me/), then drag your save folder onto the page or
+use **Open save folder**. The folder is `%USERPROFILE%\Saved Games\Order of the Sinking Star`.
 
-- **Goals**: a ladder of what is left: the three endings in order, then the towers, the achievements and
-  Completionist, each with a count ("23 left", "3 / 16"). The first goal not done is the current one, and the list
+- **Goals**: a ladder of what is left: the three endings in order, then the achievements (the towers
+  among them) and Completionist, each with a count ("23 left", "3 / 16"). The first goal not done is the current one, and the list
   starts on it.
 - **The list**: the levels the selected goal still needs. Playable ones come first, then the ones you can't reach yet,
   then the locked ones, ranked by what they open toward the goal and then by distance from your hero. Each says what it
@@ -28,12 +28,12 @@ Open the viewer, then drag your save folder onto the page or use **Open save fol
 - **Unlock paths**: click anything locked (a level, tower, ice cage, ice gate or sign) and it shows the numbered chain
   of levels to solve first, on the map and in the panel.
 - **Reasons**: a level you can't reach says why, for example "behind ice cage · Heroes and Mirrors",
-  "may need mirrors", "needs the way onto the Sky" or "no known route".
+  "may need Mirrors", "needs the way up to High", "from High" or "no known route".
 - **Map**: the overworld's ground, sky and underworld, with your fog of war, your hero and the current level. It
   shows the list's levels, by state or by their role for the goal (Required, One of several, Optional), and what is
   left for the goal: towers, ice cages and gates with the signs that open them, teleporters, gold rooms, voice logs,
   map scrolls and treasures.
-- **Sidebar**: the goals ladder, with the Antipode towers and teleporters toward Endgame; ice cages and gates, teleporters, voice logs and treasures to find; progress per area; and stats the game tracks (rank, play time and more).
+- **Sidebar**: the goals ladder, with the Antipode towers and teleporters toward Endgame and the sky towers toward Endgame High; ice cages and gates, teleporters, voice logs and treasures to find; progress per area; and stats the game tracks (rank, play time and more).
 - **Live**: with a live folder it re-reads the save every few seconds while you play, so you can keep it on a second
   screen.
 
@@ -104,8 +104,7 @@ The details are in [docs/](docs/):
   levels read "One of several".
 - **Live updates:**
   - In Chrome and Edge, a folder opened with the picker or dragged onto the page stays live.
-  - Inside an embedded page, such as the claude.ai artifact, the folder picker is blocked, so drag the folder onto the
-    page instead.
+  - Inside an embedded page the folder picker is blocked, so drag the folder onto the page instead.
   - In Firefox and Safari a save loads as a one-time snapshot; reopen it to update.
 - **Game updates:** an update that changes the save formats or the level data
   needs the data pipeline re-run, and possibly reader changes.
@@ -116,10 +115,10 @@ The details are in [docs/](docs/):
 ## Building
 
 The page is built from `src/` with [Vite+](https://viteplus.dev/), installed locally, into `dist/`:
-`viewer.html` with `viewer.js`, `viewer.css` and the map images in `assets/`. It needs data generated from your own
-copy of the game with `npm run data`, and the map images in `public/assets/`. See
+`index.html` with its script, stylesheet and images in `assets/`. It needs data generated from your own
+copy of the game with `npm run data`, and the map images in `src/assets/`. See
 [scripts/README.md](scripts/README.md) for the pipeline and for `npm run dev`, `npm run build`, `npm test`,
-`npm run typecheck` and `npm run lint`.
+`npm run typecheck`, `npm run lint` and `npm run deploy`.
 
 ## License
 

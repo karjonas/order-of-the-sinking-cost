@@ -76,10 +76,12 @@ export const BEAM_STOP = GATE | BEAMSTOP;
 // what the hero pushes (SINGLE_PUSH)
 export const PUSH = ROCK | MONSTER | MOVABLE;
 
-// per cell, next to the grid: the fence sides (bit per side), an attacked cell, a THROUGH beam's wall cell, a THROUGH beam
+// per cell, next to the grid: the fence sides (bit per side), an attacked cell, a THROUGH beam's wall cell, a THROUGH
+// beam, a TELEPORT line's target or Mirror (`swapTargets`, `mirrorSides`)
 export const FIRE = 16;
 export const THRU = 32;
 export const BEAM = 64;
+export const LINE_STOP = 128;
 
 // per cell, next to the grid: which of the walker's per-cell lookups hold it, so a flood asks them only there: a
 // powered beam's ENDPOINT, DOUBLE, ALTER, SQUEEZE or OPEN power; a Wardrobe; a magic-mirror hop, an elevator ride or a
@@ -213,4 +215,36 @@ export function cellOnSide(walkGrid: GridShape, cell: number, side: number): num
     if (layerStart >= (walkGrid.boxZ + Z_BIAS) * layerCells) tableSide += 4;
 
     return layerStart + walkGrid.sideColumns[tableSide * layerCells + column];
+}
+
+/**
+ * How many steps on side `side` take `cell` round its row or column back to itself: the grid's width or height, the
+ * box's inside the fast-travel box; 0 in the box layers outside the box, where the steps may enter the box and stay.
+ */
+function lineLength(walkGrid: GridShape, cell: number, side: number): number {
+    const { width, height, layerCells } = walkGrid;
+    const alongRow = side % 2 === 0;
+    if (cell < (walkGrid.boxZ + Z_BIAS) * layerCells) return alongRow ? width : height;
+
+    const inLayer = cell % layerCells;
+    const column = inLayer % width;
+    const row = (inLayer - column) / width;
+    const insideBox =
+        mod(column - walkGrid.boxColumn, width) < walkGrid.boxWidth &&
+        mod(row - walkGrid.boxRow, height) < walkGrid.boxHeight;
+    if (!insideBox) return 0;
+
+    return alongRow ? walkGrid.boxWidth : walkGrid.boxHeight;
+}
+
+/** The cell `count` cells from `cell` along side `side`; whole rounds of a row or column are skipped. */
+export function cellsOnSide(walkGrid: GridShape, cell: number, side: number, count: number): number {
+    const length = lineLength(walkGrid, cell, side);
+    let steps = count;
+    if (length > 0) steps = count % length;
+
+    let reached = cell;
+    for (let step = 0; step < steps; step++) reached = cellOnSide(walkGrid, reached, side);
+
+    return reached;
 }

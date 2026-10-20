@@ -844,6 +844,7 @@ describe('unlock plans through cycles', () => {
             state: ['unlocked', 'blocked', 'blocked'],
             unlocks: [{ levels: [] }, { levels: [] }, { levels: [] }],
             wayIn: [[], [0, 1], [2]],
+            wayInChains: [null, null, null],
             wayInFixed: new Set(),
             why: [null, blockedWhy(), blockedWhy()],
             behind: [[], [0, 1], [2]],

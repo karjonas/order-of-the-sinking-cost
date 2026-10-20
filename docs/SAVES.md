@@ -21,6 +21,9 @@ HEROES_CAGE_DISAPPEAR) queues the removal of its own `<level>.history` (`File_Sa
 thread deletes it ("Successfully removed file '%' due to %."). `overworld.history`, `intro.history` and Status are
 never removed.
 
+A solved level that is entered again and left without winning keeps a `.history` again: one GAP record, next 2, with
+the hero at the level's start if no move was made (the reason is inferred).
+
 On quit the main loop stops when its quit flag is set. The shutdown then stops audio, signals the campaign save thread
 and waits for it ("Save thread stopped."). The save thread empties its whole queue before it obeys the stop flag.
 Nothing after the loop queues a new save, so quitting writes what earlier frames queued and nothing new.
@@ -156,6 +159,8 @@ u32 n; n × action { u8 Action_Type; ... }
 | 3 OCEAN_CHANGE | Pid, u32 index, u8 old, u8 new (10 bytes with the type) |
 | 4 SCRAPE_CHANGE | s16 x, y, z, u8 old, u8 new, u8 axis |
 
+The overworld history holds OCEAN_CHANGE actions (seen in mip levels 2 and 3).
+
 An Activator reset destroys an entity and clones it again under the same Pid: one record holds the destroyed action,
 then the created one. The later action is the entity's state.
 
@@ -200,9 +205,11 @@ moves: START 23 (level start), RESET 22 (a checkpoint record of its own), RIDE_O
 0 (GAP, restart, the commit before an undo); their character is 0.
 
 Seen in the saves: level 0 holds icons 0, 1, 2, 3, 6, 20 and characters 0..15 (intro and overworld 10, `beam_rooms`
-8, `dual_screen` 9, `drop_tool` 4). Higher levels hold icons 1, 2, 3, 6, 20, nearly always with character 0. Icons 18,
-19, 22, 24 never appear. No overworld record has CHECKPOINT; `intro` has one in level 1 (flags 1, WALK, character
-10), a checkpoint that landed on its move's record and survived a merge.
+8, `dual_screen` 9, `drop_tool` 4). Higher levels hold icons 1, 2, 3, 6, 20, nearly always with character 0. Icon 24
+appears in merged (mip ≥ 1) overworld records, where the largest icon of the merged moves wins. Icons 18, 19, 22 have
+not been seen. No overworld record has CHECKPOINT. `intro` has two: one in level 1 (flags 1, WALK, character 10), a
+checkpoint that landed on its move's record and survived a merge, and a merged level-2 record. A puzzle level's history
+can hold many CHECKPOINT records (`skipping_stones` has 26).
 
 ### Entity diff blob
 

@@ -61,6 +61,7 @@ function progress({ state, wayIn = [], towers = [], rank = 0, extra = {} }: Prog
         state,
         unlocks: state.map(() => ({ levels: [] })),
         wayIn: state.map((levelState, i) => (levelState === 'blocked' ? wayIn[i] || [] : null)),
+        wayInChains: state.map(() => null),
         wayInFixed: new Set(),
         why: state.map((levelState) => (levelState === 'blocked' ? blockedWhy() : null)),
         behind: state.map((_, i) => wayIn[i] || []),
@@ -124,6 +125,46 @@ describe('plans do not depend on the root', () => {
         expect(keys(P, ['level', 1])).toEqual(['l0', 'l1']);
         expect(unlockPlan(P, ['level', 1])!.nodes.get('l1')!.alt).toBe(2);
         expect(unlockPlan(P, ['level', 2])).toBe(null);
+    });
+});
+
+describe('a doorway onto another closed gate', () => {
+    // level 1 sits behind gate 0, which opens onto nothing but gate 1; gate 0 needs level 0, gate 1 the locked level 2
+    test('the plan takes both gates', () => {
+        Object.assign(PROG, {
+            levels: [level('a'), level('b'), level('c', { req: [0] })],
+            freezers: [
+                { req: [0], signs: [] },
+                { req: [2], signs: [] },
+            ],
+            signs: [],
+            gold_rooms: [],
+        });
+        const wayInChains = [null, new Map([[0, [[0, 1]]]]), null];
+        const P = progress({ state: ['unlocked', 'blocked', 'locked'], wayIn: [null, [0]], extra: { wayInChains } });
+        expect(keys(P, ['level', 1]).toSorted()).toEqual(['g0', 'g1', 'l0', 'l1', 'l2']);
+    });
+    test('a gate beyond it that needs the level behind it drops the way through', () => {
+        Object.assign(PROG, {
+            levels: [level('b'), level('open')],
+            freezers: [
+                { req: [1], signs: [] },
+                { req: [0], signs: [] },
+            ],
+            signs: [],
+            gold_rooms: [],
+        });
+        const state: LevelState[] = ['blocked', 'unlocked'];
+        const behind = gatesBehindThemselves({
+            state,
+            wayIn: [[0], null],
+            chains: [new Map([[0, [[0, 1]]]]), null],
+            via: () => [],
+            ice: state.map(() => undefined),
+            gateOpen: [false, false],
+            met: () => false,
+        });
+        expect([...behind]).toEqual([1]);
     });
 });
 

@@ -1,14 +1,14 @@
-// Builds the marker icons of the page from the game's own 3D models: public/assets/icons/<name>.avif (128 px) and the
-// favicon public/assets/icons/favicon-<size>.png.
+// Builds the marker icons of the page from the game's own 3D models: src/assets/icons/<name>.avif (128 px) and the
+// favicon src/assets/icons/favicon-<size>.png.
 //
 // Reads the overworld entities in <game>/data/levels.package (tints and glow colours), data/schema.json, and the render
 // assets of the game folder: data-pc/*.compressed_mesh and *.texture, data/materials.package and
 // data-common/overworld.all_paint_data (format in docs/GAMEDATA.md, Render assets).
-// Writes public/assets/icons/.
+// Writes src/assets/icons/.
 //
 // Usage: node scripts/build-icons.ts [--game DIR] [--only NAME[,NAME...]] [--png DIR]
 //   --only   renders just those icons (names as in ICONS below)
-//   --png    also writes each icon as a PNG into DIR, without encoding AVIF; nothing goes to public/assets/icons/
+//   --png    also writes each icon as a PNG into DIR, without encoding AVIF; nothing goes to src/assets/icons/
 //
 // Encoding to AVIF needs ImageMagick (`magick`) with AVIF support, on the PATH or inside WSL.
 //
@@ -461,7 +461,7 @@ function main(): void {
     };
     pkg.close();
 
-    const outputDirectory = join(paths.ROOT, 'public', 'assets', 'icons');
+    const outputDirectory = join(paths.ROOT, 'src', 'assets', 'icons');
     const pngDirectory = values.png;
     if (pngDirectory) {
         mkdirSync(pngDirectory, { recursive: true });

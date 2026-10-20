@@ -1,0 +1,10 @@
+// The built page in dist/ as a Cloudflare Workers static site: `npm run deploy` after `npm run data`
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "sinkingstar",
+    "compatibility_date": "2026-10-01",
+    "assets": { "directory": "./dist" },
+    "routes": [{ "pattern": "sinkingstar.xpaw.me", "custom_domain": true }],
+    "workers_dev": false,
+    "preview_urls": false
+}

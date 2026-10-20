@@ -1,4 +1,4 @@
-// The icons of the map's markers and sidebar rows: the rendered images in assets/icons/ next to the page, and the
+// The icons of the map's markers and sidebar rows: the rendered images in src/assets/icons/, and the
 // shapes that mark a level's role (VIEWER.md "Level states (viewer)", "Level roles (viewer)" and "The page (viewer)")
 import { LEVEL_ICON_NAMES } from './level-icons.ts';
 import type { OverlayKind } from './map-html.ts';
@@ -27,9 +27,15 @@ const ICON_NAMES = [
 /** The rendered images, by file name without the extension. */
 export type IconName = (typeof ICON_NAMES)[number];
 
+const ICON_FILE_URLS = import.meta.glob('../assets/icons/*.avif', { query: '?url', import: 'default', eager: true });
+
 /** The URL of each icon's image, relative to the page, by icon name. */
 export const ICON_URLS: Record<string, string> = {};
-for (const name of ICON_NAMES) ICON_URLS[name] = `assets/icons/${name}.avif`;
+for (const name of ICON_NAMES) {
+    const url = ICON_FILE_URLS[`../assets/icons/${name}.avif`];
+    if (typeof url !== 'string') throw new Error(`no image for the icon ${name}`);
+    ICON_URLS[name] = url;
+}
 
 /** Role shapes: SVG paths around (0, 0) at a radius. */
 export const SHAPES: Record<ShapeName, { path: (radius: number) => string }> = {

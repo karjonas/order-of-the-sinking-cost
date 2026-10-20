@@ -36,9 +36,11 @@ import { placeRovers } from './rovers.ts';
 import type { RoverCell } from './rovers.ts';
 import {
     heroHoldsCharm,
+    heroHoldsRod,
     heroLayerOf,
     heroSeed,
     placeCharmDoors,
+    placeRodDoors,
     placeTeleportDoors,
     placeTransmuteDoors,
     placeWardrobes,
@@ -86,7 +88,8 @@ export interface WalkGrid extends GridShape {
     marks: Uint8Array;
     // the TELEPORT line's targets: the cells of the existing Rocks, living Monsters and movables other than Mirrors
     // (a Gem, Promesst_Light, Rover or Friendly_Dragon); `mirrorSides`: per cell of an existing Mirror, a bit per
-    // side (1 << side) it is open on, where the line turns instead of swapping
+    // side (1 << side) it is open on, where the line turns instead of swapping. Both are filled only by noteTarget and
+    // noteMirror while the grid is built, which mark their cells LINE_STOP in `cellFlags`
     swapTargets: Set<number>;
     mirrorSides: Map<number, number>;
     // the cells of the existing flat Mirrors, which hold up nothing (every other movable does)
@@ -194,6 +197,9 @@ export interface WalkGrid extends GridShape {
     charmPlaces: Set<number>;
     charmIslets: Set<number>;
     transmuteDoors: Set<number>;
+    // the cells of the Wardrobes that give the Rod, and whether the current hero holds it
+    rodDoors: Set<number>;
+    rodHero: boolean;
     // the cells of the objects that press no Switch
     notPressers: Set<number>;
     heroLayer: number;
@@ -363,6 +369,8 @@ function newWalkGrid(
         charmPlaces: new Set(),
         charmIslets: new Set(),
         transmuteDoors: new Set(),
+        rodDoors: new Set(),
+        rodHero: false,
         notPressers: new Set(),
         heroLayer: 0,
         rooms: NO_ROOMS,
@@ -478,6 +486,8 @@ export function buildWalkGrid(
     walkGrid.charmHero = heroHoldsCharm(walkGrid);
     placeCharmStones(walkGrid);
     placeTransmuteDoors(walkGrid);
+    placeRodDoors(walkGrid);
+    walkGrid.rodHero = heroHoldsRod(walkGrid);
     placeNotPressers(walkGrid);
     walkGrid.heroLayer = heroLayerOf(walkGrid);
     walkGrid.rooms = roomIndexOf(walkGrid);

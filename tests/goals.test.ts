@@ -4,7 +4,7 @@ import { PROG, SCHEMA } from '../src/data.ts';
 import { roleFor } from '../src/model/goal-roles.ts';
 import type { GoalRoles } from '../src/model/goal-roles.ts';
 import { activeGoal, goalLadder } from '../src/model/goals.ts';
-import type { AchievementsGoal, EndingGoal, LadderGoal, TowersGoal } from '../src/model/goals.ts';
+import type { AchievementsGoal, EndingGoal, LadderGoal } from '../src/model/goals.ts';
 import { goalsView } from '../src/model/goals-view.ts';
 import type { EndingStatus, GoalsView } from '../src/model/goals-view.ts';
 import type { NextStep } from '../src/model/next-steps.ts';
@@ -23,7 +23,7 @@ vi.mock('../src/data.ts', async () => {
 });
 vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 // the page, without its DOM
-vi.mock('../src/view.ts', () => ({ show() {} }));
+vi.mock('../src/view.ts', () => ({ show() {}, async showSave() {} }));
 // the test levels have no map layers: everything stands on the ground
 vi.mock('../src/model/layers.ts', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../src/model/layers.ts')>()),
@@ -36,10 +36,6 @@ const achievementBit = (name: string) =>
 
 const endingGoal = (goal: LadderGoal): EndingGoal => {
     if (goal.kind !== 'ending') throw new Error(`${goal.key} is no ending`);
-    return goal;
-};
-const towersGoal = (goal: LadderGoal): TowersGoal => {
-    if (goal.kind !== 'towers') throw new Error(`${goal.key} is no towers goal`);
     return goal;
 };
 const achievementsGoal = (goal: LadderGoal): AchievementsGoal => {
@@ -123,6 +119,7 @@ function setup({ rooms = 3, achievements = 0n, activated = [], visited = [] }: S
         state,
         unlocks: state.map(() => ({ levels: [] })),
         wayIn,
+        wayInChains: state.map(() => null),
         wayInFixed: new Set(),
         why: state.map((levelState) => (levelState === 'blocked' ? blockedWhy() : null)),
         behind: wayIn.map((gates) => gates || []),
@@ -187,18 +184,17 @@ const nodeNeed = (progress: ShownProgress, goal: { roles?: GoalRoles }, key: str
     goal.roles!.need[progress.plans.G.index.get(key)!];
 
 describe('the goals ladder', () => {
-    test('endings, towers, achievements, Completionist; the first one not done is active', () => {
+    test('endings, achievements, Completionist; the first one not done is active', () => {
         const { progress } = setup();
         expect(progress.goals.map((goal) => goal.key)).toEqual([
             'ending:ENDGAME1',
             'ending:ENDGAME2',
             'ending:ENDGAME3',
-            'towers',
             'achievements',
             'completionist',
         ]);
         expect(activeGoal(progress.goals)!.key).toBe('ending:ENDGAME1');
-        expect(achievementsGoal(progress.goals[4]).children.some((child) => child.name === 'COMPLETIONIST')).toBe(
+        expect(achievementsGoal(progress.goals[3]).children.some((child) => child.name === 'COMPLETIONIST')).toBe(
             false,
         );
         const later = setup({ achievements: achievementBit('ENDGAME1') });
@@ -253,15 +249,10 @@ describe('what a level leads to', () => {
             ),
         );
     });
-    test('a tower under fog is not named; its goal is left out of the towers', () => {
+    test('a tower under fog is not named', () => {
         const model = view(setup(), { towerHidden: [true, false, false] });
         const leads = new Map(model.goalLevels(model.goals[0]).map((entry) => [PROG.levels[entry.i].n, entry.leadsTo]));
         expect(leads.get('t0a')).not.toContain('HxM');
-        // the only tower without an Antipode teleporter is under fog, so the towers have no row
-        const twoRooms = view(setup({ rooms: 2 }), { towerHidden: [false, false, true] });
-        expect(twoRooms.goals.some((goal) => goal.kind === 'towers')).toBe(false);
-        const shown = view(setup({ rooms: 2 }));
-        expect(shown.goals[3].children!.map((child) => child.key)).toEqual(['tower:2']);
     });
 });
 
@@ -269,14 +260,12 @@ describe('the first ending and its ground towers', () => {
     const endingOf = (model: GoalsView) => model.goals[0];
     const childKeys = (goal: { children?: Array<{ key: string }> }) => goal.children!.map((child) => child.key);
 
-    test('a tower with an Antipode teleporter is listed under the first ending, the others under Towers', () => {
+    test('a tower with an Antipode teleporter is listed under the first ending', () => {
         const all = setup();
         expect(childKeys(endingGoal(all.progress.goals[0]))).toEqual(['tower:0', 'tower:1', 'tower:2']);
         expect(endingGoal(all.progress.goals[0]).children!.every((child) => child.kind === 'antipode')).toBe(true);
-        expect(towersGoal(all.progress.goals[3]).children).toEqual([]);
         const two = setup({ rooms: 2 });
         expect(childKeys(endingGoal(two.progress.goals[0]))).toEqual(['tower:0', 'tower:1']);
-        expect(childKeys(towersGoal(two.progress.goals[3]))).toEqual(['tower:2']);
         expect(endingGoal(two.progress.goals[1]).children).toBeUndefined();
         const model = view(setup());
         expect(endingOf(model).children!.map((child) => child.label)).toEqual([
@@ -358,7 +347,6 @@ describe('spoiler labels', () => {
             model.goals.filter((goal) => goal.kind === 'ending').map((goal) => goal.label);
         const first = view(setup(), { endings: [{}, { shown: false }, { shown: false }] });
         expect(endingLabels(first)).toEqual(['Endgame']);
-        // every tower here has an Antipode teleporter, so the towers have no row
         expect(first.goals[1].key).toBe('achievements');
         const firstEarned = view(setup({ achievements: achievementBit('ENDGAME1') }), {
             endings: [{ earned: true }, {}, { shown: false }],

@@ -1,4 +1,4 @@
-// The name of the rendered image (assets/icons/<name>.avif) that marks a level's entry pad
+// The name of the rendered image (src/assets/icons/<name>.avif) that marks a level's entry pad
 import type { ProgressLevel } from '../types.ts';
 
 export type LevelIconState = 'locked' | 'available' | 'solved';

@@ -1,7 +1,7 @@
 // Wardrobes, the hero's walk layer and the TELEPORT swap (SKILLS.md "Wardrobes", "TELEPORT and PULL")
-import { CHARM_FLAG, PROTECTION_FLAG, rawU32, TELEPORT_FLAG, TRANSMUTE_FLAG } from '../save.ts';
+import { CHARM_FLAG, PROTECTION_FLAG, rawU32, TELEPORT_FLAG, TRANSMUTE_FLAG, WAND_FLAG } from '../save.ts';
 import type { Position, World } from '../types.ts';
-import { cellOnSide, cellOf, keyOf, WARDROBE_MARK } from './cells.ts';
+import { cellOf, cellsOnSide, keyOf, LINE_STOP, WARDROBE_MARK } from './cells.ts';
 import type { GridShape } from './cells.ts';
 import type { FloodState } from './flood.ts';
 import { exists } from './groups.ts';
@@ -54,6 +54,7 @@ export interface WardrobeCell {
     teleport: boolean;
     charm: boolean;
     transmute: boolean;
+    rod: boolean;
 }
 
 /** The Wardrobes of the level data whose cell lies inside the grid, in list order. */
@@ -61,6 +62,7 @@ export function levelWardrobes(shape: GridShape, world: World): WardrobeCell[] {
     const teleportPids = new Set(world.teleport || []);
     const charmPids = new Set(world.charm || []);
     const transmutePids = new Set(world.transmute || []);
+    const rodPids = new Set(world.rod || []);
     const wardrobes: WardrobeCell[] = [];
 
     for (const [pid, i, j, z, side, skill, existence] of world.wardrobes || []) {
@@ -70,7 +72,8 @@ export function levelWardrobes(shape: GridShape, world: World): WardrobeCell[] {
         const teleport = teleportPids.has(pid);
         const charm = charmPids.has(pid);
         const transmute = transmutePids.has(pid);
-        wardrobes.push({ pid, cell, side, skill, existence, teleport, charm, transmute });
+        const rod = rodPids.has(pid);
+        wardrobes.push({ pid, cell, side, skill, existence, teleport, charm, transmute, rod });
     }
 
     return wardrobes;
@@ -125,6 +128,41 @@ export function startsWithCharm(walkGrid: WalkGrid, outside: Set<number> | null)
     return false;
 }
 
+/** Collects the cells of the existing Wardrobes that give the Rod. */
+export function placeRodDoors(walkGrid: WalkGrid): void {
+    for (const { cell, rod } of walkGrid.geometry.wardrobes) {
+        if (rod && walkGrid.wardrobes.has(cell)) walkGrid.rodDoors.add(cell);
+    }
+}
+
+/** Whether the current hero holds the Rod in the latest inventory_flags. */
+export function heroHoldsRod(walkGrid: WalkGrid): boolean {
+    const guy = walkGrid.world.guy;
+    const inventory = walkGrid.latest.get(guy?.[0], 'inventory_flags');
+    return inventory !== undefined && (rawU32(inventory) & WAND_FLAG) !== 0;
+}
+
+/** Whether a hero leaving `cell` on side `side` passes the door of a Wardrobe that gives the Rod. */
+export function leavesByRodDoor(walkGrid: WalkGrid, cell: number, side: number): boolean {
+    if (!walkGrid.rodDoors.has(cell)) return false;
+    return walkGrid.wardrobes.get(cell)?.[0] === side;
+}
+
+/**
+ * Whether a flood starts with a hero who holds the Rod: the current hero does, or the cells the flood stays `outside`
+ * of hold a Wardrobe that gives it, whose door the hero left on the way to the cells he stands in.
+ */
+export function startsWithRod(walkGrid: WalkGrid, outside: Set<number> | null): boolean {
+    if (walkGrid.rodHero) return true;
+    if (!outside) return false;
+
+    for (const cell of walkGrid.rodDoors) {
+        if (outside.has(cell)) return true;
+    }
+
+    return false;
+}
+
 /** Collects the cells of the existing TRANSMUTE Wardrobes. */
 export function placeTransmuteDoors(walkGrid: WalkGrid): void {
     for (const { cell, transmute } of walkGrid.geometry.wardrobes) {
@@ -167,20 +205,26 @@ export function swapCell(
     side: number,
     stride: number,
 ): number {
-    const { width, height, mirrorSides, swapTargets } = walkGrid;
+    const { width, height, marks, cellFlags, mirrorSides, swapTargets } = walkGrid;
     const enteredSide = (side + 2) % 4;
     let previous = cell;
     let next = cellsOnSide(walkGrid, cell, side, stride);
 
     for (let stepsTaken = 0; stepsTaken < width + height && next !== cell; stepsTaken++) {
         if (blocked(walkGrid, floodState, next)) return -1;
-        if (doorOut(walkGrid, previous, side) >= 0 || doorIn(walkGrid, next, side) >= 0) return -1;
-        if (swapTargets.has(next)) return next;
 
-        const openSides = mirrorSides.get(next);
-        if (openSides !== undefined) {
-            if (openSides & (1 << enteredSide)) return -1;
-            return next;
+        if ((marks[previous] | marks[next]) & WARDROBE_MARK) {
+            if (doorOut(walkGrid, previous, side) >= 0 || doorIn(walkGrid, next, side) >= 0) return -1;
+        }
+
+        if (cellFlags[next] & LINE_STOP) {
+            if (swapTargets.has(next)) return next;
+
+            const openSides = mirrorSides.get(next);
+            if (openSides !== undefined) {
+                if (openSides & (1 << enteredSide)) return -1;
+                return next;
+            }
         }
 
         previous = next;
@@ -188,14 +232,6 @@ export function swapCell(
     }
 
     return -1;
-}
-
-/** The cell `count` cells from `cell` along side `side`. */
-function cellsOnSide(walkGrid: WalkGrid, cell: number, side: number, count: number): number {
-    let reached = cell;
-    for (let stepsLeft = count; stepsLeft > 0; stepsLeft--) reached = cellOnSide(walkGrid, reached, side);
-
-    return reached;
 }
 
 /** The current hero's seed: the cell the hero stands in at `position` (-1 inside a wall), and the walk layer. */

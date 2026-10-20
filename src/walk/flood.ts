@@ -9,6 +9,7 @@ import type { BridgeWay } from './bridges.ts';
 import {
     addTo,
     cellOnSide,
+    cellsOnSide,
     BEAM,
     BRIDGE_MARK,
     GATE,
@@ -22,7 +23,7 @@ import {
     TRAVEL_MARK,
     Z_BIAS,
 } from './cells.ts';
-import { openGateAhead, press } from './gates.ts';
+import { openGateAhead, press, rodLandsOn } from './gates.ts';
 import type { GateLift, PressMiss } from './gates.ts';
 import { exists, withGroups } from './groups.ts';
 import type { CellWrite } from './groups.ts';
@@ -40,7 +41,16 @@ import { respawnedRocksOf, rockTurnsOf, sinkTurned, stoneTurnsOf } from './rock-
 import type { RockTurn } from './rock-turns.ts';
 import { ferry, roverTurnsOf } from './rovers.ts';
 import type { RoverCell, SunkRover } from './rovers.ts';
-import { LAYER_COUNT, layerAfterStep, leavesByCharmDoor, startsWithCharm, swapCell, WIZARD } from './skills.ts';
+import {
+    LAYER_COUNT,
+    layerAfterStep,
+    leavesByCharmDoor,
+    leavesByRodDoor,
+    startsWithCharm,
+    startsWithRod,
+    swapCell,
+    WIZARD,
+} from './skills.ts';
 import type { LayeredCell } from './skills.ts';
 import { skipAndSwap, takeKicks } from './skipping-stones.ts';
 import type { Kick } from './skipping-stones.ts';
@@ -91,7 +101,9 @@ export interface FlavorLatch {
  * (`mirrorTurnsAt`). `monsterGates`: the shut monster Gates the walk can open, with their rooms' Monsters indexed by
  * the cells beside them. The TELEPORT swaps worth noting (noteSwap): `swapOnto` the cells a swapped object may matter
  * in (the unpressed Switches and the open Gem_Slots a Gem turns onto), `swapObjects` the cells of the objects whose
- * new position may matter; `rockAt` gives a turning Rock's index by its cell.
+ * new position may matter; `rockAt` gives a turning Rock's index by its cell. `rodSwitches`: the Switch cells of
+ * `switchesAt` that a Rod launch may land an object on with no hero there (a wall, Gate, Freezer or Fence beside the
+ * Switch), and `rodSwitchCount` their number per flavor.
  */
 export interface Triggers {
     cells: Uint8Array;
@@ -111,6 +123,8 @@ export interface Triggers {
     flavors: FlavorLatch[];
     switchesAt: Map<number, number[]>;
     switchCount: Int32Array;
+    rodSwitches: Set<number>;
+    rodSwitchCount: Int32Array;
     lifts: GateLift[];
     hops: SwitchHop[];
     lanePushAt: Map<number, number[]>;
@@ -147,6 +161,7 @@ export interface Triggers {
  * `swapLog` the hero cell, target cell pairs in order, `swapsAt` the targets per hero cell and `swapsOf` the hero cells
  * per target (swaps.ts), `ontoSwaps` how many targets `swapsAt` holds, and a cursor per search that reads the log.
  * `pressing`: the cells of the objects that rest on the Switches of the flavors in `latched`, which no other press uses.
+ * `charming` and `rodHeld`: the hero holds CHARM or the Rod, from the save or a Wardrobe door the flood left by.
  */
 export interface FloodState {
     outside: Set<number> | null;
@@ -155,6 +170,7 @@ export interface FloodState {
     frozenHolds: boolean;
     topDrops: boolean;
     charming: boolean;
+    rodHeld: boolean;
     stoneFront: Set<number> | null;
     front: Set<number> | null;
     reached: number[][];
@@ -244,6 +260,8 @@ export const NO_TRIGGERS: Triggers = {
     flavors: [],
     switchesAt: new Map(),
     switchCount: new Int32Array(0),
+    rodSwitches: new Set(),
+    rodSwitchCount: new Int32Array(0),
     lifts: [],
     hops: [],
     lanePushAt: new Map(),
@@ -274,6 +292,7 @@ export function newFloodState(
         frozenHolds,
         topDrops,
         charming: false,
+        rodHeld: false,
         stoneFront: null,
         front: null,
         reached: Array.from({ length: LAYER_COUNT }, () => []),
@@ -426,6 +445,8 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
 
     const switchesAt = new Map<number, number[]>();
     const switchCount = new Int32Array(flavors.length);
+    const rodSwitches = new Set<number>();
+    const rodSwitchCount = new Int32Array(flavors.length);
 
     flavors.forEach(({ flavor }, flavorIndex) => {
         for (const cell of new Set(walkGrid.unpressed.get(flavor))) {
@@ -434,6 +455,11 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
             if (deep(walkGrid, cell) || walkGrid.charmIslets.has(cell)) continue;
             switchCount[flavorIndex]++;
             addTo(switchesAt, cell, flavorIndex);
+
+            if (rodLandsOn(walkGrid, cell)) {
+                rodSwitches.add(cell);
+                rodSwitchCount[flavorIndex]++;
+            }
         }
     });
 
@@ -500,6 +526,8 @@ export function triggerIndex(walkGrid: WalkGrid): Triggers {
         flavors,
         switchesAt,
         switchCount,
+        rodSwitches,
+        rodSwitchCount,
         lifts: walkGrid.gateLifts,
         hops: walkGrid.switchHops,
         lanePushAt,
@@ -642,11 +670,7 @@ function moveTarget(
     steps: number,
 ): number {
     if (endpointBeam) return endpointTarget(endpointBeam, endpointBeam.side === side, altered);
-
-    let target = cellOnSide(walkGrid, cell, side);
-    for (let stepsLeft = steps; stepsLeft > 1; stepsLeft--) target = cellOnSide(walkGrid, target, side);
-
-    return target;
+    return cellsOnSide(walkGrid, cell, side, steps);
 }
 
 /**
@@ -770,6 +794,7 @@ function stepWith(
         // a beam's wall cell is entered only from the beam
         if (cellFlags[target] & THRU && !(cellFlags[cell] & BEAM)) continue;
         if (layer === 0 && leavesByCharmDoor(walkGrid, cell, side)) floodState.charming = true;
+        if (!floodState.pocket && leavesByRodDoor(walkGrid, cell, side)) floodState.rodHeld = true;
         settle(walkGrid, floodState, target, z, layerAfterStep(walkGrid, cell, side, target, layer));
     }
 }
@@ -896,6 +921,7 @@ export function flood(
     const laneCount = walkGrid.lanes.length;
     const floodState = newFloodState(walkGrid.triggers, laneCount, outside, reveal, pocket, frozenHolds, topDrops);
     floodState.charming = startsWithCharm(walkGrid, outside);
+    floodState.rodHeld = !pocket && startsWithRod(walkGrid, outside);
     floodState.stoneFront = stoneFront ?? null;
     floodState.front = front;
     walkGrid.activeFlood = floodState;

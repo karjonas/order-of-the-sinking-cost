@@ -75,6 +75,7 @@ const LATEST_FIELDS = [
     'base.theta_target',
     'dead_t',
     'skill_flags',
+    'inventory_flags',
     'powered',
     'properties',
     'exists',
@@ -228,6 +229,9 @@ export const TELEPORT_FLAG = 8;
 export const CHARM_FLAG = 64;
 
 export const TRANSMUTE_FLAG = 32;
+
+/** Guy.inventory_flags WAND: the hero holds the Rod. */
+export const WAND_FLAG = 0x400;
 
 /**
  * "x,y,z" of the kept hero positions whose record ends with the Guy holding the skill `flag` (by his skill_flags

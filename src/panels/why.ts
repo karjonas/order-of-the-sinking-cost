@@ -12,20 +12,25 @@ import type { PanelContext } from './context.ts';
 /** The members of the panel context that the why text reads. */
 export interface WhyContext extends Pick<PanelContext, 'hide' | 'freezers' | 'iceOf' | 'gateShown' | 'gateArea'> {
     status: Pick<PanelContext['status'], 'achievements'>;
-    progress: Pick<ShownProgress, 'wayIn' | 'why' | 'access'> & { reach: Pick<Reachability, 'fromSky'> | null };
+    progress: Pick<ShownProgress, 'wayIn' | 'why' | 'access' | 'behind'> & {
+        reach: Pick<Reachability, 'fromSky'> | null;
+    };
     model: Pick<ProgressModel, 'stepShown'>;
 }
 
 /**
- * The pieces of why a level is not reachable: its gates, the mechanics and the layer it needs, whether nothing is known
- * and whether a drop from the sky leads into it.
+ * The pieces of why a level is not reachable: its gates, the mechanics and the layer it needs, whether nothing is known,
+ * whether a drop from the sky leads into it (`skyEntry`) and whether that shows (`fromSky`), and the gates in front of
+ * it that the level itself unlocks.
  */
 export interface WhyParts {
     gate: string;
     mech: string;
     layer: string;
     none: boolean;
+    skyEntry: boolean;
     fromSky: boolean;
+    ownGates: string;
 }
 
 // the world's achievement that names a mechanic, and the mechanic in the game's words (it capitalises its objects)
@@ -58,6 +63,19 @@ function gateText(context: WhyContext, levelIndex: number, gates: number[]): str
     return `behind ${freezerNoun(gates[0])}${gateAreaSuffix(context, gates[0])}`;
 }
 
+// the closed gates a level's pocket bumps into, when every one of them that fog shows needs the level itself
+function ownGatesText(context: WhyContext, levelIndex: number): string {
+    const bumped = context.progress.behind[levelIndex] || [];
+    const shown = bumped.filter((freezerIndex) => context.gateShown(context.freezers[freezerIndex]));
+    if (!shown.length || shown.length < bumped.length) return '';
+
+    const needsLevel = (freezerIndex: number) => context.freezers[freezerIndex].req.includes(levelIndex);
+    if (!shown.every(needsLevel)) return '';
+
+    if (shown.length > 1) return `only behind ${freezersNoun(shown)} it unlocks`;
+    return `only behind an ${freezerNoun(shown[0])} it unlocks${gateAreaSuffix(context, shown[0])}`;
+}
+
 function mechanicsText(context: WhyContext, mechanics: string[]): string {
     if (!mechanics.length) return '';
 
@@ -79,13 +97,16 @@ export function whyParts(context: WhyContext, levelIndex: number): WhyParts {
     }
 
     // a drop from a sky ledge leads into the level's pocket; named once the sky shows
-    const fromSky = !!progress.reach?.fromSky[levelIndex] && context.model.stepShown({ t: 'a', id: 'sky' });
+    const skyEntry = !!progress.reach?.fromSky[levelIndex];
+    const fromSky = skyEntry && context.model.stepShown({ t: 'a', id: 'sky' });
     return {
         gate: gateText(context, levelIndex, wayIn(context, levelIndex)),
         mech: mechanicsText(context, mechanics),
         layer: layerText,
         none: !progress.wayIn?.[levelIndex]?.length && !mechanics.length && !layer,
+        skyEntry,
         fromSky,
+        ownGates: ownGatesText(context, levelIndex),
     };
 }
 
@@ -101,7 +122,11 @@ export function whyText(context: WhyContext, levelIndex: number): string {
     const parts = whyParts(context, levelIndex);
     const text = [parts.gate, parts.mech, parts.layer].filter(Boolean).join(' · ');
     if (text) return text;
-    if (parts.none && parts.fromSky) return `from ${layerName('sky')}`;
-    if (parts.none) return 'no known route';
-    return 'not reachable from where you have been';
+    if (!parts.none) return 'not reachable from where you have been';
+
+    // a sky under fog is not named; while a drop from it leads in, the gates the level unlocks are not its only way
+    if (parts.fromSky) return `from ${layerName('sky')}`;
+    if (parts.skyEntry) return 'not reachable from where you have been';
+    if (parts.ownGates) return parts.ownGates;
+    return 'no known route';
 }

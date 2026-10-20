@@ -78,11 +78,11 @@ Get/SetAchievement, RequestUserStats and StoreStats, never SetStat, and its Stea
 | u32 | counter 0: gems taken with T (a Gem with `inventory_index` < 0 in the hero's cell; "GemDustoff"; [TRANSMUTE and the other skills](SKILLS.md#transmute-and-the-other-skills)) |
 | u32 | counter 1: gems dropped with T onto a Gem_Slot (the hero's latest inventory gem) |
 | u32 | counter 2: Artifacts picked up (every kind, wands included) |
-| u32 | counter 3: never incremented |
-| u32 | counter 4: Friendly_Dragon follow/unfollow toggles (TOGGLE_FRIENDLY_DRAGON, dragon within 1.25 of the hero) |
+| u32 | counter 3: never incremented (0 in every save seen) |
+| u32 | counter 4: Friendly_Dragon follow/unfollow toggles (TOGGLE_FRIENDLY_DRAGON, dragon within 1.25 of the hero); not seen above 0 |
 | u32 | counter 5: successful P1 wand uses ("p1wand_success") |
 | u32 | counter 6: beams turned by a torc (cw/ccw/180) |
-| u32 | counter 7: prism uses that succeeded ("PrismSuccess") |
+| u32 | counter 7: prism uses that succeeded ("PrismSuccess"); not seen above 0 |
 | u32 | counter 8: entering an enabled Level_Entry |
 | u32 | counter 9: ACTIVATE actions handled (counted before mirror and teleport handling) |
 | s64 | **artifacts**: bit 1 << `Artifact.kind`, set only for kinds 3-6 (SPEED_CONTROL, UNDO_SIDE_PANEL, _EXTENDED, _VERY_EXTENDED) on pickup. Kinds 0-2 (PROMESST_1/2/3_WAND) set `Guy.inventory_flags` instead (WAND 0x400, TORC 0x800, PRISM 0x1000); 7 SPAWNER_MORPH only counts in counter 2. No level holds kind ≥ 3 and nothing reads the bits (time control is gated by `levels_solved > 0` or level `time_tutorial`), so it is always 0. Loading the overworld clears the bit of each Artifact still present there |
@@ -184,12 +184,19 @@ least n ([Freezer](#freezer)).
   rooms, each with an exit Door.
 - Winning a room sets its combination's bit and a campaign flag at index stage offset + region (offsets 0, 4, 10, 14
   for stages 1..4), and each `~controller` entity with a matching bit runs an unlock, with a "freezers are about…"
-  sound ("register_current_end1_or_end3_flags_as_completed").
+  sound ("register_current_end1_or_end3_flags_as_completed"). The combination bits are not in
+  `Status.sokoban_status`: the Status of a finished save holds nothing specific to `end1`, and its string table is
+  empty. They live in the level's own state (inferred).
 - When a stage's list is done and the 3 s timer has run out, the stage goes up by one, the bits clear, and the bark
   `end1_dimension_<stage>` of the finished stage plays.
 - Freezers at levels 1–4 stand at (24, 22), (30, 22), (30, 16) and (24, 16), each holding a Rock. Level 5 (23, 15) is
   the END1_EXIT Door to overworld `~end1`.
 - A hero on END1_EXIT sets ESCAPE_FROM_PRELUDE and wins the level at once.
+- The `end1` history at stage 1 already has the Level_State `misc_flags` RETURN_TO_PRELUDE set (4 → 12), the Freezer
+  (24, 22, 4) unfrozen and the Judge's `state_int0` at 1 (0 → 1).
+- Opened-Freezer list B of a save past `end1` holds only the `intro` Freezers (7 Pids: (47, 44, 0), (45, 47, 0),
+  (46, 48, 0) twice, (44, 48, 0) twice and (45, 52, 2)), none of `end1`'s, as the `judge_unlock_level` exclusion
+  ([Freezer](#freezer)) gives.
 
 So in `end1` the hero pushes the released Rocks onto the controller Switches, plays each combination's room, and
 leaves at stage 5.
@@ -200,12 +207,14 @@ leaves at stage 5.
    Freezers: the light `ruby_beamcaster`, its gem, three switch rocks and `upstairs_mirror`, all movable into place
    from the level data ([Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)). The ride
    lands on the ASCEND Marker.
-2. Activate 1 of the sky towers (H, M, S, P), each needing N of its normal levels: H 12, M 6, S 6, P 10. Their pads
-   are the MAJOR pads of the sky hub (z 37 and 38).
+2. Activate High Heroes. Each sky tower (H, M, S, P) needs N of its normal levels: H 12, M 6, S 6, P 10, and opens one
+   of the four Freezers in step 3; High Heroes' Sign opens the south one, (−15, 144, 37), which the south way needs.
+   Their pads are the MAJOR pads of the sky hub (z 37 and 38).
 3. The four Freezers (−15, 144, 37), (−23, 147, 37), (−13, 152, 37) and (−9, 146, 38) each open with one sky tower.
    They ring the hub elevator (−15, 147, 38) → (−15, 147, 47). The south one, (−15, 144, 37), opens the south way to it: a closing Gate lifts the hero onto the step
    (inferred; [Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)). Each of the other
-   Freezers holds its own puzzle.
+   Freezers holds its own puzzle. An active sky tower does not open its hub Freezer until its Sign is read (High
+   Mirrors active, its Sign unread, its Freezer (−23, 147, 37) closed).
 4. The elevator's top opens onto the end2 room (z 44). There `laser_pointer` needs 11 levels: `allocate_heroes_v2` →
    `end2_heroes_1_2` → `end2_heroes_1_5`; `end2_mirror_3` → `mirror_prelude_v2_fix` → `peak_toggle`;
    `place_slot_4x4_pushstyle` → `color_picker` → `place_promesst_rooms`; `stack_prelude_pushstyle`. The set's other

@@ -4,7 +4,7 @@ import { PROG } from './data.ts';
 import { $, escapeHtml, hexDump } from './util.ts';
 import { resetHooks, state } from './shared.ts';
 import { baseName, statusEntry } from './files.ts';
-import { progressModel } from './model/progress-model.ts';
+import { progressModel, progressReady } from './model/progress-model.ts';
 import type { ProgressModel } from './model/progress-model.ts';
 import { renderSide } from './sidebar.ts';
 import { renderProgress } from './panels.ts';
@@ -16,7 +16,7 @@ type FocusPath = [id: string, path: number[]];
 
 // a redraw of the same campaign keeps these scroll positions and the focused element (by id, else by its child-index
 // path from the nearest element with an id)
-const KEEP_SCROLL = ['#sidebar', '#sideAreas', '#pgRows', '#pgSel'];
+const KEEP_SCROLL = ['#sidebar', '#sideGoals', '#pgRows', '#pgSel'];
 
 function focusPath(start: Element | null): FocusPath | null {
     if (!start || start === document.body) return null;
@@ -122,4 +122,19 @@ function drawPage(): void {
     restoreFocus(activePath, caret, fresh);
 }
 
-setPageDrawing(drawPage);
+// a redraw that only reuses worked-out progress needs no note
+function drawIsQuick(): boolean {
+    const key = state.camp;
+    if (key === null || !PROG.levels) return true;
+    return progressReady(key);
+}
+
+// the note over the map while a save is worked out; the header's live dot shows it too
+function setWorkingNote(text: string | null): void {
+    const note = $('#working');
+    note.textContent = text ?? '';
+    note.hidden = text === null;
+    document.body.classList.toggle('working', text !== null);
+}
+
+setPageDrawing({ draw: drawPage, quick: drawIsQuick, note: setWorkingNote });

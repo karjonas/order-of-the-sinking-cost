@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
+    "deploy": "vp build && wrangler deploy",
     "test": "vp test",
     "lint": "vp lint",
     "typecheck": "vp check --no-fmt --no-lint",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
-    "vite-plus": "1.0.0"
+    "vite-plus": "1.0.0",
+    "wrangler": "^4.151.1"
   }
 }

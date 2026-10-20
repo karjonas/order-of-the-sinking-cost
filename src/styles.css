@@ -114,7 +114,6 @@ html,
 main,
 #results,
 .side .goals,
-.side .alist,
 .side .find,
 .rlist .rows,
 .detail .sel,
@@ -133,8 +132,7 @@ a:hover {
     outline: 2px solid var(--hi);
     outline-offset: 2px;
 }
-.rr:focus-visible,
-.side .alist button:focus-visible {
+.rr:focus-visible {
     outline-offset: -2px;
 }
 /* buttons are key caps: navy glass inside a double gold bevel and a black outline, bold yellow label; on and primary
@@ -523,7 +521,7 @@ select:focus {
     text-decoration-color: rgba(236, 227, 205, 0.45);
 }
 /* the sections share the sidebar's height. The goals give up height first and scroll inside, under their sticky heading,
-   so their scrollbar sits at its inner edge; the open area list takes what is left */
+   so their scrollbar sits at its inner edge */
 .side .goals {
     flex: 0 1 auto;
     min-height: 72px;
@@ -534,18 +532,8 @@ select:focus {
 }
 /* a scrolling section has no padding above its sticky heading, or rows would show through it */
 .side .goals,
-.side .alist,
 .side .find {
     padding-top: 0;
-}
-.side .alist.open {
-    flex: 1 0 96px;
-    overflow: hidden auto;
-}
-.side .alist {
-    display: block;
-    overflow: hidden auto;
-    scrollbar-gutter: stable;
 }
 .side .find {
     flex: 0 1 auto;
@@ -692,8 +680,13 @@ select:focus {
 .side .goals .gl.off:not(.on) .n {
     color: var(--muted);
 }
-/* a layer's subhead, when the list has more than one layer */
-.side .alist .lh {
+/* the areas under Completionist are goal rows; the selected area carries the accent, so Completionist keeps its gold
+   name without one */
+.side .goals .gr:has(+ .kids .gl.on) > .gl.on {
+    box-shadow: none;
+}
+/* a layer's subhead, when the areas span more than one layer */
+.side .goals .lh {
     display: flex;
     align-items: center;
     gap: var(--row-gap);
@@ -704,80 +697,42 @@ select:focus {
     font-variant-caps: all-small-caps;
     letter-spacing: 0.08em;
 }
-.side .alist .lh .cnt {
+.side .goals .lh .cnt {
     margin-left: auto;
+    font-size: var(--side-count);
     font-weight: 400;
+    font-variant-numeric: tabular-nums;
     letter-spacing: 0;
 }
-.side .alist [data-grp] {
+.side .goals [data-grp] {
     cursor: pointer;
 }
-.side .alist [data-grp]:hover {
+.side .goals [data-grp]:hover {
     color: var(--title);
 }
-.side .alist [data-grp]:focus-visible {
+.side .goals [data-grp]:focus-visible {
     outline-offset: -2px;
 }
-.side .alist button:not(.fold) {
+/* the row that folds the finished areas of a layer */
+.side .goals .fin {
     display: flex;
     align-items: center;
     gap: var(--row-gap);
-    width: 100%;
     padding: 3px var(--side-pad);
-    color: var(--text);
+    color: var(--muted);
     font-size: var(--side-text);
+    cursor: pointer;
 }
-.side .alist .mk {
+.side .goals .fin .mk {
     flex: none;
-    display: inline-flex;
-    justify-content: center;
     width: var(--mark-w);
-    color: var(--gold);
 }
-.side .alist .mk .ic {
-    vertical-align: 0;
-}
-.side .alist button:not(.fold):hover {
-    background: var(--hover);
-}
-.side .alist button.on {
-    box-shadow: inset 2px 0 0 var(--hi);
-}
-.side .alist button.on .n {
-    color: var(--hi);
-}
-.side .alist button.done .n {
-    color: var(--muted);
-}
-.side .alist button.done.on .n {
-    color: var(--hi);
-}
-.side .alist button.done .cnt {
-    color: var(--gold);
-}
-.side .alist .n {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-.side .alist .fin {
-    display: flex;
-    align-items: center;
-    gap: var(--row-gap);
-    padding: 3px var(--side-pad);
-    color: var(--muted);
-    font-size: var(--side-text);
-    cursor: pointer;
-}
-.side .alist .fin:hover {
+.side .goals .fin:hover {
     color: var(--title);
 }
-.side .alist .fin:focus-visible {
+.side .goals .fin:focus-visible {
     outline-offset: -2px;
 }
-.side .alist .cnt,
 .side .find .cnt {
     display: inline-flex;
     align-items: center;
@@ -789,7 +744,6 @@ select:focus {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
-.side .alist .cnt .ic,
 .side .find .cnt .ic {
     vertical-align: 0;
 }
@@ -961,6 +915,43 @@ h2 {
 }
 body.dragging #dropOverlay {
     display: grid;
+}
+/* the note over the map while a save is worked out: the page is held up then, so the words carry it, not motion */
+#working {
+    grid-area: main;
+    align-self: center;
+    justify-self: center;
+    z-index: 20;
+    padding: var(--s2) var(--s4);
+    color: var(--title);
+    background: var(--glass);
+    border: 1px solid var(--frame);
+    border-radius: var(--r2);
+    box-shadow:
+        inset 0 1px 0 var(--glass-edge),
+        0 1px 6px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    font: 600 17px var(--serif);
+    font-variant-caps: small-caps;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+}
+#working[hidden] {
+    display: none;
+}
+.page:has(#results:empty) #working {
+    grid-column: main-start / results-end;
+}
+body.working .side .camp .live .dot {
+    background: none;
+    border: 1px solid var(--gold);
+    box-shadow: none;
+    animation: curPulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    body.working .side .camp .live .dot {
+        animation: none;
+    }
 }
 details {
     margin: var(--s2) 0;
