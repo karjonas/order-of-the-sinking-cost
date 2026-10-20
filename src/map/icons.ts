@@ -1,5 +1,16 @@
 // The icons of the map's markers and sidebar rows: the rendered images in src/assets/icons/, and the
 // shapes that mark a level's role (VIEWER.md "Level states (viewer)", "Level roles (viewer)" and "The page (viewer)")
+import type { Area } from '../types.ts';
+import type { TowerProgress } from '../model/towers.ts';
+import {
+    areaEmblemName,
+    EMBLEM_ICON_NAMES,
+    goldBadgeName,
+    TOWER_BADGE_NAMES,
+    towerBadgeName,
+    type EmblemIconName,
+    type TowerBadgeName,
+} from './emblems.ts';
 import { LEVEL_ICON_NAMES } from './level-icons.ts';
 import type { OverlayKind } from './map-html.ts';
 
@@ -22,6 +33,8 @@ const ICON_NAMES = [
     'treasure-taken',
     'hero',
     ...LEVEL_ICON_NAMES,
+    ...EMBLEM_ICON_NAMES,
+    ...TOWER_BADGE_NAMES,
 ] as const;
 
 /** The rendered images, by file name without the extension. */
@@ -59,6 +72,29 @@ export const iconHtml = (name: IconName, extraClass = ''): string => {
     if (extraClass) className += ' ' + extraClass;
     return `<img class="${className}" src="${ICON_URLS[name]}" alt="" width="128" height="128" draggable="false">`;
 };
+
+/** An emblem or badge as an image; without one, an empty mark of the same size so names stay aligned. */
+function emblemHtml(name: EmblemIconName | TowerBadgeName | null): string {
+    if (name) return iconHtml(name, 'emb');
+    return '<span class="ico emb emb-none" aria-hidden="true"></span>';
+}
+
+/** The emblem of an area, the placeholder for an area with none. */
+export const areaEmblemHtml = (area: Pick<Area, 'image'>): string => emblemHtml(areaEmblemName(area));
+
+/** The gold badge of a pair's gold achievement by its name; null for another achievement. */
+export function goldBadgeHtml(achievement: string): string | null {
+    const name = goldBadgeName(achievement);
+    if (!name) return null;
+    return emblemHtml(name);
+}
+
+/** An empty slot as wide as an emblem, for the rows of a list that has emblems on other rows. */
+export const emblemSlotHtml = (): string => emblemHtml(null);
+
+/** The badge of a tower from its worlds, gold once its dropdowns are solved; the placeholder for three or more worlds. */
+export const towerEmblemHtml = (tower: Pick<TowerProgress, 't' | 'gold'>): string =>
+    emblemHtml(towerBadgeName(tower.t, tower.gold));
 
 /** Every small icon is drawn in the same 16 px box. */
 const svgIcon = (path: string, fill: string, stroke: string, strokeWidth = 1): string => {

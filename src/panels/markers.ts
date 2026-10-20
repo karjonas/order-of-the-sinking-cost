@@ -3,7 +3,7 @@
 // (VIEWER.md "The page (viewer)", "The spoiler model (viewer)")
 import { PROG } from '../data.ts';
 import { escapeHtml } from '../util.ts';
-import { ROLES } from '../map/icons.ts';
+import { ROLES, towerEmblemHtml } from '../map/icons.ts';
 import type { IconName, Role } from '../map/icons.ts';
 import type { OverlayKind } from '../map/map-html.ts';
 import type { MapFreezer, MapLabel, MapMarker, MapOverlay, MapTower, MarkerStyle } from '../map/map-view.ts';
@@ -110,7 +110,7 @@ export function towerMarkers(context: PanelContext): MapTower[] {
                 if (context.model.padDisc(tower.pad)) padLine = '<br>Teleporter · discovered';
             }
 
-            const name = escapeHtml(towerName(tower.t));
+            const name = towerEmblemHtml(tower) + escapeHtml(towerName(tower.t));
             return {
                 towerIndex,
                 x: position[0],

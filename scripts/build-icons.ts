@@ -1,5 +1,6 @@
-// Builds the marker icons of the page from the game's own 3D models: src/assets/icons/<name>.avif (128 px) and the
-// favicon src/assets/icons/favicon-<size>.png.
+// Builds the marker icons of the page from the game's own 3D models: src/assets/icons/<name>.avif (128 px); from the
+// game's textures the area emblems area-<emblem>.avif, tower badges tower-<worlds>[-gold].avif, voice-log and hero; and the favicon
+// src/assets/icons/favicon-<size>.png.
 //
 // Reads the overworld entities in <game>/data/levels.package (tints and glow colours), data/schema.json, and the render
 // assets of the game folder: data-pc/*.compressed_mesh and *.texture, data/materials.package and
@@ -7,7 +8,7 @@
 // Writes src/assets/icons/.
 //
 // Usage: node scripts/build-icons.ts [--game DIR] [--only NAME[,NAME...]] [--png DIR]
-//   --only   renders just those icons (names as in ICONS below)
+//   --only   renders just those icons (names as in ICONS below, area-<emblem> or tower-<worlds>[-gold])
 //   --png    also writes each icon as a PNG into DIR, without encoding AVIF; nothing goes to src/assets/icons/
 //
 // Encoding to AVIF needs ImageMagick (`magick`) with AVIF support, on the PATH or inside WSL.
@@ -18,7 +19,9 @@
 //   the vertex normals, a key light from the top left, a fill light and a rim light, a dark outline and a drop shadow.
 // - The Teleporters' glowing parts take the entity's color_discovered. The level pads use the viewer's own stone and
 //   glow colours (STONE_COLORS, GLOW_GROUPS), stronger than the game's, so the states tell apart at a glance.
-// - The hero is the queen model without her props, her arms swung down from the bind pose's T, framed as a bust.
+// - An area emblem is the game's OverworldIcon_<emblem> texture, a tower badge its tower_status_<worlds>[_gold]
+//   texture, the voice log its UI_Voice_Log_Activate and the hero its wheel_queen portrait (mip 0), scaled to the icon size with an area filter on premultiplied colours, fitted into the square
+//   keeping its aspect.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,7 +31,7 @@ import { Materials, normalized, type Color, type Shading, type ShadingEntity } f
 import type { Vector4 } from './lib/math.ts';
 import { readMesh, type Mesh, type TriangleList } from './lib/mesh.ts';
 import { PaintData } from './lib/paint.ts';
-import { lowerArms, readParents } from './lib/pose.ts';
+import { fitSquare } from './lib/image.ts';
 import { Package, type Entity, type EntityPositions } from './lib/package.ts';
 import * as paths from './lib/paths.ts';
 import { encodePng } from './lib/png.ts';
@@ -59,13 +62,10 @@ interface IconSpec {
     outline?: number;
     shadow?: boolean;
     withTreasure?: boolean;
-    onlyMaterials?: RegExp;
-    pose?: boolean;
-    fitAbove?: number;
 }
 
 // The options of IconSpec that decide how one mesh is shaded
-type PartOptions = Pick<IconSpec, 'effect' | 'viewerColors' | 'onlyMaterials' | 'pose'>;
+type PartOptions = Pick<IconSpec, 'effect' | 'viewerColors'>;
 
 // A mesh with the positions and normals it is drawn with, its vertex paint and the shading of each triangle list
 interface Part {
@@ -96,21 +96,39 @@ const AVIF_QUALITY = 82;
 const FAVICON_SIZES = [32, 64];
 const OVERWORLD = 'overworld';
 const DEFAULT_VIEW: View = { azimuth: 25, elevation: 42 };
-const BUST_BOTTOM = 1.2;
 const FACE_VIEW: View = { azimuth: 90, elevation: 24 };
 const TOP_VIEW: View = { azimuth: 0, elevation: 90 };
 const WHITE: Color = [1, 1, 1];
+
+// The area emblems of the game (`local_area_image` of an Area_Pin): one per world and one per pair of worlds. Soko is
+// the Heroes, Prom the Beamcasters, Mirror the Mirror Isles and Skipping the Skipping Stones.
+const EMBLEM_PREFIX = 'OverworldIcon_';
+const AREA_EMBLEMS = [
+    'Mirror',
+    'Prom',
+    'Skipping',
+    'Soko',
+    'Prom_Mirror',
+    'Skipping_Mirror',
+    'Skipping_Prom',
+    'Soko_Mirror',
+    'Soko_Prom',
+    'Soko_Skipping',
+];
+
+// The tower badges of the game (tower_status_<worlds>[_gold]): one per world and one per pair of worlds, plain and gold.
+// h is the Heroes, m the Mirror Isles, s the Skipping Stones and p the Beamcasters.
+const TOWER_PREFIX = 'tower_status_';
+const TOWER_BADGES = ['h', 'm', 's', 'p', 'hm', 'hs', 'hp', 'ms', 'mp', 'sp'];
 
 const ENTITY_TYPES = new Set([
     'Freezer',
     'Sign',
     'Teleporter',
     'Level_Entry',
-    'Voice_Log',
     'View_Giver',
     'Tower',
     'Treasure_Display',
-    'Guy',
 ]);
 
 // The glow colours of the Level_Entry groups (`glow` in data/progress.json), each near the median of its group's
@@ -194,7 +212,6 @@ const ICONS: IconSpec[] = [
     { name: 'teleporter', type: 'Teleporter', mesh: 'GAME_OVER_Reset_B', effect: 'color_discovered', view: TOP_VIEW },
     { ...TELEPORTER_PAD, name: 'tower-pad', where: notGold },
     { ...TELEPORTER_PAD, name: 'gold-room', where: isGold },
-    { name: 'voice-log', type: 'Voice_Log', mesh: 'GAME_OVER_Story_A' },
     { name: 'map-scroll', type: 'View_Giver', mesh: 'GAME_EX_CamControl_Scroll' },
     { name: 'treasure', type: 'Treasure_Display', mesh: 'GAME_SKIP_Treasure_Plinth_A', withTreasure: true },
     {
@@ -204,16 +221,12 @@ const ICONS: IconSpec[] = [
         parts: ['GAME_SKIP_Treasure_Chest_Open_A'],
     },
     ...levelPadSpecs(),
-    {
-        name: 'hero',
-        type: 'Guy',
-        mesh: 'queen',
-        view: { azimuth: 90, elevation: 12 },
-        onlyMaterials: /^queen_/,
-        pose: true,
-        fitAbove: BUST_BOTTOM,
-    },
 ];
+
+// The texture of an emblem is OverworldIcon_<emblem>; its icon is area-<emblem> in lower case with dashes
+function emblemIconName(emblem: string): string {
+    return 'area-' + emblem.toLowerCase().replaceAll('_', '-');
+}
 
 function isGold(fields: Fields): boolean {
     return fields.gold_room_endpoint === true;
@@ -299,20 +312,9 @@ function loadPart(meshName: string, entity: Pick<Entity, 'pid' | 'fields'>, cont
     const shadings = lod.lists.map((list) => {
         let materialName = mesh.materials[list.material];
         if (overrides[list.material]) materialName = overrides[list.material];
-        if (spec.onlyMaterials && !spec.onlyMaterials.test(materialName)) return null;
         return context.materials.shading(materialName, shadingEntity);
     });
     const paint = context.paint.forMesh(entity.pid, mesh);
-    if (spec.pose) {
-        const vertices = new Set<number>();
-        lod.lists.forEach((list, index) => {
-            if (!shadings[index]) return;
-            for (let k = list.first; k < list.first + list.count; k++) vertices.add(lod.indices[k]);
-        });
-        const parents = readParents(`data-common/${meshName}.anim`);
-        const { positions, normals } = lowerArms(mesh, vertices, parents);
-        return { mesh, positions, normals, paint, shadings };
-    }
     return { mesh, positions: mesh.positions, normals: mesh.normals, paint, shadings };
 }
 
@@ -419,7 +421,6 @@ function renderIcon(spec: IconSpec, context: Context, size: number, margin: numb
         margin,
         outline: spec.outline ?? OUTLINE_PIXELS,
         shadow: spec.shadow ?? true,
-        fitAbove: spec.fitAbove,
     });
 }
 
@@ -475,22 +476,46 @@ function main(): void {
     }
 
     let totalBytes = 0;
-    for (const spec of ICONS) {
-        if (wanted && !wanted.has(spec.name)) continue;
-        const rgba = renderIcon(spec, context, iconSize, ICON_MARGIN);
+    const writeIcon = (name: string, rgba: Uint8Array): void => {
         const png = encodePng(rgba, iconSize, iconSize);
         if (pngDirectory) {
-            writeFileSync(join(pngDirectory, `${spec.name}.png`), png);
-            console.log(`${spec.name}.png`);
-            continue;
+            writeFileSync(join(pngDirectory, `${name}.png`), png);
+            console.log(`${name}.png`);
+            return;
         }
-        const pngPath = join(avif!.workDirectory, `${spec.name}.png`);
-        const avifPath = join(outputDirectory, `${spec.name}.avif`);
+        const pngPath = join(avif!.workDirectory, `${name}.png`);
+        const avifPath = join(outputDirectory, `${name}.avif`);
         writeFileSync(pngPath, png);
         encodeAvif(avif!.magick, pngPath, avifPath);
         const bytes = statSync(avifPath).size;
         totalBytes += bytes;
-        console.log(`${spec.name}.avif ${bytes} bytes`);
+        console.log(`${name}.avif ${bytes} bytes`);
+    };
+
+    for (const spec of ICONS) {
+        if (wanted && !wanted.has(spec.name)) continue;
+        writeIcon(spec.name, renderIcon(spec, context, iconSize, ICON_MARGIN));
+    }
+
+    const textureIcons: { name: string; texture: string }[] = [
+        { name: 'voice-log', texture: 'UI_Voice_Log_Activate' },
+        { name: 'hero', texture: 'wheel_queen' },
+    ];
+    for (const emblem of AREA_EMBLEMS) {
+        textureIcons.push({ name: emblemIconName(emblem), texture: `${EMBLEM_PREFIX}${emblem}` });
+    }
+
+    for (const worlds of TOWER_BADGES) {
+        textureIcons.push({ name: `tower-${worlds}`, texture: `${TOWER_PREFIX}${worlds}` });
+        textureIcons.push({ name: `tower-${worlds}-gold`, texture: `${TOWER_PREFIX}${worlds}_gold` });
+    }
+
+    for (const { name, texture: textureName } of textureIcons) {
+        if (wanted && !wanted.has(name)) continue;
+        const texture = textures.get(textureName);
+        if (!texture) throw new Error(`no texture ${textureName} for the icon ${name}`);
+        const level = texture.level(0);
+        writeIcon(name, fitSquare(level.pixels, level.width, level.height, iconSize));
     }
 
     if (!wanted || wanted.has('favicon')) {

@@ -224,7 +224,7 @@ that layer of the overworld with the fog cleared, the hero hidden and the time f
 `src/assets/icons/<name>.avif` holds one 128 × 128 image per marker kind and state, rendered from the game's own
 3D models by `scripts/build-icons.ts` (`npm run icons`). The pixels are RGBA on a transparent background: the object
 fills the frame (5 pixels of margin), with a thin dark outline and a soft drop shadow so it reads on any terrain. The
-whole set is about 130 KB.
+whole set is about 300 KB.
 
 | Icon | Model | Colour |
 |---|---|---|
@@ -233,18 +233,22 @@ whole set is about 130 KB.
 | `teleporter` | the Teleporter model `Reset_B` | the glowing parts take the entity's `color_discovered` |
 | `tower-pad` | the Teleporter model `Reset_C` | the same |
 | `gold-room` | `Reset_C` of a gold room's endpoint | `color_discovered` and the entity's own tints (gold) |
-| `voice-log` | the Voice_Log model `Story_A` | none |
+| `voice-log` | the game's texture `UI_Voice_Log_Activate` (a brass horn) | the texture's own |
 | `map-scroll` | the View_Giver model `CamControl_Scroll` | the entity's tints |
 | `treasure` | the Treasure_Display's plinth with its treasure's model standing on top | the entity's tints |
 | `treasure-taken` | the Treasure_Display's acquired model (`Chest_Open_A`) | the entity's tints |
 | `level-locked`, `level-solved`, `level-available-<group>` | the plain 8-point Level_Entry models `Entry_Locked_A` and `Entry_Available_A` | the viewer's colours (below) |
 | `level-tower-locked`, `level-tower-solved`, `level-tower-available-<group>` | the 16-point models of the tower levels, `Entry_Hero_Locked_A` and `Entry_Hero_Available_A` | the same |
-| `hero` | the queen, without her props, as a bust from the front, 12° above | the palette texture |
+| `hero` | the game's texture `wheel_queen`, the queen's head portrait | the texture's own |
+| `area-<emblem>` | the game's `OverworldIcon_<emblem>` textures, the emblems of the areas (`local_area_image` of an Area_Pin, `image` in `progress.json` `areas`; empty for the hubs and endgame areas): `soko` Heroes, `prom` Beamcasters, `mirror` Mirror Isles, `skipping` Skipping Stones, and the six pairs (`soko-prom`, `prom-mirror`, ...) | the texture's own |
+| `tower-<worlds>`, `tower-<worlds>-gold` | the game's `tower_status_<worlds>` and `_gold` textures, the badges of the towers of one or two worlds: `h` Heroes, `m` Mirror Isles, `s` Skipping Stones, `p` Beamcasters, and the pairs `hm`, `hs`, `hp`, `ms`, `mp`, `sp`, picked by the tower's world bits (`t`) | the texture's own |
+
+The texture icons are mip 0 of the texture scaled down to 128 px with an area filter on premultiplied colours and fitted
+into the square keeping their aspect, so they have no outline or shadow.
 
 - The view is orthographic: the camera sits south of the object and 25° east of south, 42° above the ground, so a
   model's front faces south, as on the map. The Level_Entry and Teleporter pads are seen straight from above, north up. The sign and the ice gate
-  face +x, so they are seen from the east, 24° above, face-on. The hero bust is framed on her head and shoulders and
-  the rest of her falls off the bottom edge.
+  face +x, so they are seen from the east, 24° above, face-on.
 - Where a model is placed in the overworld, the icon uses one placed entity's own fields: the first entity of that type
   with that model (and, for the Teleporters, the first gold-room endpoint or the first other one).
 - The Teleporters' glowing parts take the hue of the entity's `color_discovered`, dimmer for a small intensity (the
@@ -260,7 +264,5 @@ whole set is about 130 KB.
   solved; solved is a dim gold stone (#8a7440) with no glow, for every group.
 - Shading is a smooth Lambert shade from the mesh's vertex normals, a key light from the top left, a fill light from the
   right and a rim light behind. Normal maps, reflections and shadows are not drawn.
-- The hero is posed from the bind pose by moving each vertex with its arm bones, in proportion to its skin weights,
-  75° down about the shoulder ([Render assets](GAMEDATA.md#render-assets)); no animation is decoded.
 - `favicon-32.png` and `favicon-64.png` are the `Entry_Solved_A` model in bright gold (#e6b83a glow on #b8902c stone)
   seen from straight above, cropped to its star, at 32 and 64 pixels, as PNG.

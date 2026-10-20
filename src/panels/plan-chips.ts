@@ -3,7 +3,7 @@
 // "The spoiler model (viewer)")
 import { PROG } from '../data.ts';
 import { countBy, escapeHtml } from '../util.ts';
-import { iconHtml, roleDot, ROLES } from '../map/icons.ts';
+import { iconHtml, roleDot, ROLES, towerEmblemHtml } from '../map/icons.ts';
 import type { Role } from '../map/icons.ts';
 import { levelIconName } from '../map/level-icons.ts';
 import type { LevelIconName } from '../map/level-icons.ts';
@@ -95,7 +95,8 @@ export function levelChip(
 
 export function towerNameHtml(context: PanelContext, towerIndex: number): string {
     if (context.progress.towerHidden[towerIndex]) return '<span class="muted">A tower under fog</span>';
-    return escapeHtml(towerName(context.progress.towers[towerIndex].t));
+    const tower = context.progress.towers[towerIndex];
+    return towerEmblemHtml(tower) + escapeHtml(towerName(tower.t));
 }
 
 /**
@@ -218,7 +219,8 @@ function nodeChip(context: PanelContext, node: PlanStep): string {
     if (node.t === 'l') return levelChip(context.progress, node.id, 'data-pick');
     if (node.t === 'g') return gateChip(context, node.id);
     if (node.t === 't') {
-        const name = escapeHtml(towerName(context.progress.towers[node.id].t));
+        const tower = context.progress.towers[node.id];
+        const name = towerEmblemHtml(tower) + escapeHtml(towerName(tower.t));
         return `<span class="chip" data-ptower="${node.id}" tabindex="0" role="button">${name}</span>`;
     }
 

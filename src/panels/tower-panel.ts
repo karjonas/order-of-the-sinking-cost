@@ -3,6 +3,7 @@
 import { escapeHtml } from '../util.ts';
 import type { MapLink, SelectHow } from '../map/map-view.ts';
 import { unlockPlan } from '../model/plans.ts';
+import { towerEmblemHtml } from '../map/icons.ts';
 import { towerLevelCount, towerName } from '../model/towers.ts';
 import type { TowerProgress } from '../model/towers.ts';
 import type { PanelContext } from './context.ts';
@@ -35,7 +36,7 @@ export function showTowerPanel(context: PanelContext, towerIndex: number, how?: 
     const done = shownNormal.filter((level) => progress.state[level] === 'solved');
     const dropdowns = tower.drop.filter((level) => !progress.hidden[level]);
     const unsolvedDropdowns = dropdowns.filter((level) => progress.state[level] !== 'solved');
-    let html = panelHead(context, escapeHtml(towerName(tower.t)));
+    let html = panelHead(context, towerEmblemHtml(tower) + escapeHtml(towerName(tower.t)));
     html += towerStateHtml(tower, shownNormal.length, todo.length);
 
     let plan = null;

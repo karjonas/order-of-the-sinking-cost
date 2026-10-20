@@ -261,14 +261,12 @@ class Canvas {
 }
 
 // Where the drawn triangles fall on the screen: the centre and the scale that fits them into `inner` pixels
-// Vertices below `minHeight` (world z) are left out of the fit; they are still drawn, and fall off the canvas.
 function frameOf(
     positions: Float32Array,
     lists: TriangleList[],
     lod: Lod,
     axes: CameraAxes,
     inner: number,
-    minHeight: number,
 ): Framing {
     let minX = Infinity;
     let maxX = -Infinity;
@@ -277,7 +275,6 @@ function frameOf(
     for (const list of lists) {
         for (let k = list.first; k < list.first + list.count; k++) {
             const vertex = lod.indices[k];
-            if (positions[vertex * 3 + 2] < minHeight) continue;
             const point: Vector = [positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]];
             const x = dot(point, axes.right);
             const y = dot(point, axes.up);
@@ -414,8 +411,7 @@ function resolve(canvas: Canvas, size: number, outlinePixels: number, withShadow
 //   mesh, positions and normals (the mesh's own, or posed), paint (vertex colours as RGBA bytes),
 //   shadings: one per triangle list, { kind, color } or null to leave the list out,
 //   view: { azimuth, elevation } in degrees, size: output pixels, margin: empty pixels around the object,
-//   outline: the outline width in output pixels, shadow: whether to draw the drop shadow,
-//   fitAbove: only vertices at or above this world z decide the framing (a bust).
+//   outline: the outline width in output pixels, shadow: whether to draw the drop shadow.
 // Returns RGBA bytes, straight alpha.
 export interface RenderOptions {
     mesh: Mesh;
@@ -428,7 +424,6 @@ export interface RenderOptions {
     margin: number;
     outline: number;
     shadow: boolean;
-    fitAbove?: number;
 }
 
 export function renderMesh({
@@ -442,7 +437,6 @@ export function renderMesh({
     margin,
     outline,
     shadow,
-    fitAbove = -Infinity,
 }: RenderOptions): Uint8Array {
     const axes = cameraAxes(view.azimuth, view.elevation);
     const lod = mesh.lods[0];
@@ -456,7 +450,6 @@ export function renderMesh({
         lod,
         axes,
         size - 2 * margin,
-        fitAbove,
     );
     const canvas = new Canvas(size, mesh, positions, normals ?? mesh.normals, paint, axes, framing);
     const modes: DrawMode[] = ['solid', 'glow', 'glass'];

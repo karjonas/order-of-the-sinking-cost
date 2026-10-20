@@ -1,6 +1,7 @@
 // A level's panel on the map: its state and role, area, the Freezer it is in, the path to unlock it, the gates in front
 // of it and why it is not reachable, its tower, what it requires and unlocks (VIEWER.md "The page (viewer)")
 import { escapeHtml } from '../util.ts';
+import { areaEmblemHtml, towerEmblemHtml } from '../map/icons.ts';
 import type { Role } from '../map/icons.ts';
 import type { MapLink, MapSelection } from '../map/map-view.ts';
 import type { SelectHow } from '../map/map-view.ts';
@@ -89,7 +90,8 @@ function whereHtml(context: PanelContext, levelIndex: number): string {
 
     let near = '';
     if (level.areaNear) near = NEAR;
-    return `<div class="muted">${near}${escapeHtml(areaName(context.areas[areaIndex]))}</div>`;
+    const area = context.areas[areaIndex];
+    return `<div class="muted">${near}${areaEmblemHtml(area)}${escapeHtml(areaName(area))}</div>`;
 }
 
 function freezerHtml(context: PanelContext, ice: number): string {
@@ -181,7 +183,7 @@ function towerHtml(
     let dropdownNote = '';
     if (level.d) dropdownNote = ' · dropdown';
 
-    const name = escapeHtml(towerName(tower.t));
+    const name = towerEmblemHtml(tower) + escapeHtml(towerName(tower.t));
     const towerButton = `<button class="plain lnk" data-ptower="${towerIndex}">${name}</button>`;
     let html = `<div class="h">${towerButton}${dropdownNote} · ${count}</div>`;
     if (required.length) html += `<div class="hs">Required</div><div>${pick(context, required)}</div>`;
@@ -198,7 +200,8 @@ function countsTowardHtml(context: PanelContext, levelIndex: number, towerIndex:
     if (!counts.length) return '';
 
     const chips = counts.map(([tower, left]) => {
-        const name = escapeHtml(towerName(progress.towers[tower].t));
+        const countedTower = progress.towers[tower];
+        const name = towerEmblemHtml(countedTower) + escapeHtml(towerName(countedTower.t));
         const toGo = `<span class="muted"> · ${left} to go</span>`;
         return `<span class="chip" data-ptower="${tower}" tabindex="0" role="button">${name}${toGo}</span>`;
     });

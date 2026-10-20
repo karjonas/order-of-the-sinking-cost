@@ -455,6 +455,7 @@ function buildAreas(areaData: LevelAreasFile, levels: ProgressLevel[], worldMap:
         return {
             local_area_name: name,
             display: area.display_name || name,
+            image: area.local_area_image,
             p: area.map_label_position || area.position,
             pin: area.pin,
             boxes: area.local_area_boxes,

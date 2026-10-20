@@ -136,6 +136,8 @@ export interface AreaBox {
 export interface Area {
     local_area_name: string;
     display: string;
+    /** The emblem texture's name (`OverworldIcon_Soko_Prom`), empty for an area with none. */
+    image: string;
     /** The label position. */
     p: Position;
     /** The Area_Pin pid. */

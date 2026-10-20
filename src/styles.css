@@ -74,6 +74,7 @@
     /* how far a panel's content keeps from its border: clear of the inset rule and its leaf corners */
     --frame-pad: 20px;
     --ico: 24px;
+    --emb: 24px;
     color-scheme: dark;
 }
 * {
@@ -240,6 +241,25 @@ select:focus {
     display: inline-block;
     vertical-align: middle;
     object-fit: contain;
+}
+/* an area's or tower's emblem beside its name, smaller than the icons; an area without one gets a faint empty diamond
+   of the same size so the names stay aligned */
+.ico.emb {
+    width: var(--emb);
+    height: var(--emb);
+    margin-right: var(--s1);
+}
+.emb-none {
+    position: relative;
+}
+.emb-none::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    opacity: 0.45;
+    transform: rotate(45deg);
 }
 .ico.dn {
     filter: grayscale(1);
@@ -488,6 +508,14 @@ select:focus {
     border: 1px solid var(--frame);
     object-fit: cover;
     object-position: top;
+}
+.side .camp .inlv .ico.emb {
+    width: var(--emb);
+    height: var(--emb);
+    margin-right: 0;
+    border: 0;
+    border-radius: 0;
+    object-fit: contain;
 }
 .side .camp .solved {
     display: grid;

@@ -2,7 +2,7 @@
 // level in it (VIEWER.md "The page (viewer)")
 import { $, escapeHtml } from '../util.ts';
 import { clearNarrowing } from '../shared.ts';
-import { roleDot, ROLES } from '../map/icons.ts';
+import { areaEmblemHtml, roleDot, ROLES, towerEmblemHtml } from '../map/icons.ts';
 import { areaName } from '../model/areas.ts';
 import { stateLabel } from '../model/progress.ts';
 import { towerName } from '../model/towers.ts';
@@ -46,12 +46,16 @@ function rowHtml(context: PanelContext, levelIndex: number, tab: boolean): strin
     const leadsTo = entry?.leadsTo ?? '';
     const areaIndex = context.areaOf(levelIndex);
     let area = '';
-    if (areaIndex != null) area = areaName(context.areas[areaIndex]);
+    let emblem = '';
+    if (areaIndex != null) {
+        area = areaName(context.areas[areaIndex]);
+        emblem = areaEmblemHtml(context.areas[areaIndex]);
+    }
 
     let where = '';
     if (area) {
         if (level.areaNear) where = NEAR;
-        where += escapeHtml(area);
+        where += emblem + escapeHtml(area);
     }
 
     let layerTag = '';
@@ -152,13 +156,13 @@ function chipsHtml(context: PanelContext): string {
     const closeMark = '<span aria-hidden="true">×</span>';
     let html = '';
     if (tower) {
-        const name = escapeHtml(towerName(tower.t));
+        const name = towerEmblemHtml(tower) + escapeHtml(towerName(tower.t));
         const attributes = 'data-clear-tower title="Show every tower"';
         html += `<button class="plain chip rm" ${attributes}>${name} ${closeMark}</button>`;
     }
 
     if (area) {
-        const name = escapeHtml(areaName(area));
+        const name = areaEmblemHtml(area) + escapeHtml(areaName(area));
         const attributes = 'data-clear-area title="Show every area"';
         html += `<button class="plain chip rm" ${attributes}>${name} ${closeMark}</button>`;
     }

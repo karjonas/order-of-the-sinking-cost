@@ -1118,6 +1118,13 @@ marker and 22 for the selected level.
   mark is left out while that level is drawn. An open Freezer shows nothing there.
 - The hero is the hero icon; the hero line of the sidebar uses it too, and the sidebar's rows and the list's rows use
   these icons, drawn larger.
+- Every area name the page prints (the area rows under Completionist, the hero line, a level's area line, the list's
+  rows and area chip) carries the area's emblem, the game's own, left of the name; an area
+  with none (the hubs and endgame areas) gets a faint empty diamond of the same size so names stay aligned. A tower's
+  name (the tower goal rows, chips, the tower panel and the tower tooltip) carries the game's badge for its worlds,
+  the gold one once all its dropdowns are solved (the Gold chip of the tower panel); a tower of three or more worlds
+  gets the empty diamond. The Gold HxM ... SxB achievements carry the gold badge of their pair. In a list where one row
+  has an emblem, the rows without one get the empty slot. The map's area labels are plain text.
 
 ### The page's words
 

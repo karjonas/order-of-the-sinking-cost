@@ -4,7 +4,7 @@
 import { $, escapeHtml } from '../util.ts';
 import { hooks, showGoalList } from '../shared.ts';
 import { progressBarHtml } from '../format.ts';
-import { CHEVRON, checkIcon } from '../map/icons.ts';
+import { CHEVRON, checkIcon, emblemSlotHtml, goldBadgeHtml, towerEmblemHtml } from '../map/icons.ts';
 import type { GoalView } from '../model/goals-view.ts';
 import type { ProgressModel } from '../model/progress-model.ts';
 import { show } from '../view.ts';
@@ -70,9 +70,28 @@ interface GoalFold {
     open: boolean;
 }
 
-// a goal's row: its mark, name, a chevron after the name on a goal with children, and the count at the right; the
-// current goal has a thin progress bar under it. A child of a single item has no count.
-function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, fold: GoalFold): string {
+// the badge of a goal that is a tower, or a pair's gold achievement; null for any other goal
+function goalEmblemHtml(model: ProgressModel, goal: GoalView): string | null {
+    if (goal.tower != null) return towerEmblemHtml(model.progress.towers[goal.tower]);
+    if (goal.name) return goldBadgeHtml(goal.name);
+    return null;
+}
+
+// whether any of the goals has a badge, so that the others get an empty slot of the same width
+const anyEmblem = (model: ProgressModel, goals: GoalView[]): boolean =>
+    goals.some((goal) => goalEmblemHtml(model, goal) !== null);
+
+// a goal's row: its mark, badge, name, a chevron after the name on a goal with children, and the count at the right; the
+// current goal has a thin progress bar under it. A child of a single item has no count. `emblemSlot`: a row of the
+// same list has a badge, so this one without gets an empty slot.
+function goalRowHtml(
+    model: ProgressModel,
+    goal: GoalView,
+    selectedKey: string,
+    isChild: boolean,
+    fold: GoalFold,
+    emblemSlot: boolean,
+): string {
     const classes = ['plain', 'gl'];
     if (goal.done) classes.push('done');
     if (goal.onPlan === false) classes.push('off');
@@ -97,11 +116,14 @@ function goalRowHtml(goal: GoalView, selectedKey: string, isChild: boolean, fold
     const tip = escapeHtml(goalTip(goal));
     const attributes = `data-goal="${key}" aria-pressed="${selected}"${expanded} title="${tip}"`;
     const name = escapeHtml(goal.label);
+    let emblem = goalEmblemHtml(model, goal) ?? '';
+    if (!emblem && emblemSlot) emblem = emblemSlotHtml();
+
     let content = '';
     if (isChild) {
-        content = `${goalMark(goal, NO_MARK)}<span class="n">${name}</span>`;
+        content = `${goalMark(goal, NO_MARK)}${emblem}<span class="n">${name}</span>`;
     } else {
-        content = `${goalMark(goal, TODO_MARK)}<span class="n">${name}</span>${chevron}`;
+        content = `${goalMark(goal, TODO_MARK)}${emblem}<span class="n">${name}</span>${chevron}`;
     }
 
     content += `<span class="cnt">${countText}</span>`;
@@ -131,7 +153,9 @@ function goalKidsHtml(model: ProgressModel, goal: GoalView, selectedKey: string)
     if (goal.kind === 'completionist') return areaRowsHtml(model);
 
     const noFold: GoalFold = { foldable: false, open: false };
-    return (goal.children ?? []).map((child) => goalRowHtml(child, selectedKey, true, noFold)).join('');
+    const children = goal.children ?? [];
+    const emblemSlot = anyEmblem(model, children);
+    return children.map((child) => goalRowHtml(model, child, selectedKey, true, noFold, emblemSlot)).join('');
 }
 
 export function sideGoalsHtml(model: ProgressModel): string {
@@ -141,10 +165,11 @@ export function sideGoalsHtml(model: ProgressModel): string {
     const selected = model.goalFor(model.F.goal);
     if (!selected) return head;
 
+    const emblemSlot = anyEmblem(model, model.goals);
     const rows = model.goals.map((goal) => {
         const foldable = goalFolds(model, goal);
         const open = foldable && isGoalOpen(goal.key);
-        let html = goalRowHtml(goal, selected.key, false, { foldable, open });
+        let html = goalRowHtml(model, goal, selected.key, false, { foldable, open }, emblemSlot);
         if (open) html += `<div class="kids">${goalKidsHtml(model, goal, selected.key)}</div>`;
         return html;
     });

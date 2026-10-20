@@ -3,7 +3,7 @@
 import { PROG } from '../data.ts';
 import { escapeHtml } from '../util.ts';
 import { readPreference, setPreference } from '../shared.ts';
-import { CHEVRON, checkIcon } from '../map/icons.ts';
+import { CHEVRON, areaEmblemHtml, checkIcon } from '../map/icons.ts';
 import { viewLayer } from '../map/map-html.ts';
 import { areaName } from '../model/areas.ts';
 import { AREA_LAYERS, layerName } from '../model/layers.ts';
@@ -121,7 +121,7 @@ export function areaRowsHtml(model: ProgressModel): string {
 
         const attributes = `data-area="${areaIndex}" aria-pressed="${picked}" title="${name}"`;
         const markHtml = `<span class="mk" title="All levels solved">${check}</span>`;
-        const nameHtml = `<span class="n">${name}</span>`;
+        const nameHtml = `${areaEmblemHtml(areas[areaIndex])}<span class="n">${name}</span>`;
         const countHtml = `<span class="cnt">${solved} / ${all}</span>`;
         return `<button class="plain gl${extraClasses}" ${attributes}>${markHtml}${nameHtml}${countHtml}</button>`;
     };

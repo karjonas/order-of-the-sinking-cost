@@ -6,7 +6,7 @@ import { percent, progressBarHtml } from '../format.ts';
 import { readPreference } from '../shared.ts';
 import { areaName } from '../model/areas.ts';
 import type { ProgressModel } from '../model/progress-model.ts';
-import { CHEVRON, heroIcon } from '../map/icons.ts';
+import { CHEVRON, areaEmblemHtml, heroIcon } from '../map/icons.ts';
 import type { DemoStatus, Status } from '../status-file.ts';
 
 /** The solved levels out of the levels not under fog, as a percentage and a bar with the partially solved ones in it. */
@@ -73,9 +73,14 @@ export function inLevelHtml(status?: Status | DemoStatus | null, model?: Progres
 
     if (model?.onOverworld) {
         let area = 'Overworld';
-        if (model.heroArea != null) area = escapeHtml(areaName(PROG.areas[model.heroArea]));
+        let emblem = '';
+        if (model.heroArea != null) {
+            const heroArea = PROG.areas[model.heroArea];
+            area = escapeHtml(areaName(heroArea));
+            emblem = areaEmblemHtml(heroArea);
+        }
 
-        const line = `${heroIcon}<span class="n">${area}</span>`;
+        const line = `${heroIcon}${emblem}<span class="n">${area}</span>`;
         if (!model.hero) return `<div class="inlv">${line}</div>`;
 
         const attributes = 'id="heroLine" title="Centre the map on the hero"';

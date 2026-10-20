@@ -3,6 +3,7 @@
 import { escapeHtml } from '../util.ts';
 import type { MapLink, SelectHow } from '../map/map-view.ts';
 import { unlockPlan } from '../model/plans.ts';
+import { towerEmblemHtml } from '../map/icons.ts';
 import { towerName } from '../model/towers.ts';
 import { signStateOf } from '../model/unlocking.ts';
 import type { Sign } from '../types.ts';
@@ -49,7 +50,8 @@ export function showSignPanel(context: PanelContext, signIndex: number, how?: Se
     if (signState === 'ready') html += '<div class="muted">Stand next to it, facing it, to read it.</div>';
     html += `<div class="h">Needs</div><div>${signNeed(context, sign)}</div>`;
     if (towerIndex !== undefined) {
-        const name = escapeHtml(towerName(progress.towers[towerIndex].t));
+        const tower = progress.towers[towerIndex];
+        const name = towerEmblemHtml(tower) + escapeHtml(towerName(tower.t));
         html += `<div><span class="chip" data-ptower="${towerIndex}" tabindex="0" role="button">${name}</span></div>`;
     }
 
