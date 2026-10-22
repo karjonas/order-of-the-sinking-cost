@@ -24,7 +24,9 @@ export interface ViaPads {
 /**
  * What reachability() finds. `level`: per level, whether the walk reaches it. `leads` and `pocket`: per closed
  * Freezer, the levels not entered that opening it reaches, for the Freezers on the edge of the reached cells and for
- * the others. `from`: per level not reached that such a Freezer needs, the levels behind it a walk from it reaches.
+ * the others. `lightLeads`: per closed Freezer that holds a powered Promesst_Light, the levels not entered that opening
+ * it reaches beyond those `leads` and `pocket` give it, through the light's beam. `from`: per level not reached that
+ * such a Freezer needs, the levels behind it a walk from it reaches.
  * `mech`: per level, the unmodelled mechanics in or next to the pockets that hold it. `fromSky`: per level, 1 when a
  * hero stepping off a sky ledge falls into one of those pockets, or walks on from where he lands to the level.
  * `viaPads`: per level, what the pads revealed from those pockets lead through, and what the MINOR pads that land the
@@ -40,6 +42,7 @@ export interface Reachability {
     level: boolean[];
     leads: Map<number, number[]>;
     pocket: Map<number, number[]>;
+    lightLeads: Map<number, number[]>;
     chains: Map<number, Map<number, number[][]>>;
     from: Map<number, Set<number>>;
     mech: Uint8Array;
@@ -318,6 +321,51 @@ function addLeads(context: ReachContext, byGate: Map<number, Set<number>>): void
         });
         byGate.set(freezerIndex, new Set(behind));
     }
+}
+
+/**
+ * Leads through the closed Freezers that hold a powered Promesst_Light: with the Freezer open and its light's beam laid,
+ * the walk from the beam's reached cells (and from the Freezer's own cell when it is on the edge of the reached cells)
+ * may go where it could not. Per Freezer, the levels not entered that this reaches beyond those it holds in `byGate`.
+ */
+function addLightLeads(context: ReachContext, byGate: Map<number, Set<number>>): Map<number, number[]> {
+    const { walk, reached, front, frozenIn } = context;
+    const lightLeads = new Map<number, number[]>();
+
+    // thaw and freeze change `walk.frozen`, so the walk goes over a copy
+    const closedCells = Array.from(walk.frozen);
+
+    for (const [gateCell, freezerIndex] of closedCells) {
+        const beamCells = walk.frozenBeamCells(gateCell);
+        if (beamCells.length === 0) continue;
+
+        const outside = new Set(reached);
+        const seeds: number[] = [];
+
+        for (const cell of beamCells) {
+            if (outside.delete(cell)) seeds.push(cell);
+        }
+
+        if (front.has(freezerIndex)) seeds.push(walk.land(gateCell));
+        if (seeds.length === 0) continue;
+
+        walk.thaw(gateCell);
+        const removeBeam = walk.layFrozenBeam(gateCell);
+        const cells = walk.flood(seeds, outside);
+        removeBeam();
+        walk.freeze(gateCell, freezerIndex);
+
+        const held = byGate.get(freezerIndex);
+        const added = restLevelsIn(context, cells).filter((levelIndex) => {
+            if (held?.has(levelIndex)) return false;
+
+            const levelFrozenIn = frozenIn[levelIndex];
+            return levelFrozenIn === undefined || levelFrozenIn === freezerIndex;
+        });
+        if (added.length > 0) lightLeads.set(freezerIndex, added);
+    }
+
+    return lightLeads;
 }
 
 /**
@@ -941,6 +989,7 @@ export function reachability(
     const pockets = floodPockets(context, byGate, mech);
     const viaPads = viaPadsOf(pockets);
     addFrozenLevels(context, byGate, mech);
+    const lightLeads = addLightLeads(context, byGate);
     const from = floodFrom(context, byGate, pockets.first);
 
     return {
@@ -948,6 +997,7 @@ export function reachability(
         level,
         leads: gateLists(byGate, front, true),
         pocket: gateLists(byGate, front, false),
+        lightLeads,
         chains: chainsOf(context, pockets),
         from,
         mech,

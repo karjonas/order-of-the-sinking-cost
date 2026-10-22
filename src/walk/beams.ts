@@ -467,6 +467,25 @@ export function extendBeam(walkGrid: WalkGrid, cast: CastBeam, undo: Undo): Cast
     return longer;
 }
 
+/** The cells of the beam the powered Promesst_Light in the closed Freezer in `cell` would cast once it opens. */
+export function frozenBeamCells(walkGrid: WalkGrid, cell: number): number[] {
+    return walkGrid.frozenBeams.get(cell)?.beam.cells ?? [];
+}
+
+/**
+ * Lays the beam of the Light in the closed Freezer in `cell` into the grid, its powers that change a move optional as
+ * in a flood's pushes. Returns the function that takes it out again.
+ */
+export function layFrozenBeam(walkGrid: WalkGrid, cell: number): () => void {
+    const cast = walkGrid.frozenBeams.get(cell);
+    const undo: Undo = [];
+    if (cast) layCast(walkGrid, cast, undo);
+
+    return () => {
+        for (const step of undo.toReversed()) step();
+    };
+}
+
 /**
  * Casts the beams of the powered Promesst_Lights. A beam runs from the light (where the save last left it) along its
  * facing (up or down for vertical_up / vertical_down, out of its layer) through walls, Guys and Monsters until a
@@ -475,7 +494,7 @@ export function extendBeam(walkGrid: WalkGrid, cast: CastBeam, undo: Undo): Cast
  * in a beam takes its power: ENDPOINT (horizontal) moves along it jump to its last cell, against it to its first;
  * DOUBLE doubles each move per beam; SQUEEZE passes Fences. In an ALTER beam too, each DOUBLE beam triples the move
  * and ENDPOINT jumps to the midpoint (endpointTarget). A light is powered by its room (roomPowered), whatever
- * `powered` the save stored.
+ * `powered` the save stored. A light in a closed Freezer casts no beam; the one it would cast is kept in `frozenBeams`.
  */
 export function placeLights(walkGrid: WalkGrid): void {
     const { world, layerCells, frozen, litCells } = walkGrid;
@@ -495,12 +514,18 @@ export function placeLights(walkGrid: WalkGrid): void {
         const castsDormantThrough = through && !dz && side >= 0 && lightCell >= 0 && !powered;
         if (castsDormantThrough) addDormantThrough(walkGrid, light, lightCell);
 
-        if (lightCell < 0 || !exists(walkGrid, pid, existence) || frozen.has(lightCell)) continue;
+        if (lightCell < 0 || !exists(walkGrid, pid, existence)) continue;
 
-        litCells.push(lightCell);
+        const inFreezer = frozen.has(lightCell);
+        if (!inFreezer) litCells.push(lightCell);
         if ((!dz && side < 0) || !powered) continue;
 
         const cast = newCast(walkGrid, lightCell, side, dz, color, -1);
+        if (inFreezer) {
+            walkGrid.frozenBeams.set(lightCell, cast);
+            continue;
+        }
+
         layCast(walkGrid, cast, null);
         walkGrid.castBeams.push(cast);
 

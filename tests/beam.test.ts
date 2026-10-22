@@ -15,6 +15,8 @@ vi.mock('../src/data.ts', async () => {
 vi.mock('../src/walk-data.ts', () => ({ STATIC_ROLES: null, FLOOR_HEIGHTS: null, walkReady: Promise.resolve() }));
 
 const Z_OFFSET = 64,
+    OPEN = 0,
+    ENDPOINT = 5,
     LIGHT = 7,
     SLOT = 8,
     GEM = 11;
@@ -207,6 +209,59 @@ describe('THROUGH beam', () => {
                 [1, 1, 0],
             ]),
         ).toBe(2);
+    });
+});
+
+describe('Promesst_Light in a closed Freezer', () => {
+    // an ENDPOINT light in a Freezer at (0, 1) casts a beam along row 1 to (6, 1), past the walls at (1, 1) and (3, 1);
+    // the wall at (8, 1) closes the row's wrap; the level is at (6, 1) and the hero stands at (2, 1), in the beam
+    const walls: Array<[number, number]> = [
+        [1, 1],
+        [3, 1],
+        [8, 1],
+    ];
+    const extra = { beam_stops: [[7, 1, 0]] } satisfies Partial<World>;
+    const history: History = {
+        version: 0,
+        types: [],
+        hero: [2, 1, 0],
+        heroKey: -1,
+        heroes: new Map(),
+        actions: [],
+    };
+    const reach = (closed: boolean) => reachability(history, latest(1), [], [closed], [false]);
+    beforeEach(() => {
+        world({ width: 9, walls, extra });
+        PROG.world.lights[0][8] = ENDPOINT;
+        Object.assign(PROG, {
+            levels: [{ n: 'beyond', p: [6, 1, 0], req: [] }],
+            freezers: [{ pid: 9, p: [0, 1, 0], req: [] }],
+        });
+    });
+    test('casts no beam while the Freezer is closed, and carries the hero once it opens', () => {
+        expect(reach(true).level).toEqual([false]);
+        expect(reach(false).level).toEqual([true]);
+    });
+    test('is a lead to the levels its beam carries the hero to', () => {
+        expect(reach(true).lightLeads.get(0)).toEqual([0]);
+    });
+    test('is no lead when its beam carries the hero nowhere new', () => {
+        PROG.world.lights[0][8] = OPEN;
+        expect(reach(true).lightLeads.size).toBe(0);
+    });
+    test('is no lead when the light is unpowered', () => {
+        world({ width: 9, walls, extra: { ...extra, gem_slots: [] } });
+        PROG.world.lights[0][8] = ENDPOINT;
+        expect(reach(true).lightLeads.size).toBe(0);
+    });
+    test('leaves the Freezer closed and no beam laid after the lead walk', () => {
+        const walkGrid = walker(latest(1), [], [true]);
+        const cell = walkGrid.cellOf(0, 1, 0);
+        const removeBeam = walkGrid.layFrozenBeam(cell);
+        expect(walkGrid.frozenBeamCells(cell).length).toBe(6);
+        removeBeam();
+        expect(walkGrid.frozen.has(cell)).toBe(true);
+        expect(walkGrid.flood([walkGrid.cellOf(2, 1, 0)]).size).toBe(1);
     });
 });
 

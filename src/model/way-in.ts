@@ -249,11 +249,11 @@ export function unlocksOf(): LevelUnlocks[] {
     return unlocks;
 }
 
-/** Per level, the closed gates whose leads or pocket hold it. */
+/** Per level, the closed gates whose leads, pocket or light leads hold it. */
 export function gatesBehind(reach: Reachability | null): number[][] {
     const behind = PROG.levels.map((): number[] => []);
 
-    for (const byGate of [reach?.leads, reach?.pocket]) {
+    for (const byGate of [reach?.leads, reach?.pocket, reach?.lightLeads]) {
         byGate?.forEach((levelIndices, freezerIndex) => {
             levelIndices.forEach((i) => behind[i].push(freezerIndex));
         });

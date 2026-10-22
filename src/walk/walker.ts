@@ -7,7 +7,7 @@ import type { ExistenceGroup, Position, Teleporter, World } from '../types.ts';
 import { placeAttacks, recastAttacks } from './attacks.ts';
 import { NO_BEAM_MOVES, placeBeamMoves } from './beam-moves.ts';
 import type { BeamMoves } from './beam-moves.ts';
-import { placeGems, placeLights } from './beams.ts';
+import { frozenBeamCells, layFrozenBeam, placeGems, placeLights } from './beams.ts';
 import type { CastBeam, EndpointBeam, Gem, GemSlot, MovePowers } from './beams.ts';
 import { placeBridges, placeGemBridges, placeRespawnBridges } from './bridges.ts';
 import type { BridgeWay } from './bridges.ts';
@@ -145,8 +145,10 @@ export interface WalkGrid extends GridShape {
     openBeamCells: Set<number>;
     litCells: number[];
     // the beams cast when the walker is built, the pushes a flood may make to change the beams, and the powers that
-    // change a move which the beams of those pushes lay down (OPTION_MARK): the hero may move with them or without
+    // change a move which the beams of those pushes lay down (OPTION_MARK): the hero may move with them or without;
+    // `frozenBeams`: per cell of a closed Freezer, the beam of the powered Promesst_Light in it, cast once it opens
     castBeams: CastBeam[];
+    frozenBeams: Map<number, CastBeam>;
     beamMoves: BeamMoves;
     optionalPowers: MovePowers;
     // per cell, the existing pads there and the elevator frames a step onto it rides to; per pad pid its index; the
@@ -257,6 +259,8 @@ export interface Walker {
     frozen: ReadonlyMap<number, number>;
     thaw: (cell: number) => void;
     freeze: (cell: number, freezerIndex: number) => void;
+    frozenBeamCells: (cell: number) => number[];
+    layFrozenBeam: (cell: number) => () => void;
     width: number;
     layerCells: number;
 }
@@ -335,6 +339,7 @@ function newWalkGrid(
         openBeamCells: new Set(),
         litCells: [],
         castBeams: [],
+        frozenBeams: new Map(),
         beamMoves: NO_BEAM_MOVES,
         optionalPowers: { endpointBeams: new Map(), doubleBeams: new Map(), alterCells: new Set() },
         padsAt: new Map(),
@@ -537,6 +542,8 @@ function walkerOf(walkGrid: WalkGrid): Walker {
         frozen: walkGrid.frozen,
         thaw: (cell) => thaw(walkGrid, cell),
         freeze: (cell, freezerIndex) => freeze(walkGrid, cell, freezerIndex),
+        frozenBeamCells: (cell) => frozenBeamCells(walkGrid, cell),
+        layFrozenBeam: (cell) => layFrozenBeam(walkGrid, cell),
         width: walkGrid.width,
         layerCells: walkGrid.layerCells,
     };
