@@ -7,7 +7,9 @@ import type { IconName } from '../map/icons.ts';
 import type { MapOptions, MapOverlay, MapTower } from '../map/map-view.ts';
 import { findLabel } from '../model/find-kinds.ts';
 import type { FindKind } from '../model/find-kinds.ts';
+import { isDoorway } from '../model/freezer-names.ts';
 import { AREA_LAYERS, layerName, mapLayerOf } from '../model/layers.ts';
+import { rankCages } from '../model/rank-cages.ts';
 import { towerName } from '../model/towers.ts';
 import type { PanelContext } from './context.ts';
 import { layerTagHtml } from './plan-chips.ts';
@@ -116,7 +118,8 @@ export function findItemOf(context: PanelContext, kind: FindKind, id: string): F
     return undefined;
 }
 
-function rowHtml(context: PanelContext, item: FindItem, tab: boolean): string {
+// a row of the list; the note, when there is one, ends its text
+function rowHtml(context: PanelContext, item: FindItem, tab: boolean, note = ''): string {
     let tabIndex = -1;
     if (tab) tabIndex = 0;
 
@@ -139,14 +142,84 @@ function rowHtml(context: PanelContext, item: FindItem, tab: boolean): string {
 
     const id = escapeHtml(item.id);
     const attributes = `id="pgf-${id}" data-find-item="${id}" tabindex="${tabIndex}"`;
+    let noteText = '';
+    if (note) noteText = ` <span class="muted">· ${escapeHtml(note)}</span>`;
+
     const state = `<span class="muted">· ${escapeHtml(item.state.toLowerCase())}</span>`;
-    const name = `<span class="nm">${layerTag}${escapeHtml(place)}${near} ${state}</span>`;
+    const name = `<span class="nm">${layerTag}${escapeHtml(place)}${near} ${state}${noteText}</span>`;
     return `<button class="plain rr fi" ${attributes}>${iconHtml(item.icon, iconClass)}${name}</button>`;
 }
 
 function groupHtml(context: PanelContext, title: string, items: FindItem[], first: boolean): string {
     const head = `<div class="rg">${title} <span class="c muted">· ${items.length}</span></div>`;
     const rows = items.map((item, index) => rowHtml(context, item, first && index === 0));
+    return head + rows.join('');
+}
+
+// where a Sign is: its area while that area is shown, else the nearest level not under fog; empty for none
+function signPlace(context: PanelContext, signIndex: number): string {
+    const position = context.signs[signIndex].p;
+    const area = context.model.areaAt(position);
+    if (area !== null) return area;
+
+    const nearest = context.model.nearestShownLevel(position[0], position[1], mapLayerOf(position[2]));
+    if (nearest < 0) return '';
+    return `near ${context.levels[nearest].n}`;
+}
+
+// the kind of mark a cage is listed under
+function cageKindOf(gate: number): FindKind {
+    if (isDoorway(gate)) return 'doorways';
+    return 'pods';
+}
+
+/** The listed ice cage with an id ("g" and its index), whichever kind of cage it is; undefined for none. */
+export function cageItemOf(context: PanelContext, id: string): FindItem | undefined {
+    return findItemOf(context, 'pods', id) ?? findItemOf(context, 'doorways', id);
+}
+
+/**
+ * The group of the closed ice cages that the rank Signs opened by the rank reached list, for the ending being worked
+ * toward: the cages that hold a Promesst_Light or a Mirror first, then the others, each by place. A cage whose Sign is
+ * not read yet says so with the Sign's place. Empty where there is none.
+ */
+export function rankCageGroupHtml(context: PanelContext, first: boolean): string {
+    const goal = context.goal;
+    if (!goal || goal.kind !== 'ending' || !goal.active || goal.done) return '';
+
+    const cages = rankCages({
+        rank: context.status.rank,
+        gateOpen: context.progress.gateOpen,
+        gateShown: (gate) => context.gateShown(context.freezers[gate]),
+        signShown: (signIndex) => context.model.signSet.has(signIndex),
+    });
+
+    const notes = new Map<string, string>();
+    const liftPieces: FindItem[] = [];
+    const others: FindItem[] = [];
+    for (const cage of cages) {
+        const item = findItemOf(context, cageKindOf(cage.gate), 'g' + cage.gate);
+        if (!item) continue;
+
+        if (!context.progress.signRead(context.signs[cage.sign].pid)) {
+            const place = signPlace(context, cage.sign);
+            let note = 'read its Sign';
+            if (place) note += ` · ${place}`;
+            notes.set(item.id, note);
+        }
+
+        if (cage.liftPiece) {
+            liftPieces.push(item);
+        } else {
+            others.push(item);
+        }
+    }
+
+    const items = [...sortItems(context, liftPieces), ...sortItems(context, others)];
+    if (!items.length) return '';
+
+    const head = `<div class="rg">Ice cages your rank opens <span class="c muted">· ${items.length}</span></div>`;
+    const rows = items.map((item, index) => rowHtml(context, item, first && index === 0, notes.get(item.id)));
     return head + rows.join('');
 }
 

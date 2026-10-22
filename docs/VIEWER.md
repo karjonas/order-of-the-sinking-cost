@@ -1071,6 +1071,12 @@ layer; a row names its layer only when it is not the one the map shows.
   the goal's list as it was.
 - Groups (To do), each with its count: Play now, Not reachable yet, Locked; Solved lists the solved. Within a group the
   levels Required as one of several and off the goal's cheapest plans go last.
+- Ice cages your rank opens (To do, below the level groups, for the ending being worked toward only): the closed ice
+  cages of the rank Signs whose rank the save has reached, none that fog hides or whose Sign it hides. The cages with a
+  Promesst_Light or a Mirror in them come first, then the others, each by layer and place. A row is a row of the Ice
+  cages list, and clicking it shows the cage on the map; one whose Sign is not read yet adds "read its Sign" and the
+  Sign's place. A cage leaves the group when it opens. The group is not counted in "N left" or in the sidebar's steps,
+  does not change the active goal, and is left out with a search, a chip or the Solved toggle on.
 - A row: the level's pad icon (see [The map's marks](#the-maps-marks)), role dot, name, then what it leads to and its
   area. The tooltip adds the state, role and why.
 - Empty list: "No levels match" (a search or a chip); "No solved levels yet."; "`goal` is done."; "Nothing to show

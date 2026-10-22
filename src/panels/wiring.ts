@@ -10,7 +10,7 @@ import { mapLayerOf } from '../model/layers.ts';
 import { syncSide } from '../sidebar.ts';
 import { findListShown } from '../sidebar/find.ts';
 import type { PanelContext } from './context.ts';
-import { findItemOf } from './find-list.ts';
+import { cageItemOf, findItemOf } from './find-list.ts';
 import type { FindItem } from './find-list.ts';
 import { hashDone, markHashDone, panelKeep, setHash } from './hash.ts';
 import { applyFilters, markSelected, showLevelRow } from './list.ts';
@@ -231,10 +231,15 @@ function onPageClick(context: PanelContext, event: Event): void {
         context.map?.select(null);
         showLevelRow(context, data.goto, true);
     } else if (data.findItem != null) {
+        // the goal's list holds ice cages among its levels
         const kind = filters.find;
-        if (kind === '') return;
+        let item: FindItem | undefined;
+        if (kind === '') {
+            item = cageItemOf(context, data.findItem);
+        } else {
+            item = findItemOf(context, kind, data.findItem);
+        }
 
-        const item = findItemOf(context, kind, data.findItem);
         if (item) openFindItem(context, item);
     } else if (data.findBack != null) {
         filters.find = '';

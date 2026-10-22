@@ -11,7 +11,7 @@ import type { Area } from '../types.ts';
 import { syncSide } from '../sidebar.ts';
 import { refreshSideGoals } from '../sidebar/goals.ts';
 import type { ListedLevel, PanelContext } from './context.ts';
-import { drawFindList } from './find-list.ts';
+import { drawFindList, rankCageGroupHtml } from './find-list.ts';
 import { layerTagHtml, levelPadHtml, wrappable } from './plan-chips.ts';
 import { approxTip, whyText } from './why.ts';
 
@@ -221,10 +221,16 @@ function drawGoalList(context: PanelContext): void {
         rows = rowsHtml(context, blocks, tab);
     }
 
+    // the ice cages the rank opens follow the goal's levels in the list of what is to do
+    let cages = '';
+    if (!context.searching() && !context.narrowed() && !context.filters.solved) {
+        cages = rankCageGroupHtml(context, !rows);
+    }
+
     let foot = '';
     if (context.model.hiddenLevelCount) foot = `<div class="foot muted">More levels under fog</div>`;
 
-    $('#pgRows').innerHTML = (rows || emptyHtml(context)) + foot;
+    $('#pgRows').innerHTML = (rows || emptyHtml(context)) + cages + foot;
     $('#pgCount').innerHTML = countHtml(context);
     $('#pgChips').innerHTML = chipsHtml(context);
 }
