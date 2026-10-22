@@ -1,7 +1,9 @@
 // The requirement graph the plans are worked out over (VIEWER.md "The requirement graph")
 import { PROG } from '../data.ts';
-import type { FreezerSign } from '../types.ts';
+import type { FreezerSign, KnownRoute, RouteNeed } from '../types.ts';
 import { ENDINGS, MARKER_RANKS } from './achievements.ts';
+import { needMet, routeMet } from './known-routes.ts';
+import type { NeedsView } from './known-routes.ts';
 import type { BaseProgress } from './progress.ts';
 import { signGateMet } from './unlocking.ts';
 
@@ -58,8 +60,9 @@ export type PlanStep = IndexedStep | NamedStep | SignStep | WayStep;
  *   Freezer, open: met. Closed: its unmet levels and signs (all, or the cheapest one for an OR gate; an OR gate with one
  *     met opens at the next overworld load, a step with no parts).
  *   way (w): a sky Way of the known routes (progress.json known_routes): met once its tower's hub quarter is reached
- *     (the tower's Sign read or faced, or its hub pad discovered); else its entry levels, all of the groups, one level
- *     of a group with several. The tower's Sign in the hub needs it too.
+ *     (the tower's Sign read or faced, or its hub pad discovered); else what its route needs, all of the groups, one
+ *     need of a group with several. The tower's Sign in the hub needs it too. A route to a level with unmet needs is one
+ *     more way in to the level.
  *   sign: a tower sign whose tower is not active needs the tower; a rank sign the rank; the gold room sign the
  *     cheapest gold rooms (p) still to find, each its tower.
  *   rank r (a part): the cheapest of the ENDGAME levels and the rank markers (e: ASCEND, DESCEND) that give r or more.
@@ -157,35 +160,30 @@ export function requirementGraph(progress: BaseProgress): Graph {
         return id;
     });
 
-    // a sky Way (known_routes) is met once the tower's hub quarter is reached: its Sign is read or faced by the walk, or
-    // the tower's hub pad is discovered. Else it asks for its entry levels, all of the groups.
+    // a sky Way (a known route with an area) is met once the tower's hub quarter is reached: its Sign is read or faced by
+    // the walk, or the tower's hub pad is discovered. Else it asks for what its route needs (below, once the Signs exist).
+    const needsView: NeedsView = {
+        levelSolved: (level) => progress.state[level] === 'solved',
+        freezerOpen: (freezerIndex) => progress.gateOpen[freezerIndex],
+        signRead: progress.signRead,
+    };
     const wayOfTower = new Map<number, number>();
+    const wayOfRoute = new Map<KnownRoute, number>();
     (PROG.known_routes || []).forEach((route) => {
+        if (route.area === undefined || route.tower === undefined) return;
+
         const signIndex = PROG.signs.findIndex(
             (sign) => sign.tower === route.tower && !sign.status && sign.gates.length,
         );
         const hub = progress.towers[route.tower]?.hub;
         const id = graph.add('w' + route.area, { t: 'w', id: route.area, sign: signIndex }, 'and');
         wayOfTower.set(route.tower, id);
+        wayOfRoute.set(route, id);
 
         const read = signIndex >= 0 && progress.signRead(PROG.signs[signIndex].pid);
         const faced = signIndex >= 0 && !!progress.reach?.signFaced[signIndex];
         const padFound = hub !== undefined && progress.tst[hub].disc;
-        if (read || faced || padFound) {
-            graph.met[id] = true;
-            return;
-        }
-
-        route.entry.forEach((group, groupIndex) => {
-            if (group.some((level) => progress.state[level] === 'solved')) return;
-
-            const members = group.map((level) => levelId[level]);
-            if (members.length === 1) {
-                graph.parts[id].push(members[0]);
-                return;
-            }
-            graph.parts[id].push(graph.add('wo' + route.area + '.' + groupIndex, null, 'or', members));
-        });
+        if (read || faced || padFound) graph.met[id] = true;
     });
 
     const signId = (rule: FreezerSign, freezerIndex: number | null, position: number): number => {
@@ -251,6 +249,44 @@ export function requirementGraph(progress: BaseProgress): Graph {
     };
 
     (PROG.signs || []).forEach((sign, signIndex) => signId(sign, null, signIndex));
+
+    // what a known route still asks for: each group of its needs not met yet, the need itself or an OR of the group's
+    const needId = (need: RouteNeed): number => {
+        if ('level' in need) return levelId[need.level];
+        if ('freezer' in need) return gateId[need.freezer];
+        return signIds.get('s' + need.sign)!;
+    };
+    const routeParts = (route: KnownRoute): number[] => {
+        const parts: number[] = [];
+        route.needs.forEach((group, groupIndex) => {
+            if (group.some((need) => needMet(need, needsView))) return;
+
+            // an empty group is a need that is not known: there is nothing to plan
+            const members = group.map(needId);
+            if (members.length === 0) return;
+            if (members.length === 1) {
+                parts.push(members[0]);
+                return;
+            }
+            parts.push(graph.add('ro' + route.id + '.' + groupIndex, null, 'or', members));
+        });
+        return parts;
+    };
+
+    // a sky Way asks for its route's needs unless its quarter is reached
+    for (const [route, wayId] of wayOfRoute) {
+        if (!graph.met[wayId]) graph.parts[wayId] = routeParts(route);
+    }
+
+    // a route to a level whose needs are not met yet is one more way in to it
+    const routesToLevel = new Map<number, KnownRoute[]>();
+    for (const route of PROG.known_routes || []) {
+        if (!('level' in route.to) || routeMet(route, needsView)) continue;
+
+        const known = routesToLevel.get(route.to.level) ?? [];
+        known.push(route);
+        routesToLevel.set(route.to.level, known);
+    }
 
     // every way-in gate of a level the walk cannot reach only leads to a pad that reveals one in its pocket
     const onlyPadGates = (levelIndex: number, gateIndices: number[]) => {
@@ -318,6 +354,16 @@ export function requirementGraph(progress: BaseProgress): Graph {
             ...viaLevels.map((via) => levelId[via]),
             ...viaTowers.map((tower) => towerId[tower]),
         ];
+
+        for (const route of routesToLevel.get(levelIndex) ?? []) {
+            const parts = routeParts(route);
+            if (parts.length === 0) continue;
+            if (parts.length === 1) {
+                graph.parts[id].push(parts[0]);
+                continue;
+            }
+            graph.parts[id].push(graph.add('rt' + route.id, null, 'and', parts));
+        }
 
         const layer = progress.access?.[levelIndex];
         if (!graph.parts[id].length && layer) {

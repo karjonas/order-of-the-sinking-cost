@@ -42,7 +42,7 @@ export interface GoalView {
     tower?: number | undefined;
     name?: string | undefined;
     ending?: number | undefined;
-    /** The level a stage of the second ending is named after. */
+    /** The level a stage is named after. */
     level?: number | undefined;
     children?: GoalView[];
     /** The step onto an active ground tower's Antipode teleporter. */
@@ -462,18 +462,13 @@ function addAntipodes(context: GoalsContext, goal: GoalView, raw: EndingGoal, ra
     if (shown.length < rawChildren.length) goal.fogged = true;
 }
 
-// whether the save has found a sky tower's pad in the sky hub
-function hubPadFound(context: GoalsContext): boolean {
-    const { towers, tst } = context.progress;
-    return towers.some((tower) => tower.hub !== undefined && tst[tower.hub].disc);
-}
-
-// whether a stage of the second ending shows: a tower once it is not under fog, a place once its area is named (the sky
-// hub also once one of its pads is found, as the game can leave its name off after a visit), a level once it is not
-// under fog
+// whether a stage shows: a tower once it is not under fog, a place once its area is named (also once one of its `seen`
+// pads is found, as the game can leave an area's name off after a visit), a level once it is not under fog
 function stageShown(context: GoalsContext, child: TowerGoal | StageGoal): boolean {
     if (child.kind === 'tower') return towerShown(context, child.tower);
-    if (child.stage === 'antipode' && hubPadFound(context)) return true;
+
+    const { tst } = context.progress;
+    if (child.seen.some((pad) => tst[pad].disc)) return true;
     if (child.area !== undefined) return context.areaShown(child.area);
     return !context.progress.hidden[child.level!];
 }
@@ -486,8 +481,8 @@ function stageGoal(context: GoalsContext, raw: StageGoal): GoalView {
     return goal;
 }
 
-// the second ending's stages in their order, the ones under fog left out; done ones stay listed
-function addHighStages(context: GoalsContext, goal: GoalView, rawChildren: Array<TowerGoal | StageGoal>): void {
+// an ending's stages in their order, the ones under fog left out; done ones stay listed
+function addStages(context: GoalsContext, goal: GoalView, rawChildren: Array<TowerGoal | StageGoal>): void {
     const shown = rawChildren.filter((child) => stageShown(context, child));
     goal.children = shown.map((child) => {
         if (child.kind === 'tower') return towerGoal(context, child);
@@ -512,7 +507,7 @@ function endingGoal(context: GoalsContext, raw: EndingGoal): GoalView {
     const antipodes = raw.children.filter((child) => child.kind === 'antipode');
     const stages = raw.children.filter((child) => child.kind === 'tower' || child.kind === 'stage');
     if (antipodes.length) addAntipodes(context, goal, raw, antipodes);
-    if (stages.length) addHighStages(context, goal, stages);
+    if (stages.length) addStages(context, goal, stages);
     return goal;
 }
 

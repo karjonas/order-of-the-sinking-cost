@@ -1,5 +1,4 @@
-// The second ending as an ordered list of stages: the sky crossroads, the sky towers, the hub, the end2 room's level,
-// the ending's level
+// The second and third endings as ordered lists of stages (progress.json `ending_stages`)
 import { describe, expect, test, vi } from 'vitest';
 import { PROG, SCHEMA } from '../src/data.ts';
 import { goalLadder } from '../src/model/goals.ts';
@@ -10,7 +9,8 @@ import { planAll } from '../src/model/plans.ts';
 import type { BaseProgress, ShownProgress } from '../src/model/progress.ts';
 import type { TowerProgress } from '../src/model/towers.ts';
 import type { LevelState, SignRule } from '../src/model/unlocking.ts';
-import { level } from './fixtures.ts';
+import type { EndingStages } from '../src/types.ts';
+import { level, pad } from './fixtures.ts';
 
 // the sign table is read when requirements loads, so the two hub Signs are in it from the start
 vi.mock('../src/data.ts', async () => {
@@ -31,40 +31,94 @@ vi.mock('../src/model/layers.ts', async (importOriginal) => ({
     mapLayerOf: () => 'ground',
 }));
 
-const ascend = 1n << BigInt(SCHEMA.enums.Achievement.values.find(([name]) => name === 'ASCEND')![1]);
+function achievementBit(name: string): bigint {
+    const bit = SCHEMA.enums.Achievement.values.find(([valueName]) => valueName === name)![1];
+    return 1n << BigInt(bit);
+}
+
+const ROOM_A = 4;
+const ROOM_B_FIRST = 5;
+const ROOM_B_LAST = 6;
+const FINAL_LOW = 7;
+
+const ENDING_STAGES: EndingStages[] = [
+    {
+        ending: 'ENDGAME2',
+        stages: [
+            { name: { area: 0 }, done: { rule: 'achievement', name: 'ASCEND' }, seen: [] },
+            { name: { tower: 0 }, done: { rule: 'tower', tower: 0, freezers: [0] }, seen: [] },
+            { name: { tower: 1 }, done: { rule: 'tower', tower: 1, freezers: [1] }, seen: [] },
+            { name: { area: 1 }, done: { rule: 'freezers', freezers: [0, 1] }, seen: [] },
+            { name: { level: 2 }, done: { rule: 'solved', level: 2 }, seen: [] },
+            { name: { level: 3 }, done: { rule: 'solved', level: 3 }, seen: [] },
+        ],
+    },
+    {
+        ending: 'ENDGAME3',
+        stages: [
+            { name: { area: 2 }, done: { rule: 'achievement', name: 'DESCEND' }, seen: [] },
+            { name: { area: 3 }, done: { rule: 'pads', pads: [0] }, seen: [0] },
+            { name: { level: ROOM_A }, done: { rule: 'freezers', freezers: [2] }, seen: [] },
+            { name: { level: ROOM_B_FIRST }, done: { rule: 'solved', level: ROOM_B_LAST }, seen: [] },
+            { name: { level: FINAL_LOW }, done: { rule: 'solved', level: FINAL_LOW }, seen: [] },
+        ],
+    },
+];
 
 interface SetupOptions {
     ascended?: boolean;
+    descended?: boolean;
     /** Per sky tower, whether it is active. */
     active?: boolean[];
     /** Per sky tower, whether its hub Freezer is open. */
     open?: boolean[];
+    /** Whether the first end3 room's exit Freezer is open. */
+    roomOpen?: boolean;
+    /** Whether the underworld hub's pad is discovered. */
+    padFound?: boolean;
     solved?: number[];
 }
 
 // Two sky towers of one level each (levels 0 and 1) with a hub Freezer each, the end2 room's level `laser_pointer`
-// (2) and the ENDGAME2 level (3)
-function setup({ ascended = false, active = [false, false], open = [false, false], solved = [] }: SetupOptions = {}) {
+// (2) and the ENDGAME2 level (3); the third ending's first room (4), the two levels of its second room (5, 6) and the
+// level that earns ENDGAME3 (7)
+function setup({
+    ascended = false,
+    descended = false,
+    active = [false, false],
+    open = [false, false],
+    roomOpen = false,
+    padFound = false,
+    solved = [],
+}: SetupOptions = {}) {
     Object.assign(PROG, {
         levels: [
             level('t0a', { t: 17 }),
             level('t1a', { t: 18 }),
             level('laser_pointer'),
             level('all_together_now', { a: 'ENDGAME2' }),
+            level('room_a'),
+            level('room_b_first'),
+            level('room_b_last'),
+            level('final_low', { a: 'ENDGAME3' }),
         ],
         freezers: [
             { req: [], signs: [{ pid: 90, tower: 0 }] },
             { req: [], signs: [{ pid: 91, tower: 1 }] },
+            { req: [ROOM_A] },
         ],
         areas: [
             { local_area_name: 'area_s_upper_crossroads', display: 'Crossroads High', pin: 1 },
             { local_area_name: 'area_s_antipode_high', display: 'Antipode High', pin: 2 },
+            { local_area_name: 'area_u_crossroads_low', display: 'Crossroads Low', pin: 3 },
+            { local_area_name: 'area_u_antipode_low', display: 'Antipode Low', pin: 4 },
         ],
-        teleporters: [],
+        teleporters: [pad({ pid: 1, major: 1 })],
         gold_rooms: [],
         known_routes: [],
+        ending_stages: ENDING_STAGES,
     });
-    const state: LevelState[] = ['unlocked', 'unlocked', 'unlocked', 'unlocked'];
+    const state = PROG.levels.map((): LevelState => 'unlocked');
     const towers = [17, 18].map((bits, towerIndex): TowerProgress => {
         if (active[towerIndex]) state[towerIndex] = 'solved';
         return {
@@ -96,9 +150,9 @@ function setup({ ascended = false, active = [false, false], open = [false, false
         ice: [],
         reach: null,
         lt: null,
-        gateOpen: open,
+        gateOpen: [...open, roomOpen],
         towers,
-        tst: [],
+        tst: [{ en: true, disc: padFound }],
         goldFound: 0,
         signOk,
         signRead: () => false,
@@ -106,7 +160,10 @@ function setup({ ascended = false, active = [false, false], open = [false, false
         hidden: state.map(() => false),
         towerHidden: towers.map(() => false),
     };
-    const status = { achievements: ascended ? ascend : 0n };
+    let achievements = 0n;
+    if (ascended) achievements |= achievementBit('ASCEND');
+    if (descended) achievements |= achievementBit('DESCEND');
+    const status = { achievements };
     const progress: ShownProgress = {
         ...base,
         plans: planAll(base),
@@ -143,18 +200,18 @@ function view(
     });
 }
 
-const high = (goals: GoalsView) => goals.goals.find((goal) => goal.key === 'ending:ENDGAME2')!;
-const labels = (goals: GoalsView) => high(goals).children!.map((child) => child.label);
-const dones = (goals: GoalsView) => high(goals).children!.map((child) => child.done);
-const activeLabels = (goals: GoalsView) =>
-    high(goals)
+const endingOf = (goals: GoalsView, name: string) => goals.goals.find((goal) => goal.key === 'ending:' + name)!;
+const labels = (goals: GoalsView, name: string) => endingOf(goals, name).children!.map((child) => child.label);
+const dones = (goals: GoalsView, name: string) => endingOf(goals, name).children!.map((child) => child.done);
+const activeLabels = (goals: GoalsView, name: string) =>
+    endingOf(goals, name)
         .children!.filter((child) => child.active)
         .map((child) => child.label);
 
 describe('the second ending as stages', () => {
     test('the children are the stages in order, each with its own done mark', () => {
         const goals = view(setup({ ascended: true, active: [true, false], open: [true, false] }));
-        expect(labels(goals)).toEqual([
+        expect(labels(goals, 'ENDGAME2')).toEqual([
             'Crossroads High',
             'High Heroes',
             'High Mirrors',
@@ -162,25 +219,25 @@ describe('the second ending as stages', () => {
             'laser_pointer',
             'all_together_now',
         ]);
-        expect(dones(goals)).toEqual([true, true, false, false, false, false]);
-        expect(activeLabels(goals)).toEqual(['High Mirrors']);
+        expect(dones(goals, 'ENDGAME2')).toEqual([true, true, false, false, false, false]);
+        expect(activeLabels(goals, 'ENDGAME2')).toEqual(['High Mirrors']);
     });
 
     test('a tower activated whose hub Freezer is closed is not done', () => {
         const goals = view(setup({ ascended: true, active: [true, true], open: [true, false] }));
-        expect(dones(goals)).toEqual([true, true, false, false, false, false]);
-        expect(activeLabels(goals)).toEqual(['High Mirrors']);
+        expect(dones(goals, 'ENDGAME2')).toEqual([true, true, false, false, false, false]);
+        expect(activeLabels(goals, 'ENDGAME2')).toEqual(['High Mirrors']);
     });
 
     test('the hub is done when every hub Freezer is open, the room and the ending when solved', () => {
         const goals = view(setup({ ascended: true, active: [true, true], open: [true, true], solved: [2] }));
-        expect(dones(goals)).toEqual([true, true, true, true, true, false]);
-        expect(activeLabels(goals)).toEqual(['all_together_now']);
+        expect(dones(goals, 'ENDGAME2')).toEqual([true, true, true, true, true, false]);
+        expect(activeLabels(goals, 'ENDGAME2')).toEqual(['all_together_now']);
     });
 
     test('before the sky is reached the crossroads is the active stage', () => {
         const goals = view(setup());
-        expect(activeLabels(goals)).toEqual(['Crossroads High']);
+        expect(activeLabels(goals, 'ENDGAME2')).toEqual(['Crossroads High']);
     });
 
     test('a tower asks for its hub Freezer', () => {
@@ -195,7 +252,66 @@ describe('the second ending as stages', () => {
 
     test('a place is named once its area shows and a level once it is not under fog', () => {
         const goals = view(setup({ ascended: true }), { areaShown: false, hiddenLevels: [2] });
-        expect(labels(goals)).toEqual(['High Heroes', 'High Mirrors', 'all_together_now']);
-        expect(high(goals).fogged).toBe(true);
+        expect(labels(goals, 'ENDGAME2')).toEqual(['High Heroes', 'High Mirrors', 'all_together_now']);
+        expect(endingOf(goals, 'ENDGAME2').fogged).toBe(true);
+    });
+});
+
+describe('the third ending as stages', () => {
+    test('the children are the stages in order, each with its own done mark', () => {
+        const goals = view(setup({ descended: true, padFound: true, roomOpen: true }));
+        expect(labels(goals, 'ENDGAME3')).toEqual([
+            'Crossroads Low',
+            'Antipode Low',
+            'room_a',
+            'room_b_first',
+            'final_low',
+        ]);
+        expect(dones(goals, 'ENDGAME3')).toEqual([true, true, true, false, false]);
+        expect(activeLabels(goals, 'ENDGAME3')).toEqual(['room_b_first']);
+    });
+
+    test('a room is done by its exit Freezer, the next by the level that ends it', () => {
+        const none = view(setup({ descended: true, padFound: true, solved: [ROOM_B_FIRST] }));
+        expect(dones(none, 'ENDGAME3')).toEqual([true, true, false, false, false]);
+        expect(activeLabels(none, 'ENDGAME3')).toEqual(['room_a']);
+
+        const last = view(setup({ descended: true, padFound: true, roomOpen: true, solved: [ROOM_B_LAST] }));
+        expect(dones(last, 'ENDGAME3')).toEqual([true, true, true, true, false]);
+        expect(activeLabels(last, 'ENDGAME3')).toEqual(['final_low']);
+    });
+
+    test('the underworld hub is done when its pad is discovered', () => {
+        const before = view(setup({ descended: true }));
+        expect(dones(before, 'ENDGAME3')).toEqual([true, false, false, false, false]);
+        expect(activeLabels(before, 'ENDGAME3')).toEqual(['Antipode Low']);
+    });
+
+    test('a room asks for its exit Freezer and the pad for nothing', () => {
+        const { progress } = setup();
+        const ending = progress.goals[2];
+        if (ending.kind !== 'ending') throw new Error('not an ending');
+
+        const targets = ending.children!.map((child) => child.targets.map((id) => progress.plans.G.keys[id]));
+        expect(targets[1]).toEqual([]);
+        expect(targets[2]).toEqual(['g2']);
+        expect(targets[3]).toEqual(['l' + ROOM_B_LAST]);
+    });
+
+    test('nothing under fog is named, and the ending says more is under fog', () => {
+        const fogged = view(setup(), { areaShown: false, hiddenLevels: [ROOM_A, FINAL_LOW] });
+        expect(labels(fogged, 'ENDGAME3')).toEqual(['room_b_first']);
+        expect(endingOf(fogged, 'ENDGAME3').fogged).toBe(true);
+    });
+
+    test('a pad found shows the underworld hub although its area is not named', () => {
+        const found = view(setup({ padFound: true }), { areaShown: false, hiddenLevels: [ROOM_A, FINAL_LOW] });
+        expect(labels(found, 'ENDGAME3')).toEqual(['Antipode Low', 'room_b_first']);
+        expect(endingOf(found, 'ENDGAME3').fogged).toBe(true);
+    });
+
+    test('with every stage shown the ending is not fogged', () => {
+        const shown = view(setup());
+        expect(endingOf(shown, 'ENDGAME3').fogged).toBe(false);
     });
 });

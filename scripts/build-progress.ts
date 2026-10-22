@@ -27,7 +27,9 @@ import type {
     WorldFile,
 } from '../src/types.ts';
 import type { FogFile, LevelAreasFile, LevelEntry, LevelsFile, PlacedEntity } from './lib/data-files.ts';
+import { buildEndingStages } from './lib/ending-stages.ts';
 import { flagsOf, get, positionOf, refOf, vectorOf, type Fields } from './lib/fields.ts';
+import { buildKnownRoutes } from './lib/known-routes.ts';
 import { modulo, roundTo, roundVector } from './lib/math.ts';
 import { writeJsonAtomic } from './lib/output.ts';
 import { Package, pidString, type EntitiesHeader, type EntityRecord } from './lib/package.ts';
@@ -228,43 +230,40 @@ function addTowerPads(overworld: Overworld, towers: Tower[], teleporters: Telepo
     }
 }
 
-// Routes the walk does not find, written by hand, each for a target (here a sky Way area, which leads to the hub
-// quarter of a sky tower) with the levels it asks for: all of the groups, one level of a group
-interface KnownWaySource {
-    area: string;
-    tower: string;
-    entry: string[][];
+// The position of the overworld entity with this pid, whatever its type
+function entityPosition(overworld: Overworld, pid: number): Position | undefined {
+    for (const entities of Object.values(overworld)) {
+        const found = entities?.find((entity) => entity.pid === pid);
+        if (found) return roundedPosition(found.fields);
+    }
+    return undefined;
 }
 
-const KNOWN_WAYS: KnownWaySource[] = [
-    { area: 'area_s_heroes_way', tower: 'HEROES', entry: [['catching_fire_v2']] },
-    { area: 'area_s_mirror_way', tower: 'MIRRORS', entry: [['priest_3d_intro_dragon_v4']] },
-    { area: 'area_s_skipping_way', tower: 'SKIPPING', entry: [] },
-    {
-        area: 'area_s_beam_way',
-        tower: 'PROMESST',
-        entry: [['high_endpoint_v2'], ['beam_jail_v3', 'thin_ice_rooms']],
-    },
-];
-
-// The table of known routes with its names resolved to indices; a name the data lacks fails the build
-function buildKnownRoutes(levels: ProgressLevel[], towers: Tower[], areas: Area[]): KnownRoute[] {
-    const levelIndex = (name: string): number => {
-        const found = levels.findIndex((level) => level.n === name);
-        if (found < 0) throw new Error(`known_routes: no level ${name}`);
+// The table of known routes (scripts/lib/known-routes.ts) with its names and pids resolved to indices
+function resolveKnownRoutes(
+    overworld: Overworld,
+    levels: ProgressLevel[],
+    towers: Tower[],
+    freezers: Freezer[],
+    signs: Sign[],
+    areas: Area[],
+    teleporters: Teleporter[],
+): KnownRoute[] {
+    const skyTower = (flagName: string): number | undefined => {
+        const towerFlags = FLAG_BITS[flagName] + FLAG_BITS.UPSTAIRS;
+        const found = towers.findIndex((candidate) => candidate.t === towerFlags);
+        if (found < 0) return undefined;
         return found;
     };
 
-    return KNOWN_WAYS.map((source): KnownRoute => {
-        const area = areas.findIndex((candidate) => candidate.local_area_name === source.area);
-        if (area < 0) throw new Error(`known_routes: no area ${source.area}`);
-
-        const towerFlags = FLAG_BITS[source.tower] + FLAG_BITS.UPSTAIRS;
-        const tower = towers.findIndex((candidate) => candidate.t === towerFlags);
-        if (tower < 0) throw new Error(`known_routes: no sky tower ${source.tower}`);
-
-        const entry = source.entry.map((group) => group.map(levelIndex));
-        return { kind: 'way', area, tower, entry };
+    return buildKnownRoutes({
+        levels,
+        freezers,
+        signs,
+        areas,
+        teleporters,
+        skyTower,
+        positionOf: (pid) => entityPosition(overworld, pid),
     });
 }
 
@@ -638,10 +637,7 @@ function main(): void {
         return { pid: giver.pid, p, l: layerOf(p[2]) };
     });
     out.known_routes = [];
-    if (areaData) {
-        out.areas = buildAreas(areaData, levels, worldMap);
-        out.known_routes = buildKnownRoutes(levels, towers, out.areas);
-    }
+    if (areaData) out.areas = buildAreas(areaData, levels, worldMap);
     if (fog) out.fog = buildFogSummary(fog);
     if (worldMap) {
         out.map = worldMap;
@@ -655,6 +651,18 @@ function main(): void {
         addTowerPads(overworld, towers, world.teleporters);
         Object.assign(out, world);
     }
+    if (out.areas && out.teleporters) {
+        out.known_routes = resolveKnownRoutes(
+            overworld,
+            levels,
+            towers,
+            freezers,
+            signRows,
+            out.areas,
+            out.teleporters,
+        );
+    }
+    out.ending_stages = buildEndingStages(out, FLAG_BITS);
     const progressPath = paths.data('progress.json');
     writeJsonAtomic(progressPath, out);
     const gated = levels.filter((level) => level.req.length).length;

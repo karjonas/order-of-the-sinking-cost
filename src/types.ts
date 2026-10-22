@@ -202,21 +202,56 @@ export interface ProgressMap {
 /** One row of data/progress.json `endgame_way_ins`: [level, freezer indices, 1 to replace the walk's gates]. */
 export type EndgameWayIn = [level: number, freezers: number[], replace: number];
 
+/** What a known route asks for: a level solved, a Freezer open or a Sign read, by index into `levels`, `freezers`, `signs`. */
+export type RouteNeed = { level: number } | { freezer: number } | { sign: number };
+
+/** Where a known route takes the hero: a level's entrance, a teleporter (index into `teleporters`), or a position. */
+export type RouteTarget = { level: number } | { pad: number } | { at: Position };
+
 /**
- * One row of data/progress.json `known_routes`: a route the walk does not find, written by hand. The `way` target is a
- * sky Way area that leads to a sky tower's hub quarter, where the tower's Sign and hub pad stand. `entry`: the levels
- * the Way asks for, all of the groups needed, one of the levels inside a group.
+ * One row of data/progress.json `known_routes`: a route the walk does not find, written by hand. With every group of
+ * `needs` met (all of the groups needed, one of the needs inside a group) the hero reaches `to`. `area` and `tower` mark a
+ * sky Way: the sky Way area (index into `areas`) that leads to the hub quarter of the sky tower (index into `towers`)
+ * whose hub pad `to` is.
  */
-export interface KnownWay {
-    kind: 'way';
-    /** Index into `areas`. */
-    area: number;
-    /** Index into `towers`. */
-    tower: number;
-    entry: number[][];
+export interface KnownRoute {
+    id: string;
+    to: RouteTarget;
+    needs: RouteNeed[][];
+    area?: number;
+    tower?: number;
 }
 
-export type KnownRoute = KnownWay;
+/** What names an ending's stage: an area, a level or a tower, by index into `areas`, `levels`, `towers`. */
+export type EndingStageName = { area: number } | { level: number } | { tower: number };
+
+/**
+ * When an ending's stage is done, by index into `freezers`, `teleporters` and `levels`:
+ * - achievement: the achievement is earned;
+ * - tower: the tower is active and every one of its `freezers` is open;
+ * - freezers: every one of them is open;
+ * - solved: the level is solved;
+ * - pads: one of the pads is discovered.
+ */
+export type EndingStageDone =
+    | { rule: 'achievement'; name: string }
+    | { rule: 'tower'; tower: number; freezers: number[] }
+    | { rule: 'freezers'; freezers: number[] }
+    | { rule: 'solved'; level: number }
+    | { rule: 'pads'; pads: number[] };
+
+/** One stage of an ending; `seen` lists pads (indices into `teleporters`) whose discovery shows the stage by itself. */
+export interface EndingStage {
+    name: EndingStageName;
+    done: EndingStageDone;
+    seen: number[];
+}
+
+/** One row of data/progress.json `ending_stages`: the stages of an ending (by its achievement), in order. */
+export interface EndingStages {
+    ending: string;
+    stages: EndingStage[];
+}
 
 /** world.grid: the overworld grid and the fast-travel box of the map rooms. */
 export interface WorldGrid {
@@ -506,6 +541,7 @@ export interface Progress extends WorldFile {
     map: ProgressMap;
     endgame_way_ins: EndgameWayIn[];
     known_routes: KnownRoute[];
+    ending_stages: EndingStages[];
 }
 
 /** Per map layer key, one value per map column. */

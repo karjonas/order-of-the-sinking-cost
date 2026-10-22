@@ -11,6 +11,7 @@ import type { LevelState, SignRule } from '../src/model/unlocking.ts';
 import { SIGN_INDEX } from '../src/model/requirements.ts';
 import { gatesBehindThemselves, signWayInOf } from '../src/model/way-in.ts';
 import type { WhyBlocked } from '../src/model/way-in.ts';
+import type { KnownRoute } from '../src/types.ts';
 import type { Reachability } from '../src/walk/reachability.ts';
 import { level } from './fixtures.ts';
 
@@ -372,7 +373,15 @@ describe('a known sky Way', () => {
             levels: [level('tw', { t: 17 }), level('first'), level('alt_a'), level('alt_b')],
             freezers: [{ req: [], signs: [{ pid: 90, tower: 0 }] }],
             signs: [{ pid: 90, tower: 0, gates: [0], p: [0, 0, 0] }],
-            known_routes: [{ kind: 'way', area: 5, tower: 0, entry }],
+            known_routes: [
+                {
+                    id: 'way',
+                    to: { pad: 7 },
+                    needs: entry.map((group) => group.map((member) => ({ level: member }))),
+                    area: 5,
+                    tower: 0,
+                },
+            ],
             gold_rooms: [],
             teleporters: Array.from({ length: 8 }, () => ({})),
         });
@@ -425,6 +434,45 @@ describe('a known sky Way', () => {
         const plan = keys(P, ['gate', 0]);
         expect(plan).not.toContain('w5');
         expect(plan).toContain('s0');
+    });
+});
+
+describe('a known route to a level', () => {
+    // level 3 is not reachable and no gate leads in; the route to it needs level 0 and one of levels 1 and 2 (each
+    // playable), or what `needs` says; freezer 0 (opened by level 2) is a way in of the walk when `wayIn` says so
+    const setup = (needs: KnownRoute['needs'], wayIn: number[] = []) => {
+        Object.assign(PROG, {
+            levels: [level('a'), level('b'), level('c'), level('target')],
+            freezers: [{ req: [2], signs: [] }],
+            signs: [],
+            known_routes: [{ id: 'to_target', to: { level: 3 }, needs }],
+            gold_rooms: [],
+        });
+        const state: LevelState[] = ['unlocked', 'unlocked', 'unlocked', 'blocked'];
+        return progress({ state, wayIn: [[], [], [], wayIn] });
+    };
+
+    test('a level with no gate leading in takes the route', () => {
+        const plan = keys(setup([[{ level: 0 }], [{ level: 1 }, { level: 2 }]]), ['level', 3]);
+        expect(plan).toContain('l0');
+        expect(plan.filter((key) => key === 'l1' || key === 'l2')).toHaveLength(1);
+        expect(plan).toContain('l3');
+    });
+
+    test('the route is one more way in, the cheapest way is taken', () => {
+        const plan = keys(setup([[{ level: 0 }]], [0]), ['level', 3]);
+        expect(plan).toContain('l0');
+        expect(plan).not.toContain('g0');
+    });
+
+    test('a Freezer the route asks for is one of its steps', () => {
+        const plan = keys(setup([[{ freezer: 0 }]]), ['level', 3]);
+        expect(plan).toEqual(expect.arrayContaining(['l2', 'g0', 'l3']));
+    });
+
+    test('a level with no route keeps a step of its own', () => {
+        const plan = keys(setup([]), ['level', 3]);
+        expect(plan).toEqual(['l3']);
     });
 });
 

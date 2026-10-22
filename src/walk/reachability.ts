@@ -3,6 +3,7 @@
 import { PROG, WORLD } from '../data.ts';
 import { heroesWithSkill, latestFlag, PROTECTION_FLAG, TELEPORT_FLAG, TRANSMUTE_FLAG } from '../save.ts';
 import type { History, LatestValues } from '../save.ts';
+import type { KnownRoute } from '../types.ts';
 import { addTo, gridCol, STEP, Z_BIAS } from './cells.ts';
 import type { FloodOptions, Seed } from './flood.ts';
 import { ICE } from './freezers.ts';
@@ -233,9 +234,18 @@ function addKeptHeroSeeds(walk: Walker, history: History, seeds: Seed[]): number
     return deadSeeds;
 }
 
+/** The cell where a known route lands the hero. */
+function routeCell(walk: Walker, route: KnownRoute, levelCells: number[]): number {
+    const target = route.to;
+    if ('level' in target) return walk.land(levelCells[target.level]);
+    if ('pad' in target) return walk.padCell(target.pad);
+    return walk.land(walk.cellOf(...target.at), false);
+}
+
 /**
- * The seeds of the main flood: the current hero, the kept hero positions, the entered levels, the activated Area_Pins
- * and the discovered teleporters. `dead`: the kept positions inside a wall, which seed nothing.
+ * The seeds of the main flood: the current hero, the kept hero positions, the entered levels, the activated Area_Pins,
+ * the discovered teleporters and the targets of the known routes whose needs are met. `dead`: the kept positions inside
+ * a wall, which seed nothing.
  */
 function seedsOf(
     walk: Walker,
@@ -244,6 +254,7 @@ function seedsOf(
     teleporterStates: TeleporterState[],
     entered: readonly boolean[],
     levelCells: number[],
+    routes: readonly KnownRoute[],
 ): { seeds: Seed[]; dead: number } {
     const seeds: Seed[] = [history.hero ? walk.heroSeed(history.hero) : -1];
     const dead = addKeptHeroSeeds(walk, history, seeds);
@@ -259,6 +270,8 @@ function seedsOf(
     PROG.teleporters.forEach((_, padIndex) => {
         if (teleporterStates[padIndex].disc) seeds.push(walk.padCell(padIndex));
     });
+
+    for (const route of routes) seeds.push(routeCell(walk, route, levelCells));
 
     return { seeds, dead };
 }
@@ -971,8 +984,9 @@ function gateLists(byGate: Map<number, Set<number>>, front: Set<number>, onEdge:
 /**
  * Flood fill over walkable cells from everywhere the save shows the hero has been: every hero position the history
  * keeps (vertical Beamcaster beams, mirrors and dragon swaps take the hero where the walk can't follow), entered
- * levels, activated Area_Pins and discovered teleporters. `dead` counts the kept hero positions (the current one among
- * them) inside a wall no beam runs through; they seed nothing.
+ * levels, activated Area_Pins and discovered teleporters, and from the targets of `routes`, the known routes whose
+ * needs the save meets. `dead` counts the kept hero positions (the current one among them) inside a wall no beam runs
+ * through; they seed nothing.
  */
 export function reachability(
     history: History,
@@ -980,12 +994,13 @@ export function reachability(
     teleporterStates: TeleporterState[],
     closedFreezers: readonly boolean[],
     entered: readonly boolean[],
+    routes: readonly KnownRoute[] = [],
 ): Reachability {
     const walk = walker(latest, teleporterStates, closedFreezers);
     const levels = PROG.levels;
     const levelCells = levels.map((level) => walk.cellOf(...level.p));
 
-    const { seeds, dead } = seedsOf(walk, history, latest, teleporterStates, entered, levelCells);
+    const { seeds, dead } = seedsOf(walk, history, latest, teleporterStates, entered, levelCells, routes);
     const front = new Set<number>();
     const stoneFront = new Set<number>();
     const reached = walk.flood(seeds, null, front, { stoneFront });

@@ -5,6 +5,7 @@ import { PROG, WORLD } from '../data.ts';
 import { latestFlag, latestOf } from '../save.ts';
 import type { History, LatestValues } from '../save.ts';
 import type { Status } from '../status-file.ts';
+import type { KnownRoute } from '../types.ts';
 import { reachability } from '../walk/reachability.ts';
 import type { Reachability } from '../walk/reachability.ts';
 import { teleporterStatesOf } from '../walk/teleporters.ts';
@@ -12,6 +13,7 @@ import type { TeleporterState } from '../walk/teleporters.ts';
 import type { StoredRoles } from '../walk-data.ts';
 import { goalLadder } from './goals.ts';
 import type { LadderGoal } from './goals.ts';
+import { metRoutes } from './known-routes.ts';
 import { ROLE } from './level-roles.ts';
 import { nextSteps } from './next-steps.ts';
 import type { NextStep } from './next-steps.ts';
@@ -130,12 +132,13 @@ function reachOf(
     teleporterStates: TeleporterState[],
     gateOpen: boolean[],
     levelFlags: LevelFlags,
+    routes: KnownRoute[],
 ): Reachability | null {
     if (!history || !latest || !WORLD || !PROG.world || history.demo) return null;
 
     const closed = gateOpen.map((open) => !open);
     const entered = levelFlags.map((flags) => flags !== undefined);
-    return reachability(history, latest, teleporterStates, closed, entered);
+    return reachability(history, latest, teleporterStates, closed, entered, routes);
 }
 
 /** The completion progress of a campaign from its status and history; the result is reused while both stay the same. */
@@ -167,7 +170,8 @@ export function computeProgress(status: ProgressStatus, history: History | null)
     const signOk = (rule: SignRule) => signRuleMet(rule, status, towers, goldFound);
     const signRead = (pid: number) => latestFlag(latest, pid, 'rank_satisfied');
     const gateOpen = freezersOpen(status, levelFlags, signRead);
-    const reach = reachOf(history, latest, teleporterStates, gateOpen, levelFlags);
+    const routes = metRoutes({ levelSolved: solved, freezerOpen: (index) => gateOpen[index], signRead });
+    const reach = reachOf(history, latest, teleporterStates, gateOpen, levelFlags, routes);
     const state = levelStates(levelFlags, reach);
     const unlocks = unlocksOf();
     const behind = gatesBehind(reach);
