@@ -47,6 +47,11 @@ export function towerName(towerBits: number): string {
     return `Antipode ${worlds}`;
 }
 
+/** How the page names a sky Way while the game has not named its area: by the tower Sign it leads to. */
+export function unnamedWayName(towerBits: number): string {
+    return `Way to the ${towerName(towerBits)} sign`;
+}
+
 function towerAchievementSuffix(towerBits: number): string {
     if (towerBits & 16) return '_SKY';
     if (towerBits & 32) return '_UNDERWORLD';

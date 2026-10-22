@@ -37,11 +37,11 @@ export interface SignStep extends StepMarks {
     g: FreezerSign;
 }
 
-/** A step for a known sky Way (w): its area's index and the index of the Sign it leads to (-1 for none). */
+/** A step for a known sky Way (w): its area's index and the index of the sky tower whose Sign it leads to. */
 export interface WayStep extends StepMarks {
     t: 'w';
     id: number;
-    sign: number;
+    tower: number;
 }
 
 export type PlanStep = IndexedStep | NamedStep | SignStep | WayStep;
@@ -176,7 +176,7 @@ export function requirementGraph(progress: BaseProgress): Graph {
             (sign) => sign.tower === route.tower && !sign.status && sign.gates.length,
         );
         const hub = progress.towers[route.tower]?.hub;
-        const id = graph.add('w' + route.area, { t: 'w', id: route.area, sign: signIndex }, 'and');
+        const id = graph.add('w' + route.area, { t: 'w', id: route.area, tower: route.tower }, 'and');
         wayOfTower.set(route.tower, id);
         wayOfRoute.set(route, id);
 

@@ -29,13 +29,14 @@ export interface EndingGoal extends GoalCore {
 }
 
 /**
- * A stage of an ending that is no tower, named by an area (`area`) or a level (`level`); `seen` lists the pads
- * (indices into `teleporters`) whose discovery shows the stage by itself.
+ * A stage of an ending that is no tower, named by an area (`area`), a level (`level`) or a sky Way (`route`, an index
+ * into `known_routes`); `seen` lists the pads (indices into `teleporters`) whose discovery shows the stage by itself.
  */
 export interface StageGoal extends GoalCore {
     kind: 'stage';
     area?: number;
     level?: number;
+    route?: number;
     seen: number[];
 }
 
@@ -85,20 +86,16 @@ function closedKeys(progress: BaseProgress, freezers: number[]): string[] {
 
 function stageDone(progress: BaseProgress, status: { achievements: bigint }, done: EndingStageDone): boolean {
     if (done.rule === 'achievement') return hasAchievement(status, done.name);
-    if (done.rule === 'tower') return progress.towers[done.tower].active && allOpen(progress, done.freezers);
+    if (done.rule === 'tower') return progress.towers[done.tower].active;
     if (done.rule === 'freezers') return allOpen(progress, done.freezers);
     if (done.rule === 'solved') return progress.state[done.level] === 'solved';
     return done.pads.some((pad) => progress.tst[pad].disc);
 }
 
-// the requirements a stage asks for: the Freezers still closed, the level, the rank marker; a tower stage with no
-// Freezer asks for the tower
+// the requirements a stage asks for: the tower, the Freezers still closed, the level, the rank marker
 function stageTargetKeys(progress: BaseProgress, done: EndingStageDone): string[] {
     if (done.rule === 'achievement') return ['e:' + done.name];
-    if (done.rule === 'tower') {
-        if (done.freezers.length === 0) return ['t' + done.tower];
-        return closedKeys(progress, done.freezers);
-    }
+    if (done.rule === 'tower') return ['t' + done.tower];
     if (done.rule === 'freezers') return closedKeys(progress, done.freezers);
     if (done.rule === 'solved') return ['l' + done.level];
     return [];
@@ -198,6 +195,9 @@ export function goalLadder(progress: BaseProgress & { plans: Plans }, status: { 
             const key = `stage:${ending.name}:${position}`;
             if ('area' in stage.name) {
                 return goal({ key, kind: 'stage', area: stage.name.area, seen: stage.seen, done }, targetKeys);
+            }
+            if ('route' in stage.name) {
+                return goal({ key, kind: 'stage', route: stage.name.route, seen: stage.seen, done }, targetKeys);
             }
             return goal({ key, kind: 'stage', level: stage.name.level, seen: stage.seen, done }, targetKeys);
         });

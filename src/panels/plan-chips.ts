@@ -17,7 +17,7 @@ import { RANKS, stateLabel } from '../model/progress.ts';
 import type { ShownProgress } from '../model/progress.ts';
 import { SIGN_INDEX } from '../model/requirements.ts';
 import type { PlanStep } from '../model/requirements.ts';
-import { towerName } from '../model/towers.ts';
+import { towerName, unnamedWayName } from '../model/towers.ts';
 import { optionCount, signStateOf } from '../model/unlocking.ts';
 import type { SignRule } from '../model/unlocking.ts';
 import type { Freezer, FreezerSign, Position } from '../types.ts';
@@ -205,9 +205,6 @@ const roomPad = (context: PanelContext, roomIndex: number) => context.teleporter
 const roomShown = (context: PanelContext, roomIndex: number): boolean =>
     context.model.rooms.includes(PROG.gold_rooms[roomIndex]);
 
-// a sky Way under fog is not named
-const WAY_FALLBACK = 'A way to the tower’s sign';
-
 // the plan steps with no chip of their own: a gold room, the way onto a layer, a rank marker
 function otherStepText(context: PanelContext, node: PlanStep): string {
     if (node.t === 'p') {
@@ -219,16 +216,19 @@ function otherStepText(context: PanelContext, node: PlanStep): string {
     return '';
 }
 
-// a sky Way is named by its area while the area is shown; it links to the area on the map
-function wayChip(context: PanelContext, areaIndex: number): string {
-    if (!context.model.areaShown(areaIndex)) return `<span class="chip">${WAY_FALLBACK}</span>`;
+// a sky Way is named by its area while the area is shown, and links to the area on the map; else by its tower's Sign
+function wayChip(context: PanelContext, areaIndex: number, towerIndex: number): string {
+    if (!context.model.areaShown(areaIndex)) {
+        const name = escapeHtml(unnamedWayName(context.progress.towers[towerIndex].t));
+        return `<span class="chip">${name}</span>`;
+    }
 
     const name = escapeHtml(areaName(PROG.areas[areaIndex]));
     return `<span class="chip" data-parea="${areaIndex}" tabindex="0" role="button">${name}</span>`;
 }
 
 function nodeChip(context: PanelContext, node: PlanStep): string {
-    if (node.t === 'w') return wayChip(context, node.id);
+    if (node.t === 'w') return wayChip(context, node.id, node.tower);
     if (node.t === 'l') return levelChip(context.progress, node.id, 'data-pick');
     if (node.t === 'g') return gateChip(context, node.id);
     if (node.t === 't') {

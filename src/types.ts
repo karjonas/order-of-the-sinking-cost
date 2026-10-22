@@ -222,20 +222,23 @@ export interface KnownRoute {
     tower?: number;
 }
 
-/** What names an ending's stage: an area, a level or a tower, by index into `areas`, `levels`, `towers`. */
-export type EndingStageName = { area: number } | { level: number } | { tower: number };
+/**
+ * What names an ending's stage: an area, a level, a tower or a sky Way (a known route with an area and a tower), by
+ * index into `areas`, `levels`, `towers`, `known_routes`.
+ */
+export type EndingStageName = { area: number } | { level: number } | { tower: number } | { route: number };
 
 /**
  * When an ending's stage is done, by index into `freezers`, `teleporters` and `levels`:
  * - achievement: the achievement is earned;
- * - tower: the tower is active and every one of its `freezers` is open;
+ * - tower: the tower is active;
  * - freezers: every one of them is open;
  * - solved: the level is solved;
  * - pads: one of the pads is discovered.
  */
 export type EndingStageDone =
     | { rule: 'achievement'; name: string }
-    | { rule: 'tower'; tower: number; freezers: number[] }
+    | { rule: 'tower'; tower: number }
     | { rule: 'freezers'; freezers: number[] }
     | { rule: 'solved'; level: number }
     | { rule: 'pads'; pads: number[] };

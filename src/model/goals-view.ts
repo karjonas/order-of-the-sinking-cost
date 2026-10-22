@@ -14,7 +14,7 @@ import type { Plans } from './plans.ts';
 import type { ShownProgress } from './progress.ts';
 import type { Graph, PlanStep } from './requirements.ts';
 import type { FoundOfTotal } from './totals.ts';
-import { towerName } from './towers.ts';
+import { towerName, unnamedWayName } from './towers.ts';
 
 /** An ending in rank order: whether it is earned and whether the page shows it. */
 export interface EndingStatus {
@@ -462,10 +462,12 @@ function addAntipodes(context: GoalsContext, goal: GoalView, raw: EndingGoal, ra
     if (shown.length < rawChildren.length) goal.fogged = true;
 }
 
-// whether a stage shows: a tower once it is not under fog, a place once its area is named (also once one of its `seen`
-// pads is found, as the game can leave an area's name off after a visit), a level once it is not under fog
+// whether a stage shows: a tower once it is not under fog, a sky Way with its tower, a place once its area is named
+// (also once one of its `seen` pads is found, as the game can leave an area's name off after a visit), a level once it
+// is not under fog
 function stageShown(context: GoalsContext, child: TowerGoal | StageGoal): boolean {
     if (child.kind === 'tower') return towerShown(context, child.tower);
+    if (child.route !== undefined) return towerShown(context, wayRoute(child.route).tower);
 
     const { tst } = context.progress;
     if (child.seen.some((pad) => tst[pad].disc)) return true;
@@ -473,8 +475,22 @@ function stageShown(context: GoalsContext, child: TowerGoal | StageGoal): boolea
     return !context.progress.hidden[child.level!];
 }
 
-// a stage that is no tower: named by its area or its level
+// the known route of a sky Way stage, which has an area and a tower
+function wayRoute(route: number): { area: number; tower: number } {
+    const { area, tower } = PROG.known_routes[route];
+    return { area: area!, tower: tower! };
+}
+
+// a sky Way: named by its area while the area is named, else by the tower Sign it leads to
+function wayStageGoal(context: GoalsContext, raw: StageGoal): GoalView {
+    const { area, tower } = wayRoute(raw.route!);
+    if (context.areaShown(area)) return baseGoal(raw, areaName(PROG.areas[area]), null, 'levels');
+    return baseGoal(raw, unnamedWayName(context.progress.towers[tower].t), null, 'levels');
+}
+
+// a stage that is no tower: named by its area, its level or its sky Way
 function stageGoal(context: GoalsContext, raw: StageGoal): GoalView {
+    if (raw.route !== undefined) return wayStageGoal(context, raw);
     if (raw.area !== undefined) return baseGoal(raw, areaName(PROG.areas[raw.area]), null, 'levels');
     const goal = baseGoal(raw, context.levels[raw.level!].n, null, 'levels');
     goal.level = raw.level;

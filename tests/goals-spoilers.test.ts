@@ -143,6 +143,20 @@ describe('goals with spoilers hidden', () => {
         expect(shown.stepShown(step)).toBe(true);
         setSpoilersHidden(true);
     });
+    test('a sky Way step follows its tower, not the tower Sign it leads to', () => {
+        const routes = (PROG.known_routes || []).filter((route) => route.area !== undefined);
+        expect(routes.length).toBeGreaterThan(0);
+
+        for (const hide of [true, false]) {
+            setSpoilersHidden(hide);
+            const model = progressModel(DEMO);
+            for (const route of routes) {
+                const step: PlanStep = { t: 'w', id: route.area!, tower: route.tower! };
+                expect(model.stepShown(step)).toBe(!model.progress.towerHidden[route.tower!]);
+            }
+        }
+        setSpoilersHidden(true);
+    });
     test.skipIf(!hasSave(LIVE))('no ending counts a sign step whose sign is under fog', () => {
         setSpoilersHidden(true);
         const model = progressModel(LIVE);
@@ -173,17 +187,21 @@ describe('goals with spoilers hidden', () => {
         const firstEnding = model.goals[0];
         expect(firstEnding.children!.map((child) => child.tower).toSorted()).toEqual([...groundTowers()].toSorted());
         expect(firstEnding.progress).toEqual([0, 4]);
-        // the second ending lists its stages: the towers whose Signs open Freezers among the places and levels, none
-        // under fog here
+        // the second ending lists its stages: the towers whose Signs open Freezers, each followed by its Way, among the
+        // places and levels, none under fog here
         const secondEnding = model.goals[1];
         const stageTowers = secondEnding.children!.filter((child) => child.kind === 'tower');
         expect(stageTowers.map((child) => child.tower).toSorted()).toEqual([...freezerTowerSet()].toSorted());
         expect(secondEnding.children!.map((child) => child.label)).toEqual([
             'Crossroads High',
             'High Heroes',
+            'The Heroic Way',
             'High Mirrors',
+            'The Mirror Way',
             'High Skipping Stones',
+            'The Skipping Way',
             'High Beamcasters',
+            'The Beam Way',
             'Antipode High',
             'laser_pointer',
             'all_together_now',
