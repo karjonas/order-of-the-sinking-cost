@@ -21,7 +21,7 @@ import { towerProgress } from './towers.ts';
 import type { TowerProgress } from './towers.ts';
 import { freezersOpen, isSolved, levelFlagsOf, levelStates, signRuleMet } from './unlocking.ts';
 import type { LevelFlags, LevelState, SignRule } from './unlocking.ts';
-import { accessOf, gatesBehind, signAccessOf, unlocksOf, wayInModel } from './way-in.ts';
+import { accessOf, gatesBehind, signAccessOf, signWayInOf, unlocksOf, wayInModel } from './way-in.ts';
 import type { LevelUnlocks, WhyBlocked } from './way-in.ts';
 
 export const RANKS = ['Visitor', 'Egressant', 'Pusher', 'Arranger', 'Intrepid', 'Sokoban'];
@@ -56,6 +56,8 @@ export interface BaseProgress {
     signRead: (pid: number) => boolean;
     /** Per Sign, the layer the walk reaches nowhere that a hero must get onto to read it; null for the others. */
     signAccess: Array<string | null>;
+    /** Per Sign the hero cannot face yet, the closed Freezers whose opening lets the walk face it. */
+    signWayIn: number[][];
     /** The walk over the overworld state; null for the empty save. */
     reach: Reachability | null;
     /** Per level, the closed gates whose leads or pocket hold it. */
@@ -69,6 +71,11 @@ export interface BaseProgress {
      * ways through it: the gates all needed together; null for a level with none.
      */
     wayInChains: Array<Map<number, number[][]> | null>;
+    /**
+     * Per level the walk cannot reach, the closed gates the endgame table asks for besides its way in, all of them
+     * together (the end2 room's levels: the sky hub's Freezers).
+     */
+    wayInAll?: Map<number, number[]>;
     /** The levels whose way in is the level data's alone. */
     wayInFixed: Set<number>;
     /** Per level the walk cannot reach, the layer it needs a way onto; null for the others. */
@@ -103,7 +110,7 @@ interface CachedProgress {
     history: History | null;
     progress: CampaignProgress;
     role: StoredRoles | null;
-    wayIn: () => Pick<BaseProgress, 'wayIn' | 'wayInChains'>;
+    wayIn: () => Pick<BaseProgress, 'wayIn' | 'wayInChains' | 'wayInAll'>;
 }
 
 let progressCache = new WeakMap<object, CachedProgress>();
@@ -138,9 +145,10 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         // roles computed since: only the parts built on them change
         if (cached.role !== ROLE) {
             cached.role = ROLE;
-            const { wayIn, wayInChains } = cached.wayIn();
+            const { wayIn, wayInChains, wayInAll } = cached.wayIn();
             cached.progress.wayIn = wayIn;
             cached.progress.wayInChains = wayInChains;
+            cached.progress.wayInAll = wayInAll;
             cached.progress.plans = planAll(cached.progress);
             cached.progress.needed = nextSteps(cached.progress, status);
             cached.progress.goals = goalLadder(cached.progress, status);
@@ -173,7 +181,7 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         gateOpen,
         towers,
     });
-    const { wayIn, wayInChains } = wayInOf();
+    const { wayIn, wayInChains, wayInAll } = wayInOf();
 
     const baseProgress: BaseProgress = {
         state,
@@ -185,11 +193,13 @@ export function computeProgress(status: ProgressStatus, history: History | null)
         signOk,
         signRead,
         signAccess: signAccessOf(reach),
+        signWayIn: signWayInOf(reach, gateOpen),
         reach,
         behind,
         why,
         wayIn,
         wayInChains,
+        wayInAll,
         wayInFixed,
         access: accessOf(state, reach),
         ice,

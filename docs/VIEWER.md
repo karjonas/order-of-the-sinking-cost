@@ -689,8 +689,20 @@ in a closed Freezer (its Level_Entry on the Freezer's square). A frozen level is
 - The DOUBLE support probe 2 cells down; the Elevator_Platform drowning exemption; PLAYER_BLOCKING_ONLY maps in the drown check.
 - Reading a Sign ([Sign `rank_satisfied`](PROGRESSION.md#sign-rank_satisfied)): `reach.signFaced` is 1 when a reached cell
   stands on one of the Sign's four sides with no Fence between and no closed Freezer in the Sign's cell. It does not
-  check that the hero can turn to face the Sign from that cell. A Sign no reached cell stands beside has no way in of its
-  own in the plans, except the way onto its layer when the walk reaches nothing there (the sky, the underworld).
+  check that the hero can turn to face the Sign from that cell. A Sign no reached cell stands beside gets its way in from
+  the pocket floods the closed Freezers already have (`reach.signBehind`): the Freezers whose lead, pocket or light lead
+  reaches a cell beside it, and the one in its own cell. It has no other way in the plans, except the way onto its layer
+  when the walk reaches nothing there (the sky, the underworld) and no Freezer leads to it. Only the levels' pockets
+  are flooded, so a Sign far from every level not reached has none. A Freezer that waits on the Sign itself is no way
+  in; one that waits on a level only the Sign leads to is kept, and the plans leave the cycle without a plan.
+- The four sky Ways to the hub quarters ([Known routes](#known-routes)): the walk follows none of them, so the plans take
+  them from the table of known routes.
+  - The Heroic Way: dragons that kill each other outside monster-gate rooms (the walk kills Monsters only in a monster
+    Gate's room), fire turned up by a pushed plain Mirror, MULTIPUSH of Rock stacks, and a Fence crossing that is not
+    explained.
+  - The Mirror Way: magic-Mirror hops across railings, and vertical magic Mirrors.
+  - The Skipping Way: Gates that shut onto skipping stones to launch them, and the sea crossing, which is not known.
+  - The Beam Way: an ENDPOINT beam turned by plain Mirrors through cages that repeated pushes clear.
 - The endgame areas: the walk does not find its way into the end2 room and its deck, or into the end3 rooms; the plans take their way-in gates from the level data ([Endgame way-in gates](#endgame-way-in-gates)).
 
 ## Level states (viewer)
@@ -766,7 +778,8 @@ An edge [a, b] means a comes before b. Solved levels and open Freezers have empt
 
 A requirement is met (nothing to do), a step (a node of the plans) or a part (an option list with no step of its own).
 It needs all its parts (AND), the cheapest one (OR), or the cheapest k of them (k of n). Steps: levels (l), Freezers
-(g), signs (s), towers (t), gold rooms (p), the way onto a layer (a) and the rank markers ASCEND and DESCEND (e).
+(g), signs (s), towers (t), gold rooms (p), the way onto a layer (a), the rank markers ASCEND and DESCEND (e) and the
+known sky Ways (w).
 
 - Level, solved: met. Playable now (entered, partly solved or reachable): a step with no parts, a front.
 - Level, locked: its unsolved requirements, all of them, or for an OR gate of more than one the cheapest of them; and
@@ -776,14 +789,23 @@ It needs all its parts (AND), the cheapest one (OR), or the cheapest k of them (
   (`why.via`) and the Towers whose pad does (`why.viaTowers`); none of the last two where the endgame table replaces
   the walk. With none of them and an access mark (`P.access`:
   its layer, which the walk reaches nowhere, or the sky its pocket is entered from): the way onto that layer. With none of them, or when every way-in gate only leads to such a pad,
-  it may become a step of its own (below).
+  it may become a step of its own (below). A level that also asks for the endgame table's gates (`P.wayInAll`, the end2
+  room's levels) needs all of those gates together, besides the cheapest of the rest.
+- Way (w), a sky Way of the known routes ([Known routes](#known-routes)): met once its tower's hub quarter is reached,
+  that is when the tower's hub Sign is read (`P.signRead`) or faced by the walk (`reach.signFaced`), or the tower's hub
+  pad (`teleporter_id`, a MAJOR pad) is discovered. Else a step that needs its entry levels, all of the groups, an
+  OR of the levels inside a group of more than one; an entry level already solved asks for nothing. A Way with no entry
+  levels is a bare step.
 - Freezer, open: met. Closed: its unmet levels and signs, all of them, or for an OR gate of more than one the
   cheapest. An OR gate with one of them met is a step with no parts: it opens at the next overworld load.
 - Sign: the step is reading it. Met once it is read (`rank_satisfied` in the history, `P.signRead`) or when it asks for
   nothing. A tower sign whose tower is not active needs its tower; a rank sign whose rank is not reached rank r; the
-  gold-room sign the cheapest k of the gold rooms still to find, k = 4 − the rooms found. A sign whose rule holds and
-  which is not read has no parts: a step of its own, "read the sign". A sign on a layer the walk reaches nowhere and
-  that no reached cell stands beside (`P.signAccess`) also needs the way onto that layer. The page words the step "Read
+  gold-room sign the cheapest k of the gold rooms still to find, k = 4 − the rooms found. A sky tower's hub Sign also
+  needs that tower's Way (it stands in the hub quarter the Way leads to). A sign whose rule holds and
+  which is not read and that a reached cell stands beside has no parts: a step of its own, "read the sign". A sign that
+  no reached cell stands beside also needs the cheapest of its way-in gates (`P.signWayIn`), together with its rule;
+  when none of the gates has a plan (they run in a cycle), the way to the sign adds no step. With no such gate, a sign on a layer the walk reaches nowhere (`P.signAccess`) needs the way onto that layer instead.
+  The page words the step "Read
   the sign · `rule`" ([The page's words](#the-pages-words)). The tower status signs are never read: their step is met
   with the tower active, and no Freezer lists them.
 - Gold room: met once its `gold_room_endpoint` pad is discovered; else a step after its tower: the step onto the
@@ -820,14 +842,34 @@ positions ([Endings](PROGRESSION.md#endings)):
 
 - `end1`: the gold-room Sign's gates, in place of the walk's.
 - The end2 room's levels: the four Freezers ringing the sky hub elevator under the room, one per sky tower
-  ([Second Endgame](PROGRESSION.md#second-endgame)), only where the walk finds none, so the walk's pockets inside the room
-  stay.
+  ([Second Endgame](PROGRESSION.md#second-endgame)), all four needed together (an AND), besides the walk's way in, so
+  the walk's pockets inside the room stay. Where the walk finds no way in, the four are the way in. Gates already open
+  are left out.
 - `all_together_now`: the set's gates above the room, in place of the walk's.
 - The `endgame3` levels: one chain in set order, in place of the walk's. A level sits behind the gates opened only by
   levels before it in the set (the latest of those), leaving out a gate whose levels need the level itself. The first
   room has none, so it needs the way into the underworld.
 
 A row that stands in for the walk's gates also drops the levels by a revealing pad and the Towers whose pad leads in.
+
+### Known routes
+
+`data/progress.json` `known_routes` ([data/progress.json](DATAFILES.md#dataprogressjson)) is the hand-written table of
+routes the walk does not find, for any kind of target; a row names its target kind and the levels it asks for. Only
+the sky Ways are in it so far (`way` rows): one sky Way area per sky tower, which leads on foot to the quarter of the sky
+hub where that tower's Sign and hub pad stand ([Second Endgame](PROGRESSION.md#second-endgame)). The entry levels are
+the ones the route is known to pass, all of the groups, one level of a group:
+
+| Way | Tower | Quarter | Entry levels |
+|---|---|---|---|
+| The Heroic Way | High Heroes | south | `catching_fire_v2` |
+| The Mirror Way | High Mirrors | west | `priest_3d_intro_dragon_v4` |
+| The Skipping Way | High Skipping Stones | north | none known |
+| The Beam Way | High Beamcasters | east | `high_endpoint_v2`, and `beam_jail_v3` or `thin_ice_rooms` |
+
+The graph holds a Way step per row ([The requirement graph](#the-requirement-graph)); the page words it by its area's
+name with a link that frames the area on the map, and, while the area is not named, "A way to the tower’s sign"
+([The spoiler model (viewer)](#the-spoiler-model-viewer)).
 
 ### Next steps
 
@@ -882,11 +924,13 @@ fog; `goalsView()` adds the labels, counts and lists with fog applied.
 
 - Order: the three endings in rank order (Endgame, Endgame High, Endgame Low), Achievements (one child per
   achievement other than COMPLETIONIST), Completionist. Endgame has one child per ground tower, the towers with an
-  Antipode teleporter, whose visits its Sign counts ([Endgame](PROGRESSION.md#endgame)); Endgame High one child per
-  tower whose Sign opens a Freezer, here the sky towers ([Second Endgame](PROGRESSION.md#second-endgame)). The other
+  Antipode teleporter, whose visits its Sign counts ([Endgame](PROGRESSION.md#endgame)); Endgame High an ordered list of
+  stages (below) with one tower child per tower whose Sign opens a Freezer, here the sky towers
+  ([Second Endgame](PROGRESSION.md#second-endgame)). The other
   towers are listed by their TOWER_* achievements under Achievements. Completionist's children in the sidebar are the
   areas ([The page](#the-page-viewer)); they are not goals and carry no goal fields.
-- Done: an ending, a tower child or an achievement child when its achievement is earned or the tower activated; a
+- Done: an ending or an achievement child when its achievement is earned or its tower activated; a sky tower under
+  Endgame High when its tower is activated and its hub Freezers are open (the stages below); a
   ground tower under Endgame once its Antipode teleporter is visited (its `gold_room_endpoint` pad discovered), so an
   activated tower is not done until the hero steps onto its pad; Achievements when every child is;
   Completionist when COMPLETIONIST is earned or no level is left unsolved. The active goal is the first goal not done;
@@ -905,10 +949,20 @@ fog; `goalsView()` adds the labels, counts and lists with fog applied.
 - Endgame's children: the ones whose gold room is on Endgame's cheapest plan (the cheapest four still needed), or
   visited, are listed first and the rest after them (`onPlan`). When the plan runs through no gold room while the Sign
   still needs some (a save without a walk, where `end1` reads as playable), every child counts as on the plan.
-- Endgame High's children: a tower whose Sign opens a Freezer is a plain tower child (done when activated, its solved
-  normal levels of the number it needs) and stays listed once done. The ones with a Freezer its Signs open on Endgame
-  High's routes, or done, are listed first and the rest after them (`onPlan`); with no plan every child counts as on
-  it. Endgame High keeps its plan steps as its progress.
+- Endgame High's children are its stages, in this order, each named by what the page already names; a done stage stays
+  listed with its done mark and the first one not done is the active child:
+  1. the sky crossroads (the area's name), done when ASCEND is earned;
+  2. the four sky towers (tower names), each with its solved normal levels of the number it needs, done when the tower
+     is activated and its hub Freezers are open; it asks for those Freezers, so its plan runs from the tower's levels
+     through its Way and Sign ([The requirement graph](#the-requirement-graph));
+  3. the sky hub (the area's name), done when all four hub Freezers are open;
+  4. the end2 room's level (`laser_pointer`), done when it is solved;
+  5. the ending's level (`all_together_now`), done when it is solved.
+
+  The order is fixed: every stage is needed, so none is "on the plan" more than another, and Endgame High's children
+  carry no `onPlan`. A stage with an area is listed once the area is named, a stage with a level once the level is not
+  under fog, a tower once it is not hidden ([The spoiler model (viewer)](#the-spoiler-model-viewer)); `fogged` says
+  one is left out. Endgame High keeps its plan steps as its progress, and a stage carries no count of its own.
 - Labels: an ending by its name, a tower by its tower name, an achievement and Completionist by the achievement's
   name ([The page's words](#the-pages-words)). With spoilers hidden an ending is listed only once every ending before
   it is earned ([The spoiler model (viewer)](#the-spoiler-model-viewer)).
@@ -1190,6 +1244,7 @@ names. Fog is the game's own ([Fog of war](STATE.md#fog-of-war)), read from the 
 - Gold rooms are known only once visited: until then a gold room's endpoint is a pad like any other, so the totals, the map's gold-room rings and the plan steps leave unvisited ones out. One exception: an activated ground tower under Endgame names the step onto its own pad ("Antipode teleporter · Antipode HxM"), since Steam's description of that tower's achievement names that teleporter.
 - A totals row whose remaining things are all under fog says "None left outside the fog", which doesn't say whether the fog holds any.
 - Goals ([Goals (viewer)](#goals-viewer)): every count is over what fog leaves (an ending's plan steps, the towers and achievements not hidden, the levels not under fog), and a count with more under fog carries a `+`. Endgame lists the ground towers not hidden; its Antipode teleporter count is the visited ones (known, as the totals know them) of the Sign's need, shown only while that Sign is not under fog, else its plan steps. A goal with nothing to show says "Nothing to show yet; more is under fog." No `leadsTo` names a fogged level, gate, tower or hidden achievement, and its route count leaves out the routes under fog.
+- A sky Way step ([Known routes](#known-routes)) shows with the tower Sign it leads to, so it is left out of a plan while that Sign is under fog. It names its area while the area is named, with a link to it on the map; else it reads "A way to the tower’s sign". Endgame High's stages that are areas or levels follow the area and level rules above.
 - Plan steps without a chip of their own: a gold room shows where the totals show it (once visited; its tower's row under Endgame names it before, as above); the way onto a layer only once that layer has cleared fog; ASCEND and DESCEND only while their achievement is not hidden.
 - Mechanics in a level's "why" are named only once the save has that world's achievement (Dragon fire: HEROES, Beams: PROMISE, Mirrors: MIRRORS, Skipping Stones: SKIPPING); else "may need something the map does not model".
 - A level's "why" names a layer (its way onto it, or "from High") only once that layer has cleared fog; else it reads "not reachable from where you have been" ([Pockets, leads and why](#pockets-leads-and-why)).

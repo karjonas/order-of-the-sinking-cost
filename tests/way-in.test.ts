@@ -2,6 +2,7 @@
 import { beforeAll, expect, test } from 'vitest';
 import { freshCampaign, walkLoaded } from '../scripts/lib/walk-fingerprint.ts';
 import { PROG } from '../src/data.ts';
+import { freezerTowers } from '../src/model/goals.ts';
 import { computeProgress } from '../src/model/progress.ts';
 import type { CampaignProgress } from '../src/model/progress.ts';
 
@@ -43,4 +44,34 @@ test('a level a swap onto a stone on a frozen Lily leads to has the Lily Freezer
 
     expect(progress.state[level]).toBe('blocked');
     expect(wayInPids.toSorted()).toEqual(lilyFreezerPids.toSorted());
+});
+
+test("the end2 room's levels also need all four hub Freezers, one per sky tower", () => {
+    const skyTowers = [...freezerTowers()].filter(([towerIndex]) => progress.towers[towerIndex].t & 16);
+    const skyGates = skyTowers.flatMap(([, gates]) => gates);
+
+    expect(skyGates).toHaveLength(4);
+    expect(progress.wayInAll!.size).toBeGreaterThan(0);
+    for (const gates of progress.wayInAll!.values()) {
+        expect(gates.toSorted()).toEqual(skyGates.toSorted());
+    }
+});
+
+test('each sky tower hub Sign of a fresh campaign needs its Way', () => {
+    const graph = progress.plans.G;
+    const ways: number[] = [];
+    PROG.signs.forEach((sign, signIndex) => {
+        if (sign.tower == null || sign.status || !sign.gates.length) return;
+
+        const parts = graph.parts[graph.index.get('s' + signIndex)!];
+        const wayNode = parts.map((part) => graph.node[part]).find((node) => node?.t === 'w');
+        if (wayNode?.t === 'w') ways.push(wayNode.id);
+    });
+
+    expect(ways.map((area) => PROG.areas[area].local_area_name).toSorted()).toEqual([
+        'area_s_beam_way',
+        'area_s_heroes_way',
+        'area_s_mirror_way',
+        'area_s_skipping_way',
+    ]);
 });

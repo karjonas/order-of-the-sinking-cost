@@ -401,12 +401,15 @@ export function wayInModel({
     // (gatesBehindThemselves): a doorway loses the ways through such a gate, and once it has none it is no way in
     const wayInOf = () => {
         const wayInChains = state.map((): Map<number, number[][]> | null => null);
+        const wayInAll = new Map<number, number[]>();
         const wayIn = state.map((levelState, i): number[] | null => {
             if (levelState !== 'blocked') return null;
 
             const table = endgameWayIn.get(i);
             const tableGates = table ? table.gates.filter((freezerIndex) => !gateOpen[freezerIndex]) : [];
             if (table?.replace) return tableGates;
+            // the gates of a row that only fills in are all needed, besides the walk's way in
+            if (tableGates.length) wayInAll.set(i, tableGates);
             const { gates, levelChains } = chainsOf(i, walkWayIn(i));
             if (!gates.length) return tableGates;
             if (levelChains.size) wayInChains[i] = levelChains;
@@ -421,7 +424,7 @@ export function wayInModel({
             gateOpen,
             met: gateMet,
         });
-        if (!behindThemselves.size) return { wayIn, wayInChains };
+        if (!behindThemselves.size) return { wayIn, wayInChains, wayInAll };
 
         const isOpenWay = (chain: number[]) => chain.every((freezerIndex) => !behindThemselves.has(freezerIndex));
         const keptChains = wayInChains.map((levelChains) => {
@@ -445,7 +448,7 @@ export function wayInModel({
                 return !!levelChains?.has(freezerIndex);
             });
         });
-        return { wayIn: keptWayIn, wayInChains: keptChains };
+        return { wayIn: keptWayIn, wayInChains: keptChains, wayInAll };
     };
 
     return { why, wayInOf, wayInFixed, ice };
@@ -468,6 +471,29 @@ export function accessOf(state: LevelState[], reach: Reachability | null): Array
         if (layer && layer.key !== 'ground' && !layerReached.get(layer.key)) return layer.key;
         if (reach?.fromSky[i] && !layerReached.get('sky')) return 'sky';
         return null;
+    });
+}
+
+/** Whether closed gate `freezer` waits on the Sign `pid`: it lists it and no other option opens the gate. */
+function gateNeedsSign(freezer: Freezer, pid: number): boolean {
+    if (freezer.or && optionCount(freezer) > 1) return false;
+    return !!freezer.signs?.some((rule) => rule.pid === pid);
+}
+
+/**
+ * Per Sign the hero cannot face yet, its way-in gates: the closed Freezers whose opening lets the walk face it
+ * (`signBehind`), less the gates that wait on the Sign itself. A gate that waits on a level only the Sign leads to is
+ * not looked for; the plans leave a requirement that runs in a cycle without a plan.
+ */
+export function signWayInOf(
+    reach: Pick<Reachability, 'signFaced' | 'signBehind'> | null,
+    gateOpen: boolean[],
+): number[][] {
+    return (PROG.signs || []).map((sign, signIndex) => {
+        if (!reach || reach.signFaced[signIndex]) return [];
+
+        const closed = reach.signBehind[signIndex].filter((freezerIndex) => !gateOpen[freezerIndex]);
+        return closed.filter((freezerIndex) => !gateNeedsSign(PROG.freezers[freezerIndex], sign.pid));
     });
 }
 

@@ -3,11 +3,11 @@ import { PROG } from '../data.ts';
 import type { ProgressLevel } from '../types.ts';
 import { achievementName, hasAchievement } from './achievements.ts';
 import type { AchievementRule } from './achievements.ts';
+import { areaName } from './areas.ts';
 import { freezerNoun } from './freezer-names.ts';
 import { goalRoutes, roleFor } from './goal-roles.ts';
 import type { GoalRoles } from './goal-roles.ts';
-import { freezerTowers } from './goals.ts';
-import type { AchievementGoal, AntipodeGoal, EndingGoal, GoalKind, TowerGoal } from './goals.ts';
+import type { AchievementGoal, AntipodeGoal, EndingGoal, GoalKind, StageGoal, TowerGoal } from './goals.ts';
 import { roleOf } from './level-roles.ts';
 import { downKeyOf, levelGroup, orderNextSteps } from './next-steps.ts';
 import type { Plans } from './plans.ts';
@@ -42,10 +42,12 @@ export interface GoalView {
     tower?: number | undefined;
     name?: string | undefined;
     ending?: number | undefined;
+    /** The level a stage of the second ending is named after. */
+    level?: number | undefined;
     children?: GoalView[];
     /** The step onto an active ground tower's Antipode teleporter. */
     next?: string | null;
-    /** Whether an ending's child is on its cheapest plan: a ground tower's teleporter, or a tower's Freezer. */
+    /** Whether the first ending's child is on its cheapest plan: a ground tower's teleporter. */
     onPlan?: boolean;
 }
 
@@ -66,6 +68,8 @@ export interface GoalsViewInput {
     endings: EndingStatus[];
     achievementHidden: (name: string) => boolean;
     achievementRule: (name: string) => AchievementRule | undefined;
+    /** Whether the game names an area yet. */
+    areaShown: (area: number) => boolean;
     gateShown: (freezer: number) => boolean;
     gatePlace: (freezer: number) => string;
     signShown: (sign: number) => boolean;
@@ -151,6 +155,9 @@ function levelsOf(context: GoalsContext, goal: GoalView): Set<number> {
         });
     } else if (goal.kind === 'tower' || goal.kind === 'antipode') {
         towerLevels(context, goal.tower!, into);
+        if (goal.kind === 'tower') {
+            for (const id of goal.targets) planLevels(context, id, into);
+        }
     } else if (goal.kind === 'achievement') {
         for (const id of goal.targets) {
             const node = graph.node[id];
@@ -162,6 +169,8 @@ function levelsOf(context: GoalsContext, goal: GoalView): Set<number> {
         }
     } else if (goal.kind === 'completionist') {
         for (let level = 0; level < levels.length; level++) into.add(level);
+    } else if (goal.kind === 'stage') {
+        for (const id of goal.targets) planLevels(context, id, into);
     } else {
         for (const child of goal.children!) {
             if (child.done) continue;
@@ -282,6 +291,8 @@ function solvedLevelsOf(context: GoalsContext, goal: GoalView, into: Set<number>
         for (const level of rule?.tower?.normal || rule?.levels || []) into.add(level);
     } else if (goal.kind === 'achievements') {
         for (const child of goal.children!) solvedLevelsOf(context, child, into);
+    } else if (goal.kind === 'stage') {
+        if (goal.level !== undefined) into.add(goal.level);
     } else {
         for (let level = 0; level < context.levels.length; level++) into.add(level);
     }
@@ -451,32 +462,37 @@ function addAntipodes(context: GoalsContext, goal: GoalView, raw: EndingGoal, ra
     if (shown.length < rawChildren.length) goal.fogged = true;
 }
 
-// the towers whose Signs open Freezers under an ending, the ones not under fog and on its routes first. A tower is on
-// them when it is done or one of its Signs' Freezers is needed by the ending; with no plan every tower counts as on
-// them. The ending's own progress stays its plan steps.
-function addFreezerTowers(context: GoalsContext, goal: GoalView, raw: EndingGoal, rawChildren: TowerGoal[]): void {
-    const { plans } = context;
-    const gatesOf = freezerTowers();
-    const id = raw.targets[0];
-    const hasPlan = id !== undefined && plans.settled[id] >= 0;
-    const need = raw.roles?.g;
+// whether the save has found a sky tower's pad in the sky hub
+function hubPadFound(context: GoalsContext): boolean {
+    const { towers, tst } = context.progress;
+    return towers.some((tower) => tower.hub !== undefined && tst[tower.hub].disc);
+}
 
-    const onRoutes = (child: TowerGoal) => {
-        if (child.done || !hasPlan || !need) return true;
-        const gates = gatesOf.get(child.tower) ?? [];
-        return gates.some((gate) => need[gate] > 0);
-    };
+// whether a stage of the second ending shows: a tower once it is not under fog, a place once its area is named (the sky
+// hub also once one of its pads is found, as the game can leave its name off after a visit), a level once it is not
+// under fog
+function stageShown(context: GoalsContext, child: TowerGoal | StageGoal): boolean {
+    if (child.kind === 'tower') return towerShown(context, child.tower);
+    if (child.stage === 'antipode' && hubPadFound(context)) return true;
+    if (child.area !== undefined) return context.areaShown(child.area);
+    return !context.progress.hidden[child.level!];
+}
 
-    const shown = rawChildren.filter((child) => towerShown(context, child.tower));
-    const children = shown.map((child) => {
-        const view = towerGoal(context, child);
-        view.onPlan = onRoutes(child);
-        return view;
+// a stage that is no tower: named by its area or its level
+function stageGoal(context: GoalsContext, raw: StageGoal): GoalView {
+    if (raw.area !== undefined) return baseGoal(raw, areaName(PROG.areas[raw.area]), null, 'levels');
+    const goal = baseGoal(raw, context.levels[raw.level!].n, null, 'levels');
+    goal.level = raw.level;
+    return goal;
+}
+
+// the second ending's stages in their order, the ones under fog left out; done ones stay listed
+function addHighStages(context: GoalsContext, goal: GoalView, rawChildren: Array<TowerGoal | StageGoal>): void {
+    const shown = rawChildren.filter((child) => stageShown(context, child));
+    goal.children = shown.map((child) => {
+        if (child.kind === 'tower') return towerGoal(context, child);
+        return stageGoal(context, child);
     });
-
-    const onPlan = children.filter((child) => child.onPlan);
-    const offPlan = children.filter((child) => !child.onPlan);
-    goal.children = [...onPlan, ...offPlan];
 
     const firstOpen = goal.children.find((child) => !child.done);
     for (const child of goal.children) {
@@ -494,9 +510,9 @@ function endingGoal(context: GoalsContext, raw: EndingGoal): GoalView {
     if (!raw.children) return goal;
 
     const antipodes = raw.children.filter((child) => child.kind === 'antipode');
-    const freezerTowerGoals = raw.children.filter((child) => child.kind === 'tower');
+    const stages = raw.children.filter((child) => child.kind === 'tower' || child.kind === 'stage');
     if (antipodes.length) addAntipodes(context, goal, raw, antipodes);
-    if (freezerTowerGoals.length) addFreezerTowers(context, goal, raw, freezerTowerGoals);
+    if (stages.length) addHighStages(context, goal, stages);
     return goal;
 }
 

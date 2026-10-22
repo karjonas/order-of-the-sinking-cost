@@ -35,7 +35,8 @@ export interface ViaPads {
  * rides through. `signFaced`: per Sign, 1 when a reached cell next to it has no Fence between and the Sign's own cell
  * holds no closed Freezer: a hero there can face the Sign and read it. `chains`: per level, the closed Freezers on the
  * edge of its pockets that open onto nothing but more closed Freezers, each with the ways through it: the Freezer and
- * one Freezer beyond it, both needed.
+ * one Freezer beyond it, both needed. `signBehind`: per Sign not faced, the closed Freezers whose opening lets a walk
+ * face it: those whose lead, pocket or light lead reaches a cell beside it, and the Freezer in its own cell.
  */
 export interface Reachability {
     reached: Set<number>;
@@ -51,6 +52,18 @@ export interface Reachability {
     dead: number;
     cols: Record<string, Uint8Array>;
     signFaced: Uint8Array;
+    signBehind: number[][];
+}
+
+/**
+ * The Signs the main flood does not face, as the pocket floods look at them: `spots`, the cells beside a Sign with no
+ * Fence between; `own`: per Sign, the closed Freezer in its cell; `gates`: per Sign, the closed Freezers found so far
+ * whose opening lets a walk stand on one of its spots.
+ */
+interface SignWays {
+    spots: Array<{ signIndex: number; spotCell: number }>;
+    own: Array<number | undefined>;
+    gates: Array<Set<number>>;
 }
 
 /** The pocket a walk from a revealing pad's cell reaches: the closed Freezers it bumps into, and its levels. */
@@ -76,7 +89,7 @@ interface PocketWays {
  * What the steps of reachability() share: the walker, each level's cell, the cells the main flood
  * reached and the closed Freezers on their edge (`front`), the Freezer each level is frozen in, and the levels not
  * entered and not reached (`rest`) with the cells they stand in (`restCells`; `restAt`: per cell, the positions in
- * `rest` of the levels there).
+ * `rest` of the levels there), and the Signs the main flood does not face (`signWays`).
  */
 interface ReachContext {
     walk: Walker;
@@ -88,6 +101,7 @@ interface ReachContext {
     rest: number[];
     restCells: number[];
     restAt: Map<number, number[]>;
+    signWays: SignWays;
 }
 
 /**
@@ -124,6 +138,7 @@ function addStoneLeads(
         walk.thaw(gateCell);
         const cells = walk.flood(seeds);
         walk.freeze(gateCell, freezerIndex);
+        noteSignWays(context.signWays, cells, [freezerIndex]);
 
         const behind = restLevelsIn(context, cells).filter((levelIndex) => {
             const levelFrozenIn = frozenIn[levelIndex];
@@ -314,6 +329,7 @@ function addLeads(context: ReachContext, byGate: Map<number, Set<number>>): void
         walk.thaw(gateCell);
         const cells = walk.flood([walk.land(gateCell)], reached);
         walk.freeze(gateCell, freezerIndex);
+        noteSignWays(context.signWays, cells, [freezerIndex]);
 
         const behind = restLevelsIn(context, cells).filter((levelIndex) => {
             const levelFrozenIn = frozenIn[levelIndex];
@@ -354,6 +370,7 @@ function addLightLeads(context: ReachContext, byGate: Map<number, Set<number>>):
         const cells = walk.flood(seeds, outside);
         removeBeam();
         walk.freeze(gateCell, freezerIndex);
+        noteSignWays(context.signWays, cells, [freezerIndex]);
 
         const held = byGate.get(freezerIndex);
         const added = restLevelsIn(context, cells).filter((levelIndex) => {
@@ -491,6 +508,7 @@ function floodPocketOfLevel(state: PocketFloods, position: number): void {
     const members = new Set(pocketLevels);
     const skyAbove = enteredFromSky(cells);
     const { viaPad, viaLevel } = padWaysOf(state, cells, bumped, members);
+    noteSignWays(context.signWays, cells, [...bumped, ...viaPad]);
 
     const pocketIndex = pockets.ways.length;
     pockets.ways.push({ bumped, members, viaPad, viaLevel, doorways: new Map() });
@@ -978,7 +996,10 @@ export function reachability(
         (_, levelIndex) => frozenIn[levelIndex] === undefined && isReached(levelCells[levelIndex]),
     );
     const rest = restOf(walk, entered, level, levelCells, frozenIn);
-    const context: ReachContext = { walk, teleporterStates, levelCells, reached, front, frozenIn, ...rest };
+    const signFaced = signsFaced(walk, reached);
+    const signWays = signWaysOf(walk, signFaced);
+    noteSignWays(signWays, reached, []);
+    const context: ReachContext = { walk, teleporterStates, levelCells, reached, front, frozenIn, signWays, ...rest };
 
     // byGate holds the leads and the pockets' gates, the gates on the edge first
     const byGate = new Map<number, Set<number>>();
@@ -1005,8 +1026,52 @@ export function reachability(
         viaPads,
         dead,
         cols: reachColumns(reached, transitNotShown(walk, reached, levelCells)),
-        signFaced: signsFaced(walk, reached),
+        signFaced,
+        signBehind: signWays.gates.map((gates) => [...gates].toSorted((first, second) => first - second)),
     };
+}
+
+/** The Signs of `signFaced` that are 0, with the cells a hero would face each from. */
+function signWaysOf(walk: Walker, signFaced: Uint8Array): SignWays {
+    const signs = PROG.signs || [];
+    const ways: SignWays = {
+        spots: [],
+        own: signs.map(() => undefined),
+        gates: signs.map(() => new Set<number>()),
+    };
+
+    signs.forEach((sign, signIndex) => {
+        const signCell = walk.cellOf(...sign.p);
+        if (signFaced[signIndex] || signCell < 0) return;
+
+        ways.own[signIndex] = walk.frozen.get(signCell);
+
+        for (let side = 0; side < STEP.length; side++) {
+            const [dx, dy] = STEP[side];
+            const spotCell = walk.neighbourOf(signCell, dx, dy);
+            if (spotCell < 0 || walk.fenced(signCell, side, spotCell)) continue;
+
+            ways.spots.push({ signIndex, spotCell });
+        }
+    });
+
+    return ways;
+}
+
+/**
+ * Notes that opening `gates` lets a walk over `cells` stand beside the Signs it reaches: the gates, and the Freezer in
+ * the Sign's own cell, are ways to face it.
+ */
+function noteSignWays(ways: SignWays, cells: Set<number>, gates: number[]): void {
+    for (const { signIndex, spotCell } of ways.spots) {
+        if (!cells.has(spotCell)) continue;
+
+        const found = ways.gates[signIndex];
+        for (const freezerIndex of gates) found.add(freezerIndex);
+
+        const own = ways.own[signIndex];
+        if (own !== undefined) found.add(own);
+    }
 }
 
 /** Per Sign, 1 when a hero on a reached cell can face it (see Reachability). */

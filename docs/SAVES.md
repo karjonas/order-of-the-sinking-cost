@@ -72,6 +72,10 @@ Version 33:
 | u32 n, n × Pid | opened Freezers (`Freezer`) on the overworld |
 | u32 n, n × Pid | opened Freezers in other levels |
 
+The level state and opened Freezers can lag a level win: a Status file has been seen without the win, and without the
+overworld Freezers it opens, while the overworld history already had the hero standing in one of those Freezers'
+cells. The next Status, written after another level was entered, held both (seen once, cause not checked).
+
 Older files leave fields out or carry legacy ones. A field the file lacks keeps its default: 0 or empty, and 1 for
 overworld reached.
 

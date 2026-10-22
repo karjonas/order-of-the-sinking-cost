@@ -1,6 +1,7 @@
 // The progress view's events: clicks in the list, the chips and the panels, the sidebar's hooks into the view (open a
 // level, frame a tower, an area or a totals row, name a revealed level), the list's arrow keys and the panel the
 // address names (VIEWER.md "The page (viewer)")
+import { PROG } from '../data.ts';
 import { $ } from '../util.ts';
 import { hooks } from '../shared.ts';
 import type { PanelKey, PanelKind } from '../shared.ts';
@@ -44,6 +45,12 @@ export function wireMapPanels(context: PanelContext): void {
                 (point) => mapLayerOf(point[2]) === layerNote.dataset.clayer,
             );
             map.fitPoints(layerPoints);
+            return;
+        }
+
+        const areaChip = target.closest<HTMLElement>('[data-parea]');
+        if (areaChip) {
+            map.fitPoints([PROG.areas[Number(areaChip.dataset.parea)].p]);
             return;
         }
 

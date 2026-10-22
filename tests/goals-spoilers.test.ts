@@ -173,11 +173,21 @@ describe('goals with spoilers hidden', () => {
         const firstEnding = model.goals[0];
         expect(firstEnding.children!.map((child) => child.tower).toSorted()).toEqual([...groundTowers()].toSorted());
         expect(firstEnding.progress).toEqual([0, 4]);
-        // the second ending lists the towers whose Signs open Freezers, none under fog here
+        // the second ending lists its stages: the towers whose Signs open Freezers among the places and levels, none
+        // under fog here
         const secondEnding = model.goals[1];
-        expect(secondEnding.children!.map((child) => child.tower).toSorted()).toEqual(
-            [...freezerTowerSet()].toSorted(),
-        );
+        const stageTowers = secondEnding.children!.filter((child) => child.kind === 'tower');
+        expect(stageTowers.map((child) => child.tower).toSorted()).toEqual([...freezerTowerSet()].toSorted());
+        expect(secondEnding.children!.map((child) => child.label)).toEqual([
+            'Crossroads High',
+            'High Heroes',
+            'High Mirrors',
+            'High Skipping Stones',
+            'High Beamcasters',
+            'Antipode High',
+            'laser_pointer',
+            'all_together_now',
+        ]);
         setSpoilersHidden(true);
     });
 });

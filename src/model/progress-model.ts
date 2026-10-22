@@ -189,6 +189,9 @@ export function progressModel(camp: string): ProgressModel {
         if (step.t === 'a') return !hide || known!.includes(step.id);
         if (step.t === 'e') return !achievementHidden(step.id);
 
+        // a sky Way is shown with the tower Sign it leads to; its area is named only while the area shows
+        if (step.t === 'w') return step.sign >= 0 && signSet.has(step.sign);
+
         // a sign rule that is no Sign in the data has no position, so nothing to be under fog
         if (step.t === 's' && step.id !== undefined) return signSet.has(step.id);
         return true;
@@ -252,6 +255,7 @@ export function progressModel(camp: string): ProgressModel {
         endings,
         achievementHidden,
         achievementRule: (name) => achievementRuleOf.get(name),
+        areaShown,
         gateShown,
         gatePlace,
         signShown: (sign) => signSet.has(sign),

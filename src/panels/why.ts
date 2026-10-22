@@ -12,7 +12,7 @@ import type { PanelContext } from './context.ts';
 /** The members of the panel context that the why text reads. */
 export interface WhyContext extends Pick<PanelContext, 'hide' | 'freezers' | 'iceOf' | 'gateShown' | 'gateArea'> {
     status: Pick<PanelContext['status'], 'achievements'>;
-    progress: Pick<ShownProgress, 'wayIn' | 'why' | 'access' | 'behind'> & {
+    progress: Pick<ShownProgress, 'wayIn' | 'wayInAll' | 'why' | 'access' | 'behind'> & {
         reach: Pick<Reachability, 'fromSky'> | null;
     };
     model: Pick<ProgressModel, 'stepShown'>;
@@ -59,6 +59,12 @@ function gateText(context: WhyContext, levelIndex: number, gates: number[]): str
 
     const ice = context.iceOf[levelIndex];
     if (ice !== undefined && gates.includes(ice)) return `in an ${freezerNoun(ice)}${gateAreaSuffix(context, ice)}`;
+    // the gates the table asks for are all needed, whether or not the walk finds a way in besides
+    const needed = context.progress.wayInAll?.get(levelIndex) ?? [];
+    if (gates.length > 1 && gates.every((freezerIndex) => needed.includes(freezerIndex))) {
+        return `behind all ${gates.length} ${freezersNoun(gates)}`;
+    }
+
     if (gates.length > 1) return `behind one of ${gates.length} ${freezersNoun(gates)}`;
     return `behind ${freezerNoun(gates[0])}${gateAreaSuffix(context, gates[0])}`;
 }

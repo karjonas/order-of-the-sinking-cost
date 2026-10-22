@@ -9,6 +9,7 @@ import { levelIconName } from '../map/level-icons.ts';
 import type { LevelIconName } from '../map/level-icons.ts';
 import type { LinkEnd, MapLink, MapStep } from '../map/map-view.ts';
 import { achievementName, rankAchievement } from '../model/achievements.ts';
+import { areaName } from '../model/areas.ts';
 import { capitalized, freezerNoun } from '../model/freezer-names.ts';
 import { layerName, mapLayerOf, wayTo } from '../model/layers.ts';
 import type { UnlockPlan } from '../model/plans.ts';
@@ -204,6 +205,9 @@ const roomPad = (context: PanelContext, roomIndex: number) => context.teleporter
 const roomShown = (context: PanelContext, roomIndex: number): boolean =>
     context.model.rooms.includes(PROG.gold_rooms[roomIndex]);
 
+// a sky Way under fog is not named
+const WAY_FALLBACK = 'A way to the tower’s sign';
+
 // the plan steps with no chip of their own: a gold room, the way onto a layer, a rank marker
 function otherStepText(context: PanelContext, node: PlanStep): string {
     if (node.t === 'p') {
@@ -215,7 +219,16 @@ function otherStepText(context: PanelContext, node: PlanStep): string {
     return '';
 }
 
+// a sky Way is named by its area while the area is shown; it links to the area on the map
+function wayChip(context: PanelContext, areaIndex: number): string {
+    if (!context.model.areaShown(areaIndex)) return `<span class="chip">${WAY_FALLBACK}</span>`;
+
+    const name = escapeHtml(areaName(PROG.areas[areaIndex]));
+    return `<span class="chip" data-parea="${areaIndex}" tabindex="0" role="button">${name}</span>`;
+}
+
 function nodeChip(context: PanelContext, node: PlanStep): string {
+    if (node.t === 'w') return wayChip(context, node.id);
     if (node.t === 'l') return levelChip(context.progress, node.id, 'data-pick');
     if (node.t === 'g') return gateChip(context, node.id);
     if (node.t === 't') {
@@ -398,6 +411,11 @@ function stepPosition(context: PanelContext, node: PlanStep): Position | null {
         return roomPad(context, node.id).p;
     }
 
+    if (node.t === 'w') {
+        if (!context.model.areaShown(node.id)) return null;
+        return PROG.areas[node.id].p;
+    }
+
     if (node.t !== 't') return null;
     if (context.progress.towerHidden[node.id]) return null;
     return context.progress.towers[node.id].p;
@@ -415,6 +433,7 @@ function stepZ(context: PanelContext, node: PlanStep): number | null {
     if (node.t === 'g') return context.freezers[node.id].p[2];
     if (node.t === 't') return context.progress.towers[node.id].p[2];
     if (node.t === 'p') return roomPad(context, node.id).p[2];
+    if (node.t === 'w') return PROG.areas[node.id].p[2];
     if (node.t === 's' && node.id != null) return context.signs[node.id].p[2];
     return null;
 }

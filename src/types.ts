@@ -57,6 +57,8 @@ export interface Tower {
     p: Position;
     /** Index into `teleporters` of its `teleporter_id` pad when that is a MINOR pad (a high tower's is a MAJOR one). */
     pad?: number;
+    /** Index into `teleporters` of its `teleporter_id` pad when that is a MAJOR pad: a sky tower's pad in the sky hub. */
+    hub?: number;
 }
 
 /** An unlock id of a Freezer that is not a level: a Sign by rank, a tower Sign, the gold-room Sign, or another. */
@@ -199,6 +201,22 @@ export interface ProgressMap {
 
 /** One row of data/progress.json `endgame_way_ins`: [level, freezer indices, 1 to replace the walk's gates]. */
 export type EndgameWayIn = [level: number, freezers: number[], replace: number];
+
+/**
+ * One row of data/progress.json `known_routes`: a route the walk does not find, written by hand. The `way` target is a
+ * sky Way area that leads to a sky tower's hub quarter, where the tower's Sign and hub pad stand. `entry`: the levels
+ * the Way asks for, all of the groups needed, one of the levels inside a group.
+ */
+export interface KnownWay {
+    kind: 'way';
+    /** Index into `areas`. */
+    area: number;
+    /** Index into `towers`. */
+    tower: number;
+    entry: number[][];
+}
+
+export type KnownRoute = KnownWay;
 
 /** world.grid: the overworld grid and the fast-travel box of the map rooms. */
 export interface WorldGrid {
@@ -487,6 +505,7 @@ export interface Progress extends WorldFile {
     fog: ProgressFog;
     map: ProgressMap;
     endgame_way_ins: EndgameWayIn[];
+    known_routes: KnownRoute[];
 }
 
 /** Per map layer key, one value per map column. */

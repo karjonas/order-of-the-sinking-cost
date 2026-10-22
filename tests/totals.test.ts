@@ -60,6 +60,7 @@ function totalsAtRank(rank: number, shownAt: ShownAt, known: string[] | null, re
         signOk: (rule: SignRule) => signRuleMet(rule, { rank }, [], 0),
         signRead: (pid: number) => readPids.includes(pid),
         signAccess: [],
+        signWayIn: [],
         reach: null,
         behind: [],
         why: [],

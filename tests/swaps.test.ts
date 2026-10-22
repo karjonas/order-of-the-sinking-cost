@@ -850,6 +850,7 @@ describe('unlock plans through cycles', () => {
             behind: [[], [0, 1], [2]],
             access: [null, null, null],
             signAccess: [],
+            signWayIn: [],
             ice: [],
             reach: null,
             lt: null,

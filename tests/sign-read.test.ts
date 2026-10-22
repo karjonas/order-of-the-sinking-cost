@@ -58,7 +58,8 @@ describe('a rank Sign', () => {
 
         for (const gateIndex of gates) {
             expect(progress.gateOpen[gateIndex]).toBe(false);
-            expect(planKeys(progress, gateIndex)).toEqual(['s' + signIndex, 'g' + gateIndex]);
+            // the Sign stands beyond a Freezer of its own, so the way to it comes first
+            expect(planKeys(progress, gateIndex).slice(-2)).toEqual(['s' + signIndex, 'g' + gateIndex]);
         }
     });
 

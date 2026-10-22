@@ -18,13 +18,27 @@ interface GoalCore {
 
 /**
  * One of the three endings, in rank order; the first has the ground towers' Antipode teleporters as children, the
- * second the towers whose Signs open Freezers.
+ * second its stages in order: the sky towers whose Signs open Freezers among the places and levels around them.
  */
 export interface EndingGoal extends GoalCore {
     kind: 'ending';
     ending: number;
     name: string;
-    children?: Array<AntipodeGoal | TowerGoal>;
+    children?: Array<AntipodeGoal | TowerGoal | StageGoal>;
+}
+
+/** The stages of the second ending that are no tower. */
+export type StageName = 'crossroads' | 'antipode' | 'room' | 'final';
+
+/**
+ * A stage of the second ending: the sky crossroads (`area`), the sky hub (`area`), the end2 room's level or the level
+ * that earns the ending (`level`).
+ */
+export interface StageGoal extends GoalCore {
+    kind: 'stage';
+    stage: StageName;
+    area?: number;
+    level?: number;
 }
 
 export interface TowerGoal extends GoalCore {
@@ -55,7 +69,17 @@ export interface CompletionistGoal extends GoalCore {
 
 export type LadderGoal = EndingGoal | AchievementsGoal | CompletionistGoal;
 
-export type GoalKind = LadderGoal['kind'] | TowerGoal['kind'] | AntipodeGoal['kind'] | AchievementGoal['kind'];
+export type GoalKind =
+    | LadderGoal['kind']
+    | TowerGoal['kind']
+    | AntipodeGoal['kind']
+    | AchievementGoal['kind']
+    | StageGoal['kind'];
+
+// the sky areas of the first two stages, and the end2 room's level, by name
+const CROSSROADS_AREA = 'area_s_upper_crossroads';
+const HUB_AREA = 'area_s_antipode_high';
+const ROOM_LEVEL = 'laser_pointer';
 
 // marks the first goal of a list not done as the active one
 function markActive(goals: Array<{ done: boolean; active: boolean }>): void {
@@ -83,7 +107,7 @@ export function freezerTowers(): Map<number, number[]> {
  * Completionist. Per goal: key, kind, done, active (the first goal not done), targets (the requirement ids it asks for),
  * roles (goalRoles over the targets) and, for the achievements, children of the same shape: one per achievement but
  * Completionist, which is a goal of its own. The first ending has one child per ground tower (the towers with an
- * Antipode teleporter, which its Sign counts), the second one per tower whose Sign opens a Freezer.
+ * Antipode teleporter, which its Sign counts), the second its stages in order.
  */
 export function goalLadder(progress: BaseProgress & { plans: Plans }, status: { achievements: bigint }): LadderGoal[] {
     const levels = PROG.levels;
@@ -131,8 +155,66 @@ export function goalLadder(progress: BaseProgress & { plans: Plans }, status: { 
     }
 
     antipodeGoals.sort((first, second) => first.tower - second.tower);
+
+    // the second ending's stages in order (VIEWER.md "Goals (viewer)"): the crossroads, the sky towers (each done once
+    // its tower is activated and its hub Freezers are open), the hub, the end2 room's level, the ending's level
     const gateTowers = freezerTowers();
-    const gateTowerGoals = towerGoals.filter((towerGoal) => gateTowers.has(towerGoal.tower));
+    const isOpen = (gates: number[]) => gates.every((gate) => progress.gateOpen[gate]);
+    const closedKeys = (gates: number[]) => gates.filter((gate) => !progress.gateOpen[gate]).map((gate) => 'g' + gate);
+    const areaIndex = (name: string) => (PROG.areas || []).findIndex((area) => area.local_area_name === name);
+    const stages: Array<StageGoal | TowerGoal> = [];
+
+    const crossroads = areaIndex(CROSSROADS_AREA);
+    if (crossroads >= 0) {
+        stages.push(
+            goal(
+                {
+                    key: 'stage:crossroads',
+                    kind: 'stage',
+                    stage: 'crossroads',
+                    area: crossroads,
+                    done: hasAchievement(status, 'ASCEND'),
+                },
+                ['e:ASCEND'],
+            ),
+        );
+    }
+
+    const hubGates: number[] = [];
+    const sortedTowers = [...gateTowers.keys()].toSorted((first, second) => first - second);
+    for (const towerIndex of sortedTowers) {
+        const gates = gateTowers.get(towerIndex)!;
+        hubGates.push(...gates);
+
+        const done = progress.towers[towerIndex].active && isOpen(gates);
+        stages.push(goal({ key: 'tower:' + towerIndex, kind: 'tower', tower: towerIndex, done }, closedKeys(gates)));
+    }
+
+    const hub = areaIndex(HUB_AREA);
+    if (hub >= 0 && hubGates.length) {
+        stages.push(
+            goal(
+                { key: 'stage:antipode', kind: 'stage', stage: 'antipode', area: hub, done: isOpen(hubGates) },
+                closedKeys(hubGates),
+            ),
+        );
+    }
+
+    const roomLevel = levels.findIndex((candidate) => candidate.n === ROOM_LEVEL);
+    if (roomLevel >= 0) {
+        const done = progress.state[roomLevel] === 'solved';
+        stages.push(
+            goal({ key: 'stage:room', kind: 'stage', stage: 'room', level: roomLevel, done }, ['l' + roomLevel]),
+        );
+    }
+
+    const finalLevel = levels.findIndex((candidate) => candidate.a === 'ENDGAME2');
+    if (finalLevel >= 0) {
+        const done = progress.state[finalLevel] === 'solved';
+        stages.push(
+            goal({ key: 'stage:final', kind: 'stage', stage: 'final', level: finalLevel, done }, ['l' + finalLevel]),
+        );
+    }
 
     // an achievement asks for its tower, its levels, or its rank marker (ASCEND, DESCEND)
     const achievementKeys = (name: string) => {
@@ -166,7 +248,7 @@ export function goalLadder(progress: BaseProgress & { plans: Plans }, status: { 
     const achievements: AchievementsGoal = parent({ key: 'achievements', kind: 'achievements' }, achievementGoals);
     if (endings.length && antipodeGoals.length) endings[0].children = antipodeGoals;
 
-    if (endings.length > 1 && gateTowerGoals.length) endings[1].children = gateTowerGoals;
+    if (endings.length > 1 && stages.some((stage) => stage.kind === 'tower')) endings[1].children = stages;
 
     const levelsLeft = unsolved([...levels.keys()]);
     const completionist: CompletionistGoal = goal(
@@ -180,7 +262,7 @@ export function goalLadder(progress: BaseProgress & { plans: Plans }, status: { 
 
     const goals: LadderGoal[] = [...endings, achievements, completionist];
     const graph = routeGraph(plans);
-    for (const ladderGoal of [...goals, ...towerGoals, ...antipodeGoals]) {
+    for (const ladderGoal of [...goals, ...towerGoals, ...antipodeGoals, ...stages]) {
         ladderGoal.roles = goalRoles(plans, graph, ladderGoal.targets);
     }
 
@@ -199,7 +281,7 @@ export function goalLadder(progress: BaseProgress & { plans: Plans }, status: { 
 
     markActive(goals);
     markActive(antipodeGoals);
-    markActive(gateTowerGoals);
+    markActive(stages);
     markActive(achievementGoals);
     return goals;
 }

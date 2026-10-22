@@ -35,7 +35,14 @@ export interface SignStep extends StepMarks {
     g: FreezerSign;
 }
 
-export type PlanStep = IndexedStep | NamedStep | SignStep;
+/** A step for a known sky Way (w): its area's index and the index of the Sign it leads to (-1 for none). */
+export interface WayStep extends StepMarks {
+    t: 'w';
+    id: number;
+    sign: number;
+}
+
+export type PlanStep = IndexedStep | NamedStep | SignStep | WayStep;
 
 /**
  * A requirement is met (nothing to do), a step with parts, or a part with no step of its own (an option list inside a
@@ -50,6 +57,9 @@ export type PlanStep = IndexedStep | NamedStep | SignStep;
  *     gate only leads to such a pad, a step of its own.
  *   Freezer, open: met. Closed: its unmet levels and signs (all, or the cheapest one for an OR gate; an OR gate with one
  *     met opens at the next overworld load, a step with no parts).
+ *   way (w): a sky Way of the known routes (progress.json known_routes): met once its tower's hub quarter is reached
+ *     (the tower's Sign read or faced, or its hub pad discovered); else its entry levels, all of the groups, one level
+ *     of a group with several. The tower's Sign in the hub needs it too.
  *   sign: a tower sign whose tower is not active needs the tower; a rank sign the rank; the gold room sign the
  *     cheapest gold rooms (p) still to find, each its tower.
  *   rank r (a part): the cheapest of the ENDGAME levels and the rank markers (e: ASCEND, DESCEND) that give r or more.
@@ -147,6 +157,37 @@ export function requirementGraph(progress: BaseProgress): Graph {
         return id;
     });
 
+    // a sky Way (known_routes) is met once the tower's hub quarter is reached: its Sign is read or faced by the walk, or
+    // the tower's hub pad is discovered. Else it asks for its entry levels, all of the groups.
+    const wayOfTower = new Map<number, number>();
+    (PROG.known_routes || []).forEach((route) => {
+        const signIndex = PROG.signs.findIndex(
+            (sign) => sign.tower === route.tower && !sign.status && sign.gates.length,
+        );
+        const hub = progress.towers[route.tower]?.hub;
+        const id = graph.add('w' + route.area, { t: 'w', id: route.area, sign: signIndex }, 'and');
+        wayOfTower.set(route.tower, id);
+
+        const read = signIndex >= 0 && progress.signRead(PROG.signs[signIndex].pid);
+        const faced = signIndex >= 0 && !!progress.reach?.signFaced[signIndex];
+        const padFound = hub !== undefined && progress.tst[hub].disc;
+        if (read || faced || padFound) {
+            graph.met[id] = true;
+            return;
+        }
+
+        route.entry.forEach((group, groupIndex) => {
+            if (group.some((level) => progress.state[level] === 'solved')) return;
+
+            const members = group.map((level) => levelId[level]);
+            if (members.length === 1) {
+                graph.parts[id].push(members[0]);
+                return;
+            }
+            graph.parts[id].push(graph.add('wo' + route.area + '.' + groupIndex, null, 'or', members));
+        });
+    });
+
     const signId = (rule: FreezerSign, freezerIndex: number | null, position: number): number => {
         const signIndex = SIGN_INDEX.get(rule.pid);
         const key = signIndex != null ? 's' + signIndex : 'x' + freezerIndex + ':' + position;
@@ -175,8 +216,36 @@ export function requirementGraph(progress: BaseProgress): Graph {
                 }
             }
 
-            const layer = signIndex != null && !isStatus ? progress.signAccess?.[signIndex] : null;
-            if (!graph.met[id] && layer && graph.kind[id] === 'and') graph.parts[id].push(accessId(layer));
+            // a tower Sign in the sky hub stands in its own quarter, which the tower's Way leads to
+            const signTower = signIndex != null ? PROG.signs[signIndex].tower : undefined;
+            const wayToSign = signTower != null ? wayOfTower.get(signTower) : undefined;
+            if (!graph.met[id] && !isStatus && wayToSign !== undefined && !graph.met[wayToSign]) {
+                graph.parts[id].push(wayToSign);
+            }
+
+            // the hero has to get to the Sign too: by one of the gates whose opening lets the walk face it, else onto
+            // the layer the walk reaches nowhere
+            let gates: number[] = [];
+            let layer: string | null | undefined = null;
+            if (!graph.met[id] && signIndex != null && !isStatus) {
+                gates = progress.signWayIn?.[signIndex] ?? [];
+                layer = progress.signAccess?.[signIndex];
+            }
+
+            if (gates.length > 0) {
+                if (graph.kind[id] === 'k') {
+                    const rooms = graph.add('k' + key, null, 'k', graph.parts[id], graph.k[id]);
+                    graph.kind[id] = 'and';
+                    graph.parts[id] = [rooms];
+                }
+                // gates that run in a cycle leave the way in without a plan: the Sign keeps its rule alone
+                const gateParts = gates.map((gate) => gateId[gate]);
+                const wayId = graph.add('n' + key, null, 'or', gateParts);
+                graph.fallback[wayId] = true;
+                graph.parts[id].push(wayId);
+            } else if (layer && graph.kind[id] === 'and') {
+                graph.parts[id].push(accessId(layer));
+            }
         }
         return signIds.get(key)!;
     };
@@ -260,6 +329,23 @@ export function requirementGraph(progress: BaseProgress): Graph {
 
         if (onlyPadGates(levelIndex, gateIndices)) graph.fallback[id] = true;
         if (!graph.parts[id].length && graph.fallback[id]) graph.kind[id] = 'and';
+    });
+
+    // a level that also asks for the gates of the endgame table (all of them together, besides its way in)
+    progress.wayInAll?.forEach((lift, levelIndex) => {
+        const id = levelId[levelIndex];
+        const liftGates = lift.map((freezerIndex) => gateId[freezerIndex]);
+        let liftPart = liftGates[0];
+        if (liftGates.length > 1) liftPart = graph.add('wa' + levelIndex, null, 'and', liftGates);
+
+        const rest = graph.parts[id].filter((part) => !liftGates.includes(part));
+        let restParts = rest;
+        if (rest.length > 1 && graph.kind[id] === 'or') {
+            restParts = [graph.add('wr' + levelIndex, null, 'or', rest)];
+        }
+
+        graph.kind[id] = 'and';
+        graph.parts[id] = [liftPart, ...restParts];
     });
 
     freezers.forEach((freezer, freezerIndex) => {

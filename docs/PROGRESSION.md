@@ -208,19 +208,38 @@ leaves at stage 5.
    from the level data ([Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)). The ride
    lands on the ASCEND Marker.
 2. Activate High Heroes. Each sky tower (H, M, S, P) needs N of its normal levels: H 12, M 6, S 6, P 10, and opens one
-   of the four Freezers in step 3; High Heroes' Sign opens the south one, (−15, 144, 37), which the south way needs.
-   Their pads are the MAJOR pads of the sky hub (z 37 and 38).
-3. The four Freezers (−15, 144, 37), (−23, 147, 37), (−13, 152, 37) and (−9, 146, 38) each open with one sky tower.
-   They ring the hub elevator (−15, 147, 38) → (−15, 147, 47). The south one, (−15, 144, 37), opens the south way to it: a closing Gate lifts the hero onto the step
-   (inferred; [Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)). Each of the other
-   Freezers holds its own puzzle. An active sky tower does not open its hub Freezer until its Sign is read (High
-   Mirrors active, its Sign unread, its Freezer (−23, 147, 37) closed).
-4. The elevator's top opens onto the end2 room (z 44). There `laser_pointer` needs 11 levels: `allocate_heroes_v2` →
+   of the four Freezers in step 4; High Heroes' Sign opens the south one, (−15, 144, 37), which the south way needs.
+   Their pads are the MAJOR pads of the sky hub (z 37 and 38). Activation enables no map-room twin: a twin is enabled
+   when its hub pad is first stepped on, so the first visit to the hub is on foot.
+3. Walk to the sky hub by The Heroic Way (`area_s_heroes_way`), a sky path from the east of `catching_fire_v2`
+   (55, 123, 54) west to the hub. Seen in a save: the hero goes through the cell of the Freezer (55, 120, 54), which
+   `catching_fire_v2` opens, and down by the dragon Monsters stacked at (55..56, 119..121, 46..52), to the dragon room
+   (x 36..53, y 119..126, z 45) with its Priestess Wardrobes and the room below it at z 37, crosses north over more
+   dragons (the player's account), and follows one-way MINOR pads west to the hub. So this way needs
+   `catching_fire_v2`. A second
+   way in (unconfirmed): `skip_stack_1` opens the Freezer (48, 147, 44) on the edge of the pocket of the Heroic Way's
+   east pad (44, 135, 38), and `skip_stack_1` itself stands behind a Freezer that `catching_fire_v2` opens.
+4. The four Freezers (−15, 144, 37), (−23, 147, 37), (−13, 152, 37) and (−9, 146, 38) each open with one sky tower.
+   They ring the hub elevator (−15, 147, 38) → (−15, 147, 47). The south one, (−15, 144, 37), holds nothing and
+   opens the south way to it, which ends at a closed switch Gate whose Switch is fenced in; a closing Gate lifts the
+   hero onto the step. Pressing that Switch takes a piece from another tower's Freezer: the west one holds a magic
+   Mirror, the north one a MIRRORABLE and SKIPPABLE Rock, the east one a Rover (inferred;
+   [Routes that need these mechanics](MOVEMENT.md#routes-that-need-these-mechanics)). The hub's four tower pads stand
+   in four separate pockets on foot, each by its tower's Sign, and the sky has one Way area per tower kind (The Heroic
+   Way, The Mirror Way, The Skipping Way, The Beam Way). Second Endgame takes all four sky towers, each reached by its
+   own Way (the player's account). An active sky tower does not open its hub Freezer until its Sign is read (High
+   Mirrors active, its Sign unread, its Freezer (−23, 147, 37) closed). Reading a tower's Sign needs its quarter: south
+   for High Heroes, west for High Mirrors, north for High Skipping Stones and east for High Beamcasters. The levels
+   each Way passes are the viewer's table of known routes, the place for routes the walk does not find
+   ([Known routes](VIEWER.md#known-routes)): `catching_fire_v2` for The Heroic Way, `priest_3d_intro_dragon_v4` for
+   The Mirror Way, `high_endpoint_v2` with `beam_jail_v3` or `thin_ice_rooms` for The Beam Way, none known for The
+   Skipping Way.
+5. The elevator's top opens onto the end2 room (z 44). There `laser_pointer` needs 11 levels: `allocate_heroes_v2` →
    `end2_heroes_1_2` → `end2_heroes_1_5`; `end2_mirror_3` → `mirror_prelude_v2_fix` → `peak_toggle`;
    `place_slot_4x4_pushstyle` → `color_picker` → `place_promesst_rooms`; `stack_prelude_pushstyle`. The set's other
    levels are not on the way.
-5. `laser_pointer` opens the Freezer (0, 149, 46). It holds a Rover (θ 180) carrying a magic Mirror (0, 149, 47).
-6. Go up to the z 47 deck and `all_together_now` (−9, 134, 47). The deck is fence floors (Group `end2_upper`, a plain
+6. `laser_pointer` opens the Freezer (0, 149, 46). It holds a Rover (θ 180) carrying a magic Mirror (0, 149, 47).
+7. Go up to the z 47 deck and `all_together_now` (−9, 134, 47). The deck is fence floors (Group `end2_upper`, a plain
    Group that exists) in separate parts:
    - West: the Stairs top (−15, 147, 47), the centre (−17..−13, 144..146), row 141 at x −23..−15 and column −23. The
      Gate (−23, 152) is flavor 999992, Switch (−24, 150, 44). Behind it row 152 runs west to (−17, 153), then across
@@ -251,7 +270,7 @@ leaves at stage 5.
      to the floor Fence (−7, 143, 47). Nothing is nearer on either arm (the west arm meets the wall at (−12, 143) first), the flat Mirror has no target, and the Rover's Mirror is in
      another room. Any d ≥ 3 lands at or above (−7, 143, 47) and falls onto it. That opens B1.
    - How the hero gets from B1 into A is open ([Progression and the viewer's model](UNCONFIRMED.md#progression-and-the-viewers-model)).
-7. Win `all_together_now`. It opens its exit gate (−9, 132, 47). From there the hero drops to the rank-3 gate
+8. Win `all_together_now`. It opens its exit gate (−9, 132, 47). From there the hero drops to the rank-3 gate
    (−9, 134, 0) and the `~end2` Door.
 
 ### Final Endgame

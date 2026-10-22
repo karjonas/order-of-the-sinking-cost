@@ -13,6 +13,7 @@ import type {
     EndgameWayIn,
     Freezer,
     FreezerSign,
+    KnownRoute,
     LevelSet,
     Position,
     Progress,
@@ -216,11 +217,55 @@ function addTowerPads(overworld: Overworld, towers: Tower[], teleporters: Telepo
     for (const entity of entitiesOf(overworld, 'Tower')) {
         const padPid = refOf(entity.fields.teleporter_id);
         const padIndex = teleporters.findIndex((pad) => pad.pid === padPid);
-        if (padIndex < 0 || teleporters[padIndex].major) continue;
+        if (padIndex < 0) continue;
 
-        const tower = towers.find((candidate) => candidate.pid === entity.pid);
-        tower!.pad = padIndex;
+        const tower = towers.find((candidate) => candidate.pid === entity.pid)!;
+        if (teleporters[padIndex].major) {
+            tower.hub = padIndex;
+        } else {
+            tower.pad = padIndex;
+        }
     }
+}
+
+// Routes the walk does not find, written by hand, each for a target (here a sky Way area, which leads to the hub
+// quarter of a sky tower) with the levels it asks for: all of the groups, one level of a group
+interface KnownWaySource {
+    area: string;
+    tower: string;
+    entry: string[][];
+}
+
+const KNOWN_WAYS: KnownWaySource[] = [
+    { area: 'area_s_heroes_way', tower: 'HEROES', entry: [['catching_fire_v2']] },
+    { area: 'area_s_mirror_way', tower: 'MIRRORS', entry: [['priest_3d_intro_dragon_v4']] },
+    { area: 'area_s_skipping_way', tower: 'SKIPPING', entry: [] },
+    {
+        area: 'area_s_beam_way',
+        tower: 'PROMESST',
+        entry: [['high_endpoint_v2'], ['beam_jail_v3', 'thin_ice_rooms']],
+    },
+];
+
+// The table of known routes with its names resolved to indices; a name the data lacks fails the build
+function buildKnownRoutes(levels: ProgressLevel[], towers: Tower[], areas: Area[]): KnownRoute[] {
+    const levelIndex = (name: string): number => {
+        const found = levels.findIndex((level) => level.n === name);
+        if (found < 0) throw new Error(`known_routes: no level ${name}`);
+        return found;
+    };
+
+    return KNOWN_WAYS.map((source): KnownRoute => {
+        const area = areas.findIndex((candidate) => candidate.local_area_name === source.area);
+        if (area < 0) throw new Error(`known_routes: no area ${source.area}`);
+
+        const towerFlags = FLAG_BITS[source.tower] + FLAG_BITS.UPSTAIRS;
+        const tower = towers.findIndex((candidate) => candidate.t === towerFlags);
+        if (tower < 0) throw new Error(`known_routes: no sky tower ${source.tower}`);
+
+        const entry = source.entry.map((group) => group.map(levelIndex));
+        return { kind: 'way', area, tower, entry };
+    });
 }
 
 // Plain towers first, then the high ones, then the low ones; by their flags within each
@@ -355,10 +400,10 @@ function assignSets(levelData: LevelsFile, levels: ProgressLevel[]): LevelSet[] 
 
 // The ways into the endgame areas, which the walk does not find (PROGRESSION.md "Endings"), from the gate unlockers and
 // positions: rows [level, gates, replace], where replace says the gates stand in for the walk's way-in gates rather
-// than filling in for none.
+// than filling in for none. The gates of a replace 1 row are alternatives; those of a replace 0 row are all needed.
 // - The level that earns ENDGAME1 stands inside the gates of the gold room Sign.
 // - The endgame2 room is entered from below, through the gates of the sky towers' Signs under it (inside the x, y span
-//   of its levels); the level that earns ENDGAME2 lies above the room, behind the set's gates higher than the room.
+//   of its levels), all of them; the level that earns ENDGAME2 lies above the room, behind the set's gates higher than the room.
 // - The endgame3 rooms form one chain in set order: a level lies behind the gates opened only by levels before it in
 //   the set (the latest of those), leaving out a gate whose levels need the level itself; the first room has none.
 function buildEndgameWayIns(
@@ -592,7 +637,11 @@ function main(): void {
         const p = roundedPosition(giver.fields);
         return { pid: giver.pid, p, l: layerOf(p[2]) };
     });
-    if (areaData) out.areas = buildAreas(areaData, levels, worldMap);
+    out.known_routes = [];
+    if (areaData) {
+        out.areas = buildAreas(areaData, levels, worldMap);
+        out.known_routes = buildKnownRoutes(levels, towers, out.areas);
+    }
     if (fog) out.fog = buildFogSummary(fog);
     if (worldMap) {
         out.map = worldMap;
