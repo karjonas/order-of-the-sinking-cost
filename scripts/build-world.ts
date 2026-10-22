@@ -29,8 +29,9 @@
 //          closed one blocks its cell until a hero in an OPEN beam opens it; closes: the way a closing Gate pushes what
 //          stands in its cell (side as `fences`, 4 up, 5 down)
 //   switches: [[pid, flavor, pressed, i, j, z(, exists)]]   Switches; gates of the same flavor follow them
-//   elevators: [[i, j, zb, i2, j2, zt, mask, pid, exists, pid2, exists2]]   per Elevator_Platform its bottom and top
-//          Stairs frames (exists -1: not listed); mask bit 1 rides up, bit 2 down (elevators())
+//   elevators: [[i, j, zb, i2, j2, zt, mask, pid, exists, pid2, exists2(, mask1, [rock pids])]]   per Elevator_Platform
+//          its bottom and top Stairs frames (exists -1: not listed); mask bit 1 rides up, bit 2 down, with no Rock on the
+//          platform; mask1 is the mask with one Rock left of the stacked Rocks listed (buildElevators())
 //   freezers / teleporters: index into progress.json `freezers` / `teleporters` (cell = their p)
 //   rocks: [[pid, i, j, z(, exists)]]   pushable Rocks in the level data; the save moves them (position CHANGE),
 //          destroys them and creates others (CREATION_OR_DESTRUCTION)
@@ -102,7 +103,6 @@ import type {
     TreasureDisplay,
     WorldGrid,
 } from '../src/types.ts';
-import { countBy } from '../src/util.ts';
 import { flagsOf, get, positionOf, refOf, requireNumber, type Fields } from './lib/fields.ts';
 import {
     boundLayer,
@@ -579,17 +579,19 @@ function collectOceans(world: World) {
     return { oceans, surfaces, water, rivers };
 }
 
-// [i, j, zb, i2, j2, zt, mask, bottom pid, bottom exists, top pid, top exists] per Elevator_Platform (bottom frame
-// first; exists -1 when not listed). mask bit 1 rides up from the bottom frame, bit 2 down from the top. A static solid
-// voxel between the frames stops the platform: no link. A Rock in the platform's resting cell keeps the hero off at
-// that end, and is pushed off at the other end only through a frame cell with two opposite open sides; a stack of two
-// or more rocks is not one push: no link.
+// [i, j, zb, i2, j2, zt, mask, bottom pid, bottom exists, top pid, top exists(, one-Rock mask, stack pids)] per
+// Elevator_Platform (bottom frame first; exists -1 when not listed). mask bit 1 rides up from the bottom frame, bit 2
+// down from the top, with no Rock on the platform. A static solid voxel between the frames stops the platform: no link.
+// A Rock in the platform's resting cell keeps the hero off at that end, and is pushed off at the other end only through
+// a frame cell with two opposite open sides: the one-Rock mask. A stack of two or more Rocks is not one push: no link.
+// The last two fields are on an elevator with Rocks stacked on the platform, their pids bottom first; the walk counts
+// how many are left.
 function buildElevators(
     world: World,
     columns: Columns,
     groupSolid: Set<number>,
     fenceKeys: Set<number>,
-    rockCounts: Map<number, number>,
+    rockAt: Map<number, number>,
 ): ElevatorRow[] {
     const stairs = new Map<number, Entity>();
     for (const entity of world.ofType('Stairs')) stairs.set(entity.pid, entity);
@@ -631,15 +633,17 @@ function buildElevators(
             if (columns.get(world.columnKey(i, j))?.has(z)) mask = 0;
         }
         const [pi, pj] = world.cell(platformAt[0], platformAt[1]);
-        let stack = 0;
-        while (rockCounts.get(world.key(pi, pj, platformAt[2] + stack))) stack++;
-        const atTop = Math.abs(platformAt[2] - topAt[2]) < Math.abs(platformAt[2] - bottomAt[2]);
-        if (stack > 1) mask = 0;
-        else if (stack) {
-            if (atTop) mask &= hasOpenPair(...bottomAt) ? 1 : 0;
-            else mask &= hasOpenPair(...topAt) ? 2 : 0;
+        const stack: number[] = [];
+        let rockPid = rockAt.get(world.key(pi, pj, platformAt[2]));
+        while (rockPid !== undefined) {
+            stack.push(rockPid);
+            rockPid = rockAt.get(world.key(pi, pj, platformAt[2] + stack.length));
         }
-        rows.push([
+        const atTop = Math.abs(platformAt[2] - topAt[2]) < Math.abs(platformAt[2] - bottomAt[2]);
+        let oneRockMask = mask;
+        if (atTop) oneRockMask &= hasOpenPair(...bottomAt) ? 1 : 0;
+        else oneRockMask &= hasOpenPair(...topAt) ? 2 : 0;
+        const row: ElevatorRow = [
             i,
             j,
             bottomAt[2],
@@ -651,7 +655,9 @@ function buildElevators(
             existsOrNone(bottom.fields),
             top.pid,
             existsOrNone(top.fields),
-        ]);
+        ];
+        if (stack.length) row.push(oneRockMask, stack);
+        rows.push(row);
     }
     // by bottom z, then j, then i
     const order = (row: ElevatorRow) => [row[2], row[1], row[0]];
@@ -909,14 +915,15 @@ function buildWorld(pkg: Package) {
     const usableGroups = groups.filter(
         (group) => group.cells.length && group.cells.every(([, , z]) => z + Z_OFFSET >= 0 && z + Z_OFFSET < Z_BYTES),
     );
-    const rockCounts = countBy(world.ofType('Rock'), (rock) => world.key(...world.cellOf(rock.fields)));
+    const rockAt = new Map<number, number>();
+    for (const rock of world.ofType('Rock')) rockAt.set(world.key(...world.cellOf(rock.fields)), rock.pid);
     const groupSolid = new Set<number>();
     for (const group of groups) {
         if (!group.exists) continue;
         for (const [i, j, z] of group.cells) groupSolid.add(world.key(i, j, z));
     }
     const fenceKeys = new Set(fences.map((fence) => world.key(fence[1], fence[2], fence[3]) * 4 + fence[4]));
-    const elevators = buildElevators(world, columns, groupSolid, fenceKeys, rockCounts);
+    const elevators = buildElevators(world, columns, groupSolid, fenceKeys, rockAt);
 
     // dragon fire and goblin attacks hold a hero with PROTECTION over water (docs/VIEWER.md "The walk model (viewer)")
     const monsters = world.ofType('Monster').map((monster) => {

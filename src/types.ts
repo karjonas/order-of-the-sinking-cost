@@ -282,7 +282,10 @@ export type OceanRow = [
 /** world.rivers: direction 1 E, 2 N, 3 W, 4 S. */
 export type RiverRow = [i: number, j: number, z: number, direction: number];
 
-/** world.elevators: an exists of -1 means the frame has no `exists` entry. */
+/**
+ * world.elevators: an exists of -1 means the frame has no `exists` entry. The last two fields are only on an elevator
+ * with Rocks stacked on its platform: the mask with one Rock left, and the stack's Rock pids, bottom first.
+ */
 export type ElevatorRow = [
     i: number,
     j: number,
@@ -295,6 +298,8 @@ export type ElevatorRow = [
     bottomExists: number,
     topPid: number,
     topExists: number,
+    oneRockMask?: number,
+    stack?: number[],
 ];
 
 /** world.bridges: a Rock or Gem pushed from the push cell sinks into the water cell. */
