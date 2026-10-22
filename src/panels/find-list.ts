@@ -204,7 +204,7 @@ export function rankCageGroupHtml(context: PanelContext, first: boolean): string
         if (!context.progress.signRead(context.signs[cage.sign].pid)) {
             const place = signPlace(context, cage.sign);
             let note = 'read its Sign';
-            if (place) note += ` · ${place}`;
+            if (place && place !== item.place) note += ` · ${place}`;
             notes.set(item.id, note);
         }
 
