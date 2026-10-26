@@ -259,6 +259,18 @@ const KNOWN_ROUTES: KnownRouteSource[] = [
         note: 'the vertical Mirror repel frees, at the bottom of the slot in the tower base, lifts the hero from the corridor onto the ledge where hat_tricks_0_v3 stands',
     },
     {
+        id: 'mirror_way_strip_pad',
+        to: { pid: 111249623 },
+        needs: [[{ level: 'repel' }]],
+        note: 'from the platform where repel stands the Mirrors lift the hero to the z 48 plateau east of the tower, its pad carries him to the west quarter of the sky hub, and the hub pad there lands him on the strip beside the Mirror Way',
+    },
+    {
+        id: 'pachinko_mirror_hops',
+        to: { level: 'pachinko' },
+        needs: [[{ level: 'repel' }]],
+        note: 'the vertical magic Mirrors east of the strip hop the hero out over the gaps, the last one into the corridor the level stands in',
+    },
+    {
         id: 'chasm_3_mirror_drop',
         to: { level: 'chasm_3' },
         needs: [[{ level: 'pachinko_rescue_w' }]],
