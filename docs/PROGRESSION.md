@@ -231,9 +231,7 @@ leaves at stage 5.
    Mirrors active, its Sign unread, its Freezer (−23, 147, 37) closed). Reading a tower's Sign needs its quarter: south
    for High Heroes, west for High Mirrors, north for High Skipping Stones and east for High Beamcasters. The levels
    each Way passes are the viewer's table of known routes, the place for routes the walk does not find
-   ([Known routes](VIEWER.md#known-routes)): `catching_fire_v2` for The Heroic Way, `priest_3d_intro_dragon_v4` for
-   The Mirror Way, `high_endpoint_v2` with `beam_jail_v3` or `thin_ice_rooms` for The Beam Way, none known for The
-   Skipping Way.
+   ([Known routes](VIEWER.md#known-routes)).
 5. The elevator's top opens onto the end2 room (z 44). There `laser_pointer` needs 11 levels: `allocate_heroes_v2` →
    `end2_heroes_1_2` → `end2_heroes_1_5`; `end2_mirror_3` → `mirror_prelude_v2_fix` → `peak_toggle`;
    `place_slot_4x4_pushstyle` → `color_picker` → `place_promesst_rooms`; `stack_prelude_pushstyle`. The set's other

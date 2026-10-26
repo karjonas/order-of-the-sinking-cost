@@ -882,14 +882,14 @@ target that is another entity gets no step; only the walk uses it.
 
 The four sky Ways are in the table: one per sky tower, each leading on foot to the quarter of the sky hub where that
 tower's Sign and hub pad stand ([Second Endgame](PROGRESSION.md#second-endgame)), with the hub pad as its target. The
-needs are the levels the route is known to pass:
+needs are the levels the route is known to pass.
 
-| Way | Tower | Quarter | Needs |
-|---|---|---|---|
-| The Heroic Way | High Heroes | south | `catching_fire_v2` |
-| The Mirror Way | High Mirrors | west | `priest_3d_intro_dragon_v4` |
-| The Skipping Way | High Skipping Stones | north | not known |
-| The Beam Way | High Beamcasters | east | `high_endpoint_v2`, and `beam_jail_v3` or `thin_ice_rooms` |
+| Way | Tower | Quarter |
+|---|---|---|
+| The Heroic Way | High Heroes | south |
+| The Mirror Way | High Mirrors | west |
+| The Skipping Way | High Skipping Stones | north |
+| The Beam Way | High Beamcasters | east |
 
 The page words a Way, as a plan step and as a stage of Endgame High ([Goals (viewer)](#goals-viewer)), by its area's
 name (the plan step with a link that frames the area on the map) and, while the area is not named, "Way to the High

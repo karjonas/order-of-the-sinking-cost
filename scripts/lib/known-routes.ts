@@ -42,7 +42,7 @@ const KNOWN_ROUTES: KnownRouteSource[] = [
     {
         id: 'mirror_way',
         to: { pid: 106958295 },
-        needs: [[{ level: 'priest_3d_intro_dragon_v4' }]],
+        needs: [[{ level: 'priest_3d_intro_dragon_v4' }], [{ level: 'pachinko' }], [{ level: 'pachinko_rescue_w' }]],
         area: 'area_s_mirror_way',
         tower: 'MIRRORS',
     },
