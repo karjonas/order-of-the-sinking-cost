@@ -282,6 +282,42 @@ const KNOWN_ROUTES: KnownRouteSource[] = [
         needs: [[{ level: 'promesst2.5_deeper' }]],
         note: 'the light promesst2.5_deeper frees smashes the Rock stack on the elevator, which then carries the hero down to the level',
     },
+    {
+        id: 'pass_through_v2_same_z_cage',
+        to: { level: 'pass_through_v2_same_z' },
+        needs: [[{ freezer: 115531504 }], [{ freezer: 135424859 }], [{ freezer: 135424860 }]],
+        note: 'through the cage beam_sisters opens into the goblin_below_intro_same_z room, then south through both Freezers of its doorway, which goblin_below_intro_same_z and thin_ice_rooms open',
+    },
+    {
+        id: 'first_flight_submarine',
+        to: { level: 'first_flight' },
+        needs: [[{ freezer: 90203328 }], [{ freezer: 90203340 }]],
+        note: 'through the Freezer rover_impulse_v2 opens into the submarine pocket, then through the Freezer submarine opens',
+    },
+    {
+        id: 'orange_predicament_submarine',
+        to: { level: 'orange_predicament' },
+        needs: [[{ freezer: 90203328 }], [{ freezer: 90203340 }]],
+        note: 'through the Freezer rover_impulse_v2 opens into the submarine pocket, then through the Freezer submarine opens',
+    },
+    {
+        id: 'skip_or_sink_r_submarine',
+        to: { level: 'skip_or_sink_r' },
+        needs: [[{ freezer: 90203328 }], [{ freezer: 90203340 }]],
+        note: 'through the Freezer rover_impulse_v2 opens into the submarine pocket, then through the Freezer submarine opens',
+    },
+    {
+        id: 'torus_blocks_alt_v4_chain',
+        to: { level: 'torus_blocks_alt_v4' },
+        needs: [[{ freezer: 115373174 }], [{ freezer: 111273015 }], [{ freezer: 111273021 }]],
+        note: 'through the doorway push_down_chain opens, then the Freezers torus_goblins and torus_bard open',
+    },
+    {
+        id: 'trick_kills_fuse',
+        to: { level: 'trick_kills' },
+        needs: [[{ freezer: 62971317 }], [{ freezer: 115377426 }], [{ freezer: 46142281 }]],
+        note: 'through the Freezers clone_goblin and the_swappers open to fuse, then through the Freezer fuse opens',
+    },
 ];
 
 /** What the names and pids of the table resolve against. */
